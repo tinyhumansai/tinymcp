@@ -132,10 +132,10 @@ pulls in no transport.
       the up-front command resolution.
 - [ ] `crates/tinymcp/src/transport/stdio/` — `McpStdioClient` from
       `config_servers/stdio.rs` (314 lines).
-- [ ] Hoist `SUPPORTED_PROTOCOL_VERSIONS` and `LATEST_PROTOCOL_VERSION` into one
-      place. They are currently duplicated across the two transports; the move
-      is the moment to stop that, and a test asserts both transports negotiate
-      from the same list.
+- [x] Hoist `SUPPORTED_PROTOCOL_VERSIONS` and `LATEST_PROTOCOL_VERSION` into one
+      place — done in Phase 2, in `tinymcp-bus::transport`. They were duplicated
+      across the two transports; both now negotiate from the one list, and a
+      test pins it.
 
 **Verify:** `cargo test -p tinymcp transport`.
 
