@@ -918,7 +918,7 @@ async fn a_later_success_clears_the_recorded_failure() {
 }
 
 #[tokio::test]
-async fn detecting_auth_on_a_server_that_demands_it_says_so() {
+async fn a_challenge_whose_discovery_cannot_be_reached_falls_back_to_a_token() {
     let (endpoint, state) = mcp_server().await;
     state.demand_auth.store(true, Ordering::SeqCst);
     let record = remote_record("srv-1", &endpoint);
@@ -926,9 +926,12 @@ async fn detecting_auth_on_a_server_that_demands_it_says_so() {
 
     let detection = registry.detect_auth("srv-1").await.expect("detect");
 
-    // OAuth rather than a token: the challenge advertised resource metadata,
-    // and that is what decides between a browser sign-in and a token field.
-    assert_eq!(detection.kind, AuthKind::Oauth);
+    // A token, not OAuth — even though the challenge advertised resource
+    // metadata. The metadata URL is unreachable here, so discovery cannot
+    // produce an authorization endpoint, and offering a browser sign-in with
+    // nowhere to send the browser would be worse than offering a token field.
+    assert_eq!(detection.kind, AuthKind::Token);
+    assert_eq!(detection.authorization_endpoint, None);
 }
 
 #[tokio::test]
@@ -979,12 +982,15 @@ async fn a_handle_that_was_never_issued_is_refused() {
 
 #[tokio::test]
 async fn a_value_that_is_not_a_handle_is_refused() {
+    // Distinct from an unknown handle, which merely answers `false`: something
+    // that is not a handle at all is most likely a caller about to send the
+    // secret itself, and that is worth an error rather than a quiet no.
     let registry = registry();
 
-    assert!(
-        !registry
-            .setup_submit_secret("plainly-a-value", "sekrit".into())
-            .await
-            .expect("submit")
-    );
+    let error = registry
+        .setup_submit_secret("plainly-a-value", "sekrit".into())
+        .await
+        .expect_err("not a handle");
+
+    assert!(error.to_string().contains("not a secret handle"), "{error}");
 }
