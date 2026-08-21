@@ -1,7 +1,7 @@
 //! The servers a host declares in its own configuration.
 //!
 //! These are the *static* half of MCP client support: a fixed set the host
-//! pins, built once from an [`McpClientConfig`] and never persisted. The
+//! pins, built once from an [`crate::McpClientConfig`] and never persisted. The
 //! *dynamic* half — servers a user installs at runtime, with a store and a
 //! supervisor behind them — is the sibling registry.
 //!

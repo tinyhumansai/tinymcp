@@ -15,7 +15,7 @@ use crate::error::{Error, Result};
 pub struct AuthDetection {
     /// `none`, `token`, or `oauth`.
     pub kind: AuthKind,
-    /// Where to send the user, for [`AuthKind::Oauth`].
+    /// Where to send the user, for an OAuth challenge.
     #[serde(default)]
     pub authorization_endpoint: Option<String>,
     /// The grant types the authorization server listed, if it listed any.

@@ -159,7 +159,7 @@ pub enum Error {
     ///
     /// In practice this is a malformed proxy URL or an unusable TLS
     /// configuration. The URL is stripped from the cause for the reason given
-    /// on [`Self::transport`] — a proxy URL can carry credentials too.
+    /// on [`Self::Transport`] — a proxy URL can carry credentials too.
     #[error("could not build an http client: {source}")]
     ClientBuild {
         /// What the HTTP client reported.
