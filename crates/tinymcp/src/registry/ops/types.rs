@@ -7,9 +7,9 @@ use serde_json::Value;
 
 use super::install::{build_install_transport, collect_required_env_keys, pick_connection};
 use crate::error::{Error, Result};
-use crate::registry::{Connections, OAuthFlow, Registries, SecretVault, Store};
+use crate::registry::{AuthDetection, Connections, OAuthFlow, Registries, SecretVault, Store};
 use tinymcp_bus::{
-    AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
+    ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
     InstalledServer, McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool,
     RegistrySearchPage, RegistryServerDetail, RegistrySettings, ToolCallOutcome, UpdateEnvOutcome,
     UpdateEnvStatus,
