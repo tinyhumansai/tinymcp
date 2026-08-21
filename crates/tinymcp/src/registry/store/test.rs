@@ -645,7 +645,7 @@ fn a_row_whose_json_columns_are_unreadable_fails_the_read_rather_than_being_gues
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("store.db");
     let store = Store::open_file(&path).unwrap();
-    store.insert_server(&record("srv-1")).unwrap();
+    store.insert_server(&stdio_server("srv-1")).unwrap();
     drop(store);
 
     let connection = rusqlite::Connection::open(&path).unwrap();
@@ -666,7 +666,7 @@ fn a_row_whose_configuration_is_unreadable_fails_the_read() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("store.db");
     let store = Store::open_file(&path).unwrap();
-    store.insert_server(&record("srv-1")).unwrap();
+    store.insert_server(&stdio_server("srv-1")).unwrap();
     drop(store);
 
     let connection = rusqlite::Connection::open(&path).unwrap();

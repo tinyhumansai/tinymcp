@@ -260,3 +260,44 @@ fn truncation_does_not_split_a_character() {
     assert!(bounded.len() <= MAX_ERROR_BODY_BYTES);
     assert!(bounded.chars().all(|character| character == 'é'));
 }
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_failure_body_is_truncated_on_a_character_boundary() {
+    // Upstream bodies are arbitrary bytes and end up in a message. Splitting
+    // one mid-sequence would panic.
+    let truncated = super::shared::truncate(&"é".repeat(300), 201);
+
+    assert!(truncated.len() <= 201);
+    assert!(truncated.chars().all(|character| character == 'é'));
+}
+
+#[test]
+fn a_body_within_the_bound_is_left_alone() {
+    assert_eq!(super::shared::truncate("short", 200), "short");
+}
+
+#[test]
+fn a_cache_that_cannot_be_written_costs_a_round_trip_rather_than_the_search() {
+    // Failing a user's search because a cache write failed would cost them the
+    // search; the only price for skipping it is one more request next time.
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("store.db");
+    let store = crate::registry::Store::open_file(&path).unwrap();
+
+    // Drop the table the cache writes into, so the write fails for a reason
+    // that has nothing to do with the caller.
+    store.cache("warmup", "{}").unwrap();
+    {
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute("DROP TABLE mcp_registry_cache", [])
+            .unwrap();
+    }
+
+    // Returns nothing and does not panic.
+    super::shared::cache(&store, "key", "{}");
+}
