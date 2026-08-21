@@ -17,7 +17,10 @@ use std::path::{Path, PathBuf};
 
 /// Creates a file, optionally with the execute bit set.
 fn write_file(path: &Path, executable: bool) {
-    std::fs::File::create(path).unwrap().write_all(b"x").unwrap();
+    std::fs::File::create(path)
+        .unwrap()
+        .write_all(b"x")
+        .unwrap();
 
     #[cfg(unix)]
     if executable {
@@ -228,7 +231,10 @@ fn a_relative_command_resolves_against_the_working_directory() {
     write_file(&binary, true);
 
     let found = locate_command("./server", "/nonexistent", Some(directory.path()));
-    assert_eq!(found.as_deref(), Some(directory.path().join("./server").as_path()));
+    assert_eq!(
+        found.as_deref(),
+        Some(directory.path().join("./server").as_path())
+    );
 }
 
 #[test]

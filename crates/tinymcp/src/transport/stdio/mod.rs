@@ -329,10 +329,9 @@ impl McpStdioClient {
                 });
             }
 
-            return payload
-                .get("result")
-                .cloned()
-                .ok_or_else(|| Error::malformed(format!("stdio reply has no `result`: {payload}")));
+            return payload.get("result").cloned().ok_or_else(|| {
+                Error::malformed(format!("stdio reply has no `result`: {payload}"))
+            });
         }
     }
 

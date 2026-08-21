@@ -345,8 +345,7 @@ fn is_executable_file(path: &Path) -> bool {
 #[cfg(windows)]
 fn executable_candidates(base: PathBuf) -> Vec<PathBuf> {
     let mut candidates = vec![base.clone()];
-    let extensions =
-        std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+    let extensions = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
 
     for extension in extensions.split(';') {
         let extension = extension.trim();

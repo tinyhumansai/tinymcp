@@ -259,7 +259,10 @@ mod against_a_fake_server {
             .await
             .expect_err("no result member");
 
-        assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+        assert!(
+            matches!(error, Error::MalformedResponse { .. }),
+            "{error:?}"
+        );
     }
 
     #[tokio::test]
