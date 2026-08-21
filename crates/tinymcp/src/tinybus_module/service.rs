@@ -123,7 +123,7 @@ impl McpService {
 // connection's dispatch task for every other caller. A handful of members have
 // nothing to await, and that is fine — the uniformity is what the macro is
 // buying, and it is not this impl's call to make.
-#[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+#[allow(clippy::unused_async_trait_impl)]
 #[tinybus::interface(name = "ai.tinyhumans.tinymcp.Mcp")]
 #[allow(clippy::unused_async)]
 impl McpService {
