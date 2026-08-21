@@ -114,10 +114,6 @@ impl McpService {
     }
 }
 
-// Every member is `async fn` because the interface macro requires it: a
-// blocking one would stall the connection's dispatch task for every other
-// caller. A handful of them have nothing to await, and that is fine — the
-// uniformity is what the macro is buying.
 // Every member is `async fn` because the interface macro requires it: it
 // rejects a blocking method outright, on the grounds that one would stall the
 // connection's dispatch task for every other caller. A handful of members have
@@ -125,7 +121,6 @@ impl McpService {
 // buying, and it is not this impl's call to make.
 #[allow(clippy::unused_async_trait_impl)]
 #[tinybus::interface(name = "ai.tinyhumans.tinymcp.Mcp")]
-#[allow(clippy::unused_async)]
 impl McpService {
     // -- browsing -----------------------------------------------------------
 
@@ -157,7 +152,6 @@ impl McpService {
     }
 
     /// `()`
-    #[allow(clippy::unused_async)]
     async fn registry_settings_get(&self) -> tinybus::Result<RegistrySettings> {
         Ok(self.dynamic.registry_settings())
     }
