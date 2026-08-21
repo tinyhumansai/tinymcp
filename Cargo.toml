@@ -93,6 +93,9 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 # The installed-server store. `bundled` so a build does not depend on a system
 # SQLite, which is what makes the module loadable on a host that has none.
 rusqlite = { version = "0.40", features = ["bundled"] }
+# Locating a user's home directory, to find the version-manager shim
+# directories a desktop launch's stripped PATH leaves out.
+dirs = "5"
 # Install identifiers.
 uuid = { version = "1", features = ["v4"] }
 
@@ -105,6 +108,10 @@ axum = { version = "0.8", default-features = false, features = [
     "json",
     "tokio",
 ] }
+
+# Test-only: temporary directories for the spawn-environment suite, which
+# creates executable and non-executable files and resolves against them.
+tempfile = "3"
 
 # Lints apply to every member that opts in with `[lints] workspace = true`, and
 # to every target of that member. CI runs clippy with `-D warnings`, so anything

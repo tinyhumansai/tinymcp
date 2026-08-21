@@ -33,6 +33,7 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 futures-util = { workspace = true }
 tracing = { workspace = true }
+dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
@@ -41,6 +42,8 @@ serde_json = { workspace = true }
 # dependency entry above.
 tokio = { workspace = true, features = ["net"] }
 axum = { workspace = true }
+# Temporary directories for the command-resolution tests.
+tempfile = { workspace = true }
 
 [features]
 default = ["rustls-tls"]
