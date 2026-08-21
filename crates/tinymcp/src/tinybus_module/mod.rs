@@ -22,6 +22,7 @@
 //! change. Each signature below matches the order documented on its member.
 
 mod config;
+#[allow(clippy::unused_async)]
 mod service;
 
 pub use config::ModuleConfig;
