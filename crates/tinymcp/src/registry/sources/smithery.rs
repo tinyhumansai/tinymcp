@@ -203,3 +203,6 @@ pub(super) fn tag_source(mut servers: Vec<RegistryServerSummary>) -> Vec<Registr
     }
     servers
 }
+
+#[cfg(test)]
+mod test;
