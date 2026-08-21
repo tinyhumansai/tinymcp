@@ -69,6 +69,7 @@ pub mod config;
 pub mod greeting;
 pub mod names;
 pub mod sanitize;
+pub mod transport;
 pub mod version;
 
 pub use config::{
@@ -80,5 +81,11 @@ pub use names::{INTERFACE, METHODS, OBJECT_PATH};
 pub use sanitize::{
     MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, sanitize_for_llm, strip_control_chars,
     strip_instruction_fences, truncate_utf8_safe,
+};
+pub use transport::{
+    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
+    McpAuthorizationContext, McpClientInfo, McpInitializeResult, McpRemoteTool,
+    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
+    SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use version::{CONTRACT_VERSION, is_compatible};

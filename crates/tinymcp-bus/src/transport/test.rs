@@ -129,7 +129,11 @@ fn the_display_description_is_capped() {
     tool.description = Some("d".repeat(MAX_DESCRIPTION_BYTES * 4));
 
     let shown = tool.display_description().unwrap();
-    assert!(shown.len() <= MAX_DESCRIPTION_BYTES, "{} bytes", shown.len());
+    assert!(
+        shown.len() <= MAX_DESCRIPTION_BYTES,
+        "{} bytes",
+        shown.len()
+    );
 }
 
 #[test]
@@ -199,7 +203,10 @@ fn an_initialize_result_decodes_from_the_protocols_camel_case() {
 
     assert_eq!(result.protocol_version, "2025-06-18");
     assert_eq!(result.capabilities, json!({ "tools": {} }));
-    assert_eq!(result.server_info, json!({ "name": "weather", "version": "1" }));
+    assert_eq!(
+        result.server_info,
+        json!({ "name": "weather", "version": "1" })
+    );
     assert_eq!(result.instructions.as_deref(), Some("be nice"));
 }
 
@@ -462,5 +469,8 @@ fn an_sse_event_round_trips_with_json_data() {
         data: Some(json!({ "jsonrpc": "2.0", "id": 1 })),
     };
     let encoded = serde_json::to_value(&event).unwrap();
-    assert_eq!(serde_json::from_value::<McpSseEvent>(encoded).unwrap(), event);
+    assert_eq!(
+        serde_json::from_value::<McpSseEvent>(encoded).unwrap(),
+        event
+    );
 }
