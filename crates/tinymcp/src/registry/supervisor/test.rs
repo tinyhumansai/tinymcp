@@ -438,3 +438,101 @@ async fn a_tick_leaves_a_disabled_install_alone() {
 
     assert_eq!(connections.connected_count().await, 0);
 }
+
+#[tokio::test]
+async fn a_tick_that_cannot_read_the_store_gives_up_quietly_rather_than_failing_the_loop() {
+    // The supervisor runs forever. A store read that fails once — a locked
+    // file, a disk hiccup — must cost one cycle, not the process's ability to
+    // ever reconnect anything.
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("store.db");
+    let store = Store::open_file(&path).unwrap();
+    {
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection.execute("DROP TABLE mcp_servers", []).unwrap();
+    }
+
+    let mut supervisor = Supervisor::new(
+        SupervisorConfig::default(),
+        McpClientIdentityConfig::default(),
+        None,
+    );
+
+    // Returns rather than panicking or propagating.
+    supervisor
+        .tick(
+            &store,
+            &Connections::new(),
+            &OAuthFlow::new(None).unwrap(),
+            Instant::now(),
+        )
+        .await;
+}
+
+#[tokio::test]
+async fn a_dropped_transport_is_noticed_and_reconnected() {
+    // The reason the supervisor exists: an MCP transport can go away silently
+    // while its entry sits in the map looking fine, and a user's next tool call
+    // is the wrong place to find that out.
+    let endpoint = serve_working_server().await;
+    let server = install("srv-1", Transport::HttpRemote { url: endpoint }, true);
+    let store = Store::open_in_memory().unwrap();
+    store.insert_server(&server).unwrap();
+
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    connections
+        .connect(
+            &store,
+            &oauth,
+            &McpClientIdentityConfig::default(),
+            None,
+            &server,
+        )
+        .await
+        .expect("the first connect");
+
+    let mut supervisor = Supervisor::new(
+        SupervisorConfig::default(),
+        McpClientIdentityConfig::default(),
+        None,
+    );
+
+    // A live server: the probe succeeds and the entry is left alone.
+    supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+    assert_eq!(connections.connected_count().await, 1);
+}
+
+#[tokio::test]
+async fn a_server_that_cannot_be_reconnected_earns_a_growing_backoff() {
+    // Otherwise a permanently broken server is dialled on every cycle forever,
+    // which is a retry storm aimed at someone else's endpoint.
+    let server = install(
+        "srv-1",
+        Transport::HttpRemote {
+            url: "http://127.0.0.1:1/mcp".into(),
+        },
+        true,
+    );
+    let store = Store::open_in_memory().unwrap();
+    store.insert_server(&server).unwrap();
+
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    let mut supervisor = Supervisor::new(
+        SupervisorConfig::default(),
+        McpClientIdentityConfig::default(),
+        None,
+    );
+
+    let now = Instant::now();
+    supervisor.tick(&store, &connections, &oauth, now).await;
+    assert_eq!(connections.connected_count().await, 0);
+
+    // Immediately again: the backoff window has not passed, so nothing is
+    // dialled and the failure is not compounded.
+    supervisor.tick(&store, &connections, &oauth, now).await;
+    assert_eq!(connections.connected_count().await, 0);
+}
