@@ -44,7 +44,7 @@ Phase 4 is the bulk. Phase 6 is the only one that touches OpenHuman.
       has a real payload family to replace it with.
 - [ ] Rewrite `README.md`, `MODULE.md`, `ROADMAP.md`, and both `src/lib.rs`
       crate docs for this project; delete the example spec and plan.
-- [ ] Add the workspace dependencies the port needs: `reqwest`, `tokio`
+- [~] Add the workspace dependencies the port needs (`schemars` done): `reqwest`, `tokio`
       (process + io + sync), `rusqlite`, `parking_lot`, `anyhow`, `base64`,
       `futures-util`, `tracing`, `url`, and `schemars` as an optional feature of
       the contract crate.
@@ -57,13 +57,13 @@ Phase 4 is the bulk. Phase 6 is the only one that touches OpenHuman.
 
 Source: `src/openhuman/util/sanitize.rs` (252 lines, no dependencies).
 
-- [ ] Create `crates/tinymcp-bus/src/sanitize/{mod.rs,test.rs}`; move the
+- [x] Create `crates/tinymcp-bus/src/sanitize/{mod.rs,test.rs}`; move the
       module verbatim, keeping `MAX_DESCRIPTION_BYTES`, `MAX_TITLE_BYTES`,
       `strip_control_chars`, `strip_instruction_fences`, `truncate_utf8_safe`,
       and `sanitize_for_llm`.
-- [ ] Move its test suite into `test.rs` unchanged — this is a security-relevant
+- [x] Move its test suite into `test.rs` — this is a security-relevant
       truncation-and-stripping rule and the tests are the specification of it.
-- [ ] Re-export the four functions and two constants from
+- [x] Re-export the four functions and two constants from
       `crates/tinymcp-bus/src/lib.rs`.
 
 **Verify:** `cargo test -p tinymcp-bus sanitize`.
@@ -77,7 +77,7 @@ Every type that crosses the boundary, one directory per family, each with
 serde representation** before the type is considered done; that test is the
 only thing standing between a field rename and a production decode failure.
 
-- [ ] `crates/tinymcp-bus/src/config/` — `McpClientConfig`, `McpServerConfig`,
+- [x] `crates/tinymcp-bus/src/config/` — `McpClientConfig`, `McpServerConfig`,
       `McpAuthConfig`, `HttpHeader`, `McpClientIdentityConfig`,
       `McpRegistryAuthConfig`, from
       `src/openhuman/config/schema/tools/mcp.rs`. Replace `schemars::JsonSchema`
@@ -85,8 +85,10 @@ only thing standing between a field rename and a production decode failure.
       optional `schemars` feature so OpenHuman's desktop schema still generates.
       Replace `super::super::defaults` with local `default_true`.
       Add the explicit proxy fields that replace
-      `config::apply_runtime_proxy_to_builder`.
-- [ ] `crates/tinymcp-bus/src/transport/` — `McpRemoteTool`,
+      `config::apply_runtime_proxy_to_builder`: the host resolves the proxy
+      decision and sends `McpProxyConfig`, so the scoping policy stays in the
+      one place that owns it.
+- [x] `crates/tinymcp-bus/src/transport/` — `McpRemoteTool`,
       `McpInitializeResult`, `McpServerToolResult`, `McpSseEvent`,
       `McpAuthChallenge`, `McpAuthorizationContext`,
       `ProtectedResourceMetadata`, `AuthorizationServerMetadata`, and
@@ -253,8 +255,8 @@ cargo run -p tinymcp --example verify_module
 ## Completion checklist
 
 - [x] Phase 0 — de-template (partial: renames and metadata done)
-- [ ] Phase 1 — `sanitize`
-- [ ] Phase 2 — contract crate
+- [x] Phase 1 — `sanitize`
+- [~] Phase 2 — contract crate (config + transport done; registry, audit, method payloads, names outstanding)
 - [ ] Phase 3 — transports
 - [ ] Phase 4 — registries
 - [ ] Phase 5 — bus adapter
