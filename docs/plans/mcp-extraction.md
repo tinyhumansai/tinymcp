@@ -160,9 +160,18 @@ Two defects found while porting, each fixed with a regression test:
       Schema unchanged. The data directory arrives from module configuration.
 - [ ] `crates/tinymcp/src/registry/sources/` — `smithery.rs` (268) and
       `mcp_official.rs` (1438), plus the 10-minute cache in `registry.rs` (498).
-- [ ] `crates/tinymcp/src/registry/connections/` — the live connection map
-      (979 lines), and `supervisor/` (223).
-- [ ] `crates/tinymcp/src/registry/oauth/` — OAuth discovery and callback (618).
+- [x] `crates/tinymcp/src/registry/connections/` — the live connection map
+      (979 lines), and `supervisor/` (223). The map and the failure record are
+      **owned**, not process-global: two hosts in one process would otherwise
+      have shared connections, and every test would have run against the same
+      map in whatever order the runner chose.
+- [x] `crates/tinymcp/src/registry/oauth/` — discovery, registration, code
+      exchange, and silent refresh (618). The redirect URI is a **parameter**:
+      only the host knows which loopback port it actually bound, and a guess
+      that is wrong sends the browser somewhere sign-in simply hangs.
+      Completing an authorization stores the token and stops — reconnecting is
+      the caller's job, which is what lets the connection map depend on this
+      module for refresh without a cycle.
 - [~] `crates/tinymcp/src/registry/curation/` (174) done; `boot/` (110)
       outstanding, with `boot_tests.rs` as `boot/test.rs`.
 - [ ] `crates/tinymcp/src/registry/setup/` — `setup.rs` (327) and the
@@ -277,7 +286,7 @@ cargo run -p tinymcp --example verify_module
 - [x] Phase 1 — `sanitize`
 - [~] Phase 2 — contract crate (all payload families and names done; per-member request/response types outstanding)
 - [x] Phase 3 — transports
-- [~] Phase 4 — registries (static set, store, curation, audit store done;
-      sources, connections, supervisor, OAuth, boot, setup, ops outstanding)
+- [~] Phase 4 — registries (static set, store, curation, audit store, OAuth,
+      connections and supervisor done; sources, boot, setup and ops outstanding)
 - [ ] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
