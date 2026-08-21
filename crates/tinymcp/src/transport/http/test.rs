@@ -19,14 +19,14 @@ use axum::http::{HeaderMap as AxumHeaderMap, Method, StatusCode as AxumStatus};
 use axum::response::{IntoResponse, Response as AxumResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
+use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::{Value, json};
 
 use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
 use super::{HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient};
 use crate::Error;
-use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig, McpClientIdentityConfig};
+use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig};
 
 // ---------------------------------------------------------------------------
 // Test server

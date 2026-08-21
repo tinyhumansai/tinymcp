@@ -81,9 +81,11 @@ fn an_empty_query_takes_the_default_page_size() {
 
 #[test]
 fn a_page_size_over_the_maximum_is_clamped_to_it() {
-    let mut query = McpWriteListQuery::default();
     for requested in [MAX_LIST_LIMIT + 1, 10_000, u64::MAX] {
-        query.limit = Some(requested);
+        let query = McpWriteListQuery {
+            limit: Some(requested),
+            ..McpWriteListQuery::default()
+        };
         assert_eq!(
             query.resolved_limit(),
             MAX_LIST_LIMIT,
@@ -94,15 +96,19 @@ fn a_page_size_over_the_maximum_is_clamped_to_it() {
 
 #[test]
 fn a_page_size_at_the_maximum_is_honored_exactly() {
-    let mut query = McpWriteListQuery::default();
-    query.limit = Some(MAX_LIST_LIMIT);
+    let query = McpWriteListQuery {
+        limit: Some(MAX_LIST_LIMIT),
+        ..McpWriteListQuery::default()
+    };
     assert_eq!(query.resolved_limit(), MAX_LIST_LIMIT);
 }
 
 #[test]
 fn a_page_size_under_the_default_is_honored() {
-    let mut query = McpWriteListQuery::default();
-    query.limit = Some(1);
+    let query = McpWriteListQuery {
+        limit: Some(1),
+        ..McpWriteListQuery::default()
+    };
     assert_eq!(query.resolved_limit(), 1);
 }
 
@@ -111,15 +117,19 @@ fn a_zero_page_size_is_honored_rather_than_replaced_by_the_default() {
     // `unwrap_or` only fills in an absent value. An explicit zero is a caller
     // asking for a count-only query, and silently turning it into fifty rows
     // would be a surprising thing to do with an explicit request.
-    let mut query = McpWriteListQuery::default();
-    query.limit = Some(0);
+    let query = McpWriteListQuery {
+        limit: Some(0),
+        ..McpWriteListQuery::default()
+    };
     assert_eq!(query.resolved_limit(), 0);
 }
 
 #[test]
 fn an_offset_is_passed_through_unchanged() {
-    let mut query = McpWriteListQuery::default();
-    query.offset = Some(1_000);
+    let query = McpWriteListQuery {
+        offset: Some(1_000),
+        ..McpWriteListQuery::default()
+    };
     assert_eq!(query.resolved_offset(), 1_000);
 }
 
@@ -129,9 +139,11 @@ fn an_offset_is_passed_through_unchanged() {
 
 #[test]
 fn a_filter_is_trimmed() {
-    let mut query = McpWriteListQuery::default();
-    query.client_filter = Some("  claude  ".into());
-    query.tool_filter = Some("\tmemory_write\n".into());
+    let query = McpWriteListQuery {
+        client_filter: Some("  claude  ".into()),
+        tool_filter: Some("\tmemory_write\n".into()),
+        ..McpWriteListQuery::default()
+    };
 
     assert_eq!(query.resolved_client_filter(), Some("claude"));
     assert_eq!(query.resolved_tool_filter(), Some("memory_write"));
@@ -140,10 +152,12 @@ fn a_filter_is_trimmed() {
 #[test]
 fn a_blank_filter_means_no_filter_rather_than_matching_nothing() {
     // A caller sending an empty text box wants everything, not silence.
-    let mut query = McpWriteListQuery::default();
     for blank in ["", "   ", "\t\n"] {
-        query.client_filter = Some(blank.into());
-        query.tool_filter = Some(blank.into());
+        let query = McpWriteListQuery {
+            client_filter: Some(blank.into()),
+            tool_filter: Some(blank.into()),
+            ..McpWriteListQuery::default()
+        };
         assert_eq!(query.resolved_client_filter(), None, "{blank:?}");
         assert_eq!(query.resolved_tool_filter(), None, "{blank:?}");
     }
@@ -158,14 +172,15 @@ fn an_absent_filter_is_no_filter() {
 
 #[test]
 fn both_none_and_false_mean_do_not_filter_on_success() {
-    let mut query = McpWriteListQuery::default();
-    assert!(!query.resolved_success_only());
+    assert!(!McpWriteListQuery::default().resolved_success_only());
 
-    query.success_only = Some(false);
-    assert!(!query.resolved_success_only());
-
-    query.success_only = Some(true);
-    assert!(query.resolved_success_only());
+    for (flag, expected) in [(Some(false), false), (Some(true), true)] {
+        let query = McpWriteListQuery {
+            success_only: flag,
+            ..McpWriteListQuery::default()
+        };
+        assert_eq!(query.resolved_success_only(), expected, "{flag:?}");
+    }
 }
 
 // ---------------------------------------------------------------------------
