@@ -937,6 +937,10 @@ async fn a_module_that_came_up_answers_a_call_on_its_object_path() {
     let serving = Connection::connect(bus.connect().await.unwrap())
         .await
         .unwrap();
+    // Kept alive for the length of the test: the name and the served object
+    // belong to the connection, and a module's loader holds it for the module's
+    // life. Dropping it here would release both before the call.
+    let _serving = serving.clone();
     super::setup(
         serving,
         ModuleConfig {
