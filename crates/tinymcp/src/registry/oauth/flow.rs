@@ -113,7 +113,8 @@ impl OAuthFlow {
                 .authorization_server_metadata
                 .iter()
                 .find(|metadata| {
-                    metadata.authorization_endpoint.is_some() && supports_authorization_code(metadata)
+                    metadata.authorization_endpoint.is_some()
+                        && supports_authorization_code(metadata)
                 })
                 .and_then(|metadata| {
                     metadata.authorization_endpoint.clone().map(|endpoint| {
@@ -335,7 +336,9 @@ impl OAuthFlow {
         }
 
         let registered: Value = serde_json::from_str(&text).map_err(|error| {
-            Error::malformed(format!("client registration replied with non-json: {error}"))
+            Error::malformed(format!(
+                "client registration replied with non-json: {error}"
+            ))
         })?;
 
         let client_id = registered

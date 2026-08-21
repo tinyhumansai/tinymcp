@@ -99,20 +99,22 @@ struct TokenRequests {
 
 /// A token endpoint that records what it was sent and answers with `reply`.
 fn token_endpoint(state: TokenRequests, reply: Value) -> Router {
-    Router::new().route(
-        "/token",
-        post(
-            move |State(state): State<TokenRequests>, Form(form): Form<BTreeMap<String, String>>| {
-                let reply = reply.clone();
-                async move {
-                    state.count.fetch_add(1, Ordering::SeqCst);
-                    state.forms.lock().push(form);
-                    Json(reply).into_response()
-                }
-            },
-        ),
-    )
-    .with_state(state)
+    Router::new()
+        .route(
+            "/token",
+            post(
+                move |State(state): State<TokenRequests>,
+                      Form(form): Form<BTreeMap<String, String>>| {
+                    let reply = reply.clone();
+                    async move {
+                        state.count.fetch_add(1, Ordering::SeqCst);
+                        state.forms.lock().push(form);
+                        Json(reply).into_response()
+                    }
+                },
+            ),
+        )
+        .with_state(state)
 }
 
 // ---------------------------------------------------------------------------
@@ -181,9 +183,12 @@ fn a_token_response_needs_only_an_access_token() {
 
 #[test]
 fn a_token_response_without_an_access_token_is_rejected() {
-    let error = TokenResponse::parse(&json!({ "token_type": "bearer" }))
-        .expect_err("no access token");
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    let error =
+        TokenResponse::parse(&json!({ "token_type": "bearer" })).expect_err("no access token");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +235,10 @@ async fn a_server_that_does_not_challenge_is_reported_as_open() {
     let url = format!("{}/", serve(app).await);
 
     let flow = OAuthFlow::new(None).unwrap();
-    let detected = flow.detect(&store_with_remote(&url), "srv-1").await.unwrap();
+    let detected = flow
+        .detect(&store_with_remote(&url), "srv-1")
+        .await
+        .unwrap();
 
     assert_eq!(detected.kind, AuthKind::None);
 }
@@ -253,7 +261,10 @@ async fn a_bare_401_is_reported_as_wanting_a_static_token() {
     let url = format!("{}/", serve(app).await);
 
     let flow = OAuthFlow::new(None).unwrap();
-    let detected = flow.detect(&store_with_remote(&url), "srv-1").await.unwrap();
+    let detected = flow
+        .detect(&store_with_remote(&url), "srv-1")
+        .await
+        .unwrap();
 
     assert_eq!(detected.kind, AuthKind::Token);
     assert_eq!(detected.authorization_endpoint, None);
@@ -367,7 +378,10 @@ async fn an_expired_token_is_refreshed_and_stored() {
     );
 
     let env = store.load_env_values("srv-1").unwrap();
-    assert_eq!(env.get("Authorization").map(String::as_str), Some("Bearer fresh"));
+    assert_eq!(
+        env.get("Authorization").map(String::as_str),
+        Some("Bearer fresh")
+    );
     assert_eq!(requests.count.load(Ordering::SeqCst), 1);
 }
 
@@ -388,7 +402,10 @@ async fn a_refresh_sends_the_grant_the_token_and_the_client_credentials() {
         .unwrap();
 
     let form = requests.forms.lock()[0].clone();
-    assert_eq!(form.get("grant_type").map(String::as_str), Some("refresh_token"));
+    assert_eq!(
+        form.get("grant_type").map(String::as_str),
+        Some("refresh_token")
+    );
     assert_eq!(form.get("refresh_token").map(String::as_str), Some("r1"));
     assert_eq!(form.get("client_id").map(String::as_str), Some("cli-1"));
     assert_eq!(form.get("client_secret").map(String::as_str), Some("sec-1"));
@@ -411,8 +428,7 @@ async fn a_refresh_keeps_the_existing_refresh_token_when_the_server_does_not_rot
         .unwrap();
 
     let env = store.load_env_values("srv-1").unwrap();
-    let bundle: Value =
-        serde_json::from_str(env.get(OAUTH_BUNDLE_KEY).expect("a bundle")).unwrap();
+    let bundle: Value = serde_json::from_str(env.get(OAUTH_BUNDLE_KEY).expect("a bundle")).unwrap();
     assert_eq!(bundle["refresh_token"], json!("r1"));
 }
 
@@ -453,8 +469,14 @@ async fn a_refresh_records_the_new_credential_names_on_the_server_row() {
         .unwrap();
 
     let names = store.get_server("srv-1").unwrap().env_keys;
-    assert!(names.iter().any(|name| name == "Authorization"), "{names:?}");
-    assert!(names.iter().any(|name| name == OAUTH_BUNDLE_KEY), "{names:?}");
+    assert!(
+        names.iter().any(|name| name == "Authorization"),
+        "{names:?}"
+    );
+    assert!(
+        names.iter().any(|name| name == OAUTH_BUNDLE_KEY),
+        "{names:?}"
+    );
 }
 
 #[tokio::test]
@@ -471,7 +493,10 @@ async fn a_corrupt_bundle_is_reported_rather_than_ignored() {
         .await
         .expect_err("a corrupt bundle");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 #[tokio::test]
@@ -528,7 +553,10 @@ async fn completing_with_an_unknown_state_is_refused() {
         .await
         .expect_err("an unknown state");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 #[tokio::test]

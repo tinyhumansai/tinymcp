@@ -71,7 +71,10 @@ fn working_server() -> Router {
     Router::new().route(
         "/",
         post(|Json(body): Json<Value>| async move {
-            let method = body.get("method").and_then(Value::as_str).unwrap_or_default();
+            let method = body
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let result = match method {
                 "initialize" => json!({
                     "protocolVersion": tinymcp_bus::LATEST_PROTOCOL_VERSION,
@@ -130,7 +133,11 @@ fn several_stored_values_all_become_headers() {
         McpAuthConfig::Headers { headers } => {
             assert_eq!(headers.len(), 2);
             assert!(headers.iter().any(|header| header.name == "X-Client-Key"));
-            assert!(headers.iter().any(|header| header.name == "X-Client-Secret"));
+            assert!(
+                headers
+                    .iter()
+                    .any(|header| header.name == "X-Client-Secret")
+            );
         }
         other => panic!("expected several headers, got {other:?}"),
     }
@@ -189,7 +196,10 @@ fn the_internal_marker_is_two_underscores() {
 #[test]
 fn a_same_origin_redirect_is_followed() {
     assert_eq!(
-        credential_safe_dial_url("https://api.test/mcp", "https://api.test/v2/mcp".to_string()),
+        credential_safe_dial_url(
+            "https://api.test/mcp",
+            "https://api.test/v2/mcp".to_string()
+        ),
         "https://api.test/v2/mcp"
     );
 }
@@ -198,7 +208,10 @@ fn a_same_origin_redirect_is_followed() {
 fn a_cross_origin_redirect_to_https_is_followed() {
     // The common legitimate case: a vanity host redirecting to the real API.
     assert_eq!(
-        credential_safe_dial_url("https://vanity.test/", "https://api.real.test/mcp".to_string()),
+        credential_safe_dial_url(
+            "https://vanity.test/",
+            "https://api.real.test/mcp".to_string()
+        ),
         "https://api.real.test/mcp"
     );
 }
@@ -270,8 +283,11 @@ fn generic_failure() -> ConnectFailure {
 fn a_disabled_server_reads_as_disabled_whatever_else_is_true() {
     // A user who switched a server off should see that, not a stale error from
     // before they did.
-    let (status, tools, error, hint) =
-        classify(false, Some(7), Some(&unauthorized(McpAuthHint::OauthRequired)));
+    let (status, tools, error, hint) = classify(
+        false,
+        Some(7),
+        Some(&unauthorized(McpAuthHint::OauthRequired)),
+    );
 
     assert_eq!(status, ServerStatus::Disabled);
     assert_eq!(tools, 0);
@@ -604,7 +620,10 @@ async fn an_http_remote_install_with_no_endpoint_is_refused_before_dialling() {
         .await
         .expect_err("no endpoint");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------

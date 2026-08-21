@@ -133,7 +133,10 @@ pub(super) fn persist(
         ACCESS_TOKEN_KEY.to_string(),
         format!("Bearer {}", tokens.access_token),
     );
-    env.insert(OAUTH_BUNDLE_KEY.to_string(), serde_json::to_string(&bundle)?);
+    env.insert(
+        OAUTH_BUNDLE_KEY.to_string(),
+        serde_json::to_string(&bundle)?,
+    );
 
     store.set_env_values(server_id, &env)?;
 

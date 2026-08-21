@@ -116,7 +116,9 @@ impl Connections {
         proxy: Option<&McpProxyConfig>,
         server: &InstalledServer,
     ) -> Result<Vec<McpTool>> {
-        let result = self.connect_inner(store, oauth, identity, proxy, server).await;
+        let result = self
+            .connect_inner(store, oauth, identity, proxy, server)
+            .await;
 
         match &result {
             Ok(_) => {
@@ -362,7 +364,8 @@ impl Connections {
     /// For a host shutting down. Recorded failures are left alone: they describe
     /// what happened, and shutting down does not change that.
     pub async fn disconnect_all(&self) {
-        let connections: Vec<Arc<Connection>> = self.live.write().await.drain().map(|(_, c)| c).collect();
+        let connections: Vec<Arc<Connection>> =
+            self.live.write().await.drain().map(|(_, c)| c).collect();
 
         for connection in connections {
             if let Err(error) = connection.client.close_session().await {
@@ -482,9 +485,10 @@ impl Connections {
             .flat_map(|overview| {
                 let server_id = overview.server_id;
                 let qualified_name = overview.qualified_name;
-                overview.tools.into_iter().map(move |tool| {
-                    (server_id.clone(), qualified_name.clone(), tool)
-                })
+                overview
+                    .tools
+                    .into_iter()
+                    .map(move |tool| (server_id.clone(), qualified_name.clone(), tool))
             })
             .collect()
     }

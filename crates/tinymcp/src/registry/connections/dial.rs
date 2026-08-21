@@ -35,9 +35,7 @@ const MAX_REDIRECTS: usize = 5;
 pub(super) fn build_http_auth(env: &BTreeMap<String, String>) -> McpAuthConfig {
     let headers: Vec<HttpHeader> = env
         .iter()
-        .filter(|(name, value)| {
-            !name.starts_with(INTERNAL_KEY_PREFIX) && !value.trim().is_empty()
-        })
+        .filter(|(name, value)| !name.starts_with(INTERNAL_KEY_PREFIX) && !value.trim().is_empty())
         .map(|(name, value)| HttpHeader::new(name, value))
         .collect();
 
@@ -45,12 +43,13 @@ pub(super) fn build_http_auth(env: &BTreeMap<String, String>) -> McpAuthConfig {
         0 => McpAuthConfig::None,
         // One header keeps the simpler variant, which is what the wire form
         // looked like before multi-header servers existed.
-        1 => headers.into_iter().next().map_or(McpAuthConfig::None, |header| {
-            McpAuthConfig::Header {
+        1 => headers
+            .into_iter()
+            .next()
+            .map_or(McpAuthConfig::None, |header| McpAuthConfig::Header {
                 name: header.name,
                 value: header.value,
-            }
-        }),
+            }),
         _ => McpAuthConfig::Headers { headers },
     }
 }
