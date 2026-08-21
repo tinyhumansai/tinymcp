@@ -182,9 +182,7 @@ fn version_manager_dirs() -> Vec<PathBuf> {
 
 /// The `bin` directory of the highest `nvm`-installed Node version, if any.
 fn nvm_latest_bin_dir(home: &Path) -> Option<PathBuf> {
-    let nvm_dir = std::env::var_os("NVM_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".nvm"));
+    let nvm_dir = std::env::var_os("NVM_DIR").map_or_else(|| home.join(".nvm"), PathBuf::from);
     let versions = nvm_dir.join("versions").join("node");
 
     let mut latest: Option<(Vec<u32>, PathBuf)> = None;

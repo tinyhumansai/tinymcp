@@ -94,7 +94,8 @@ async fn closing_a_session_that_was_never_opened_does_nothing() {
 #[cfg(unix)]
 mod against_a_fake_server {
     use super::{Error, LATEST_PROTOCOL_VERSION, McpStdioClient};
-    use std::io::Write;
+    use std::fmt::Write as _;
+    use std::io::Write as _;
     use std::path::Path;
     use tinymcp_bus::McpClientIdentityConfig;
 
@@ -123,7 +124,7 @@ mod against_a_fake_server {
         let mut body = String::new();
         for reply in replies {
             body.push_str("read -r _line\n");
-            body.push_str(&format!("printf '%s\\n' '{reply}'\n"));
+            let _ = writeln!(body, "printf '%s\\n' '{reply}'");
         }
         // Then wait, rather than exiting and closing the pipe under the client.
         body.push_str("cat > /dev/null\n");
@@ -204,7 +205,7 @@ mod against_a_fake_server {
         let mut body = String::from("read -r _line\n");
         body.push_str("printf '%s\\n' 'Starting fake server v1...'\n");
         body.push_str("printf '%s\\n' ''\n");
-        body.push_str(&format!("printf '%s\\n' '{}'\n", initialize_reply()));
+        let _ = writeln!(body, "printf '%s\\n' '{}'", initialize_reply());
         body.push_str("cat > /dev/null\n");
 
         let directory = tempfile::tempdir().unwrap();
