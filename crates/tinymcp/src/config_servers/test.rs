@@ -468,3 +468,222 @@ fn a_clone_shares_its_transports_rather_than_reconnecting() {
         registry.get("weather").expect("the server").endpoint
     );
 }
+
+// ---------------------------------------------------------------------------
+// The registry against live servers
+// ---------------------------------------------------------------------------
+//
+// Everything above builds the set from configuration. What follows drives it,
+// because the transport dispatch — one arm per transport, on each of five
+// operations — only runs when something answers.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::post;
+use axum::Router;
+use serde_json::{json, Value};
+
+use tinymcp_bus::LATEST_PROTOCOL_VERSION;
+
+/// How many tool calls the loopback server saw.
+type Calls = Arc<AtomicUsize>;
+
+/// Binds a loopback port and serves an MCP endpoint advertising two tools.
+async fn mcp_endpoint() -> (String, Calls) {
+    let calls: Calls = Arc::new(AtomicUsize::new(0));
+
+    async fn handle(
+        State(calls): State<Calls>,
+        axum::Json(body): axum::Json<Value>,
+    ) -> Response {
+        let id = body["id"].clone();
+        match body.get("method").and_then(Value::as_str).unwrap_or_default() {
+            "initialize" => axum::Json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": LATEST_PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "serverInfo": { "name": "loopback", "version": "1.0.0" },
+                },
+            }))
+            .into_response(),
+            "notifications/initialized" => StatusCode::NO_CONTENT.into_response(),
+            "tools/list" => axum::Json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "tools": [
+                        { "name": "allowed", "inputSchema": { "type": "object" } },
+                        { "name": "denied", "inputSchema": { "type": "object" } },
+                    ],
+                },
+            }))
+            .into_response(),
+            "tools/call" => {
+                calls.fetch_add(1, Ordering::SeqCst);
+                axum::Json(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "content": [{ "type": "text", "text": "done" }] },
+                }))
+                .into_response()
+            }
+            other => (StatusCode::BAD_REQUEST, format!("unexpected {other}")).into_response(),
+        }
+    }
+
+    let app = Router::new()
+        .route("/mcp", post(handle))
+        .with_state(Arc::clone(&calls));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (format!("http://{addr}/mcp"), calls)
+}
+
+#[tokio::test]
+async fn a_declared_server_handshakes_and_lists_its_tools() {
+    let (endpoint, _calls) = mcp_endpoint().await;
+    let registry = registry_of(vec![McpServerConfig {
+        name: "weather".into(),
+        endpoint,
+        ..McpServerConfig::default()
+    }]);
+
+    let handshake = registry.initialize("weather").await.expect("initialize");
+    assert_eq!(handshake.protocol_version, LATEST_PROTOCOL_VERSION);
+
+    let tools = registry.list_tools("weather").await.expect("list");
+    assert_eq!(tools.len(), 2);
+}
+
+#[tokio::test]
+async fn a_declared_server_answers_a_tool_call() {
+    let (endpoint, calls) = mcp_endpoint().await;
+    let registry = registry_of(vec![McpServerConfig {
+        name: "weather".into(),
+        endpoint,
+        ..McpServerConfig::default()
+    }]);
+
+    let result = registry
+        .call_tool("weather", "allowed", json!({}))
+        .await
+        .expect("call");
+
+    assert!(!result.rendered.is_error);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn an_allow_list_hides_the_tools_it_does_not_name() {
+    // The list is the host's policy. A tool it does not name must not reach a
+    // model at all — not as a listed capability, and not as a callable one.
+    let (endpoint, _calls) = mcp_endpoint().await;
+    let registry = registry_of(vec![McpServerConfig {
+        name: "weather".into(),
+        endpoint,
+        allowed_tools: vec!["allowed".into()],
+        ..McpServerConfig::default()
+    }]);
+
+    let tools = registry.list_tools("weather").await.expect("list");
+
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "allowed");
+}
+
+#[tokio::test]
+async fn a_tool_outside_the_allow_list_is_refused_before_it_is_dialled() {
+    // Filtering the listing is not enough on its own: a caller that already
+    // knows the name could otherwise call it anyway.
+    let (endpoint, calls) = mcp_endpoint().await;
+    let registry = registry_of(vec![McpServerConfig {
+        name: "weather".into(),
+        endpoint,
+        allowed_tools: vec!["allowed".into()],
+        ..McpServerConfig::default()
+    }]);
+
+    let error = registry
+        .call_tool("weather", "denied", json!({}))
+        .await
+        .expect_err("outside the allow list");
+
+    assert!(matches!(error, Error::ToolNotAllowed { .. }), "{error:?}");
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "nothing was dialled");
+}
+
+#[tokio::test]
+async fn a_declared_server_has_no_authorization_to_discover_until_it_asks() {
+    let (endpoint, _calls) = mcp_endpoint().await;
+    let registry = registry_of(vec![McpServerConfig {
+        name: "weather".into(),
+        endpoint,
+        ..McpServerConfig::default()
+    }]);
+
+    let context = registry
+        .discover_authorization("weather")
+        .await
+        .expect("discovery runs");
+
+    assert!(context.is_none());
+}
+
+#[tokio::test]
+async fn a_subprocess_server_reports_no_authorization_to_discover() {
+    // There is no 401 and no challenge on a pipe. A stdio server that needs a
+    // credential takes it through its environment.
+    let registry = registry_of(vec![McpServerConfig {
+        name: "local".into(),
+        command: "true".into(),
+        ..McpServerConfig::default()
+    }]);
+
+    assert!(
+        registry
+            .discover_authorization("local")
+            .await
+            .expect("discovery runs")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn ending_a_session_on_a_declared_server_succeeds() {
+    let (endpoint, _calls) = mcp_endpoint().await;
+    let registry = registry_of(vec![McpServerConfig {
+        name: "weather".into(),
+        endpoint,
+        ..McpServerConfig::default()
+    }]);
+    registry.initialize("weather").await.unwrap();
+
+    assert!(registry.close_session("weather").await.is_ok());
+}
+
+#[tokio::test]
+async fn every_operation_on_a_server_that_was_never_declared_is_unknown() {
+    let registry = registry_of(Vec::new());
+
+    for error in [
+        registry.initialize("nothing").await.err(),
+        registry.list_tools("nothing").await.err(),
+        registry.call_tool("nothing", "t", json!({})).await.err(),
+        registry.discover_authorization("nothing").await.err(),
+        registry.close_session("nothing").await.err(),
+    ] {
+        let error = error.expect("an unknown server is an error");
+        assert!(matches!(error, Error::UnknownServer { .. }), "{error:?}");
+    }
+}
