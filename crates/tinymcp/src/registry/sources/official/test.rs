@@ -647,7 +647,7 @@ async fn paged_registry(pages: usize) -> (String, Arc<Seen>) {
         .route(
             "/v0/servers",
             get(
-                |State(seen): State<Arc<Seen>>, headers: HeaderMap, uri: Uri| async move {
+                move |State(seen): State<Arc<Seen>>, headers: HeaderMap, uri: Uri| async move {
                     seen.pages.fetch_add(1, Ordering::SeqCst);
                     *seen.authorization.lock() = headers
                         .get("authorization")
@@ -952,7 +952,7 @@ async fn a_cache_hit_still_records_the_cursor_it_carried() {
     let (base, seen) = paged_registry(5).await;
     let auth = auth_at(&base);
     let store = store();
-    let cursors = cursors();
+    let warm = cursors();
     let adapter = adapter();
 
     adapter
@@ -961,13 +961,13 @@ async fn a_cache_hit_still_records_the_cursor_it_carried() {
         .unwrap();
     // A fresh map reading the warm store, then straight on to page two.
     adapter
-        .search(&store, &auth, &cursors, "", 1, 20)
+        .search(&store, &auth, &warm, "", 1, 20)
         .await
         .unwrap();
     let before = seen.pages.load(Ordering::SeqCst);
 
     adapter
-        .search(&store, &auth, &cursors, "", 2, 20)
+        .search(&store, &auth, &warm, "", 2, 20)
         .await
         .unwrap();
 
