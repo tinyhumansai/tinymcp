@@ -125,4 +125,47 @@ impl McpWriteListQuery {
     pub fn resolved_offset(&self) -> u64 {
         self.offset.unwrap_or(0)
     }
+
+    /// The client filter, trimmed, or `None` when it is absent or blank.
+    ///
+    /// A whitespace-only filter is treated as no filter rather than as a filter
+    /// that matches nothing — a caller sending an empty text box wants
+    /// everything, not silence.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tinymcp_bus::McpWriteListQuery;
+    /// let mut query = McpWriteListQuery::default();
+    /// query.client_filter = Some("  claude  ".into());
+    /// assert_eq!(query.resolved_client_filter(), Some("claude"));
+    ///
+    /// query.client_filter = Some("   ".into());
+    /// assert_eq!(query.resolved_client_filter(), None);
+    /// ```
+    #[must_use]
+    pub fn resolved_client_filter(&self) -> Option<&str> {
+        normalized_filter(self.client_filter.as_deref())
+    }
+
+    /// The tool filter, trimmed, or `None` when it is absent or blank.
+    ///
+    /// The same rule as [`Self::resolved_client_filter`].
+    #[must_use]
+    pub fn resolved_tool_filter(&self) -> Option<&str> {
+        normalized_filter(self.tool_filter.as_deref())
+    }
+
+    /// Whether to return successful writes only.
+    ///
+    /// Both `None` and `Some(false)` mean no filter.
+    #[must_use]
+    pub fn resolved_success_only(&self) -> bool {
+        self.success_only.unwrap_or(false)
+    }
+}
+
+/// Trims a filter and treats a blank one as absent.
+fn normalized_filter(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
 }
