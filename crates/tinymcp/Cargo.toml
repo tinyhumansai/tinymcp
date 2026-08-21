@@ -23,8 +23,11 @@ crate-type = ["rlib", "cdylib"]
 # rather than two, and so `tinymcp::GreetRequest` and
 # `tinymcp_bus::GreetRequest` are the same type.
 tinymcp-bus = { workspace = true }
-tinybus = { workspace = true }
-tinybus-module = { workspace = true }
+# Only the `TinyBus` adapter needs these, and only a `cdylib` build needs the
+# adapter. A host taking this crate as an ordinary library calls the API
+# directly and should not link a bus to do it — see the `module` feature.
+tinybus = { workspace = true, optional = true }
+tinybus-module = { workspace = true, optional = true }
 thiserror = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
@@ -50,7 +53,11 @@ axum = { workspace = true }
 tempfile = { workspace = true }
 
 [features]
-default = ["rustls-tls"]
+default = ["module", "rustls-tls"]
+# Build the `TinyBus` adapter and the ABI exports. On by default because the
+# released artifact is a loadable module; a host consuming this crate as a path
+# dependency turns it off and links neither `tinybus` nor its module SDK.
+module = ["dep:tinybus", "dep:tinybus-module"]
 # Bundle a TLS stack, so a build needs no system OpenSSL. The default.
 rustls-tls = ["reqwest/rustls-tls"]
 # Use the operating system's TLS stack and certificate store instead. A host

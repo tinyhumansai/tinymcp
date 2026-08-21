@@ -71,6 +71,7 @@ pub mod audit;
 pub mod config_servers;
 mod error;
 pub mod registry;
+#[cfg(feature = "module")]
 mod tinybus_module;
 pub mod transport;
 
