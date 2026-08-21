@@ -22,7 +22,7 @@ permissions:
 
 env:
   # The workspace member that ships as the loadable module. Its package name is
-  # the artifact name and the library name; `crates/template-bus` rides along on
+  # the artifact name and the library name; `crates/tinymcp-bus` rides along on
   # the same inherited version and is not packaged separately.
   RELEASE_PACKAGE: template
 

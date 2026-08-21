@@ -10,10 +10,10 @@
 //! [`METHODS`] in the same order as the interface's dispatch table.
 
 /// The well-known interface name the module claims on the bus.
-pub const INTERFACE: &str = "ai.tinyhumans.template.Greeting";
+pub const INTERFACE: &str = "ai.tinyhumans.tinymcp.Greeting";
 
 /// The object path the module serves its interface at.
-pub const OBJECT_PATH: &str = "/ai/tinyhumans/template/Greeting";
+pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinymcp/Greeting";
 
 /// One constant per member of [`INTERFACE`].
 pub mod methods {
@@ -25,7 +25,7 @@ pub mod methods {
 
 /// Every member of [`INTERFACE`], in the order the interface dispatches them.
 ///
-/// `crates/template` asserts its declared manifest methods against this list,
+/// `crates/tinymcp` asserts its declared manifest methods against this list,
 /// so the two cannot drift.
 pub const METHODS: &[&str] = &[methods::GREET];
 

@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "A production-ready template for installable TinyBus modules."
-documentation = "https://docs.rs/template"
+documentation = "https://docs.rs/tinymcp"
 readme = "../../README.md"
 keywords = ["tinybus", "module", "plugin", "template"]
 categories = ["development-tools"]
@@ -20,9 +20,9 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 # The wire contract: member names, payload types, and the contract version.
 # Re-exported wholesale from `src/lib.rs` so a consumer takes one dependency
-# rather than two, and so `template::GreetRequest` and
-# `template_bus::GreetRequest` are the same type.
-template-bus = { workspace = true }
+# rather than two, and so `tinymcp::GreetRequest` and
+# `tinymcp_bus::GreetRequest` are the same type.
+tinymcp-bus = { workspace = true }
 tinybus = { workspace = true }
 tinybus-module = { workspace = true }
 thiserror = { workspace = true }

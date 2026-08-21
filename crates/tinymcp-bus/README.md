@@ -1,10 +1,10 @@
-# template-bus
+# tinymcp-bus
 
 Every type that crosses the template module's `TinyBus` boundary, and the names
 of the members that carry them.
 
 The template ships as a loadable module so a host does not compile the
-implementation: `crates/template` is built as a `cdylib` and exports one object.
+implementation: `crates/tinymcp` is built as a `cdylib` and exports one object.
 A host can load that binary but cannot `use` anything out of it, so the payload
 vocabulary has to be published as an ordinary library. This is it.
 
@@ -31,16 +31,16 @@ The alternative, a parallel set of payload types for hosts, is worse: a
 `GreetRequest` defined twice is two distinct types, with a conversion at every
 call site that nothing checks. One definition, here, at the bottom.
 
-Because the re-export is by module as well as by item, `template::GreetRequest`,
-`template::names::OBJECT_PATH`, and `template_bus::greeting::GreetRequest` all
+Because the re-export is by module as well as by item, `tinymcp::GreetRequest`,
+`tinymcp::names::OBJECT_PATH`, and `tinymcp_bus::greeting::GreetRequest` all
 resolve to the same items, not twins.
 
 So: a module author depends on `template` and gets behavior and vocabulary. A
-host depends on `template-bus` and gets vocabulary alone.
+host depends on `tinymcp-bus` and gets vocabulary alone.
 
 ## What is deliberately absent
 
-**No behavior.** `greet` lives in `crates/template`. A payload type describes
+**No behavior.** `greet` lives in `crates/tinymcp`. A payload type describes
 what a frame carries, not what the module does with it. The split is readable
 off the path: a name here is data, a name there is an obligation.
 
@@ -60,7 +60,7 @@ Arguments travel as a positional JSON array — `#[tinybus::interface]` decodes
 them into a tuple — and the member name comes from `names`:
 
 ```rust,ignore
-use template_bus::{names, GreetRequest, GreetResponse};
+use tinymcp_bus::{names, GreetRequest, GreetResponse};
 
 let proxy = connection.proxy(names::INTERFACE, names::OBJECT_PATH, names::INTERFACE)?;
 let reply: GreetResponse = proxy
@@ -75,7 +75,7 @@ path, or a member is therefore a compile error in every consumer rather than an
 
 ## Staying in step with the module
 
-`names::METHODS` lists every member in dispatch order. `crates/template` asserts
+`names::METHODS` lists every member in dispatch order. `crates/tinymcp` asserts
 its served members against that list, so a method added to the interface without
 an entry here fails that crate's tests rather than surfacing in a host.
 

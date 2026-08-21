@@ -1,7 +1,7 @@
 //! Tests for the `TinyBus` module adapter and its declared surface.
 
 use super::{GreetingService, setup};
-use template_bus::{GreetRequest, GreetResponse, names};
+use tinymcp_bus::{GreetRequest, GreetResponse, names};
 use tinybus::broker::Broker;
 use tinybus::transport::memory::MemoryBus;
 use tinybus::{Connection, Interface};

@@ -12,7 +12,7 @@
 use std::io;
 use std::time::Duration;
 
-use template::{GreetRequest, GreetResponse, names};
+use tinymcp::{GreetRequest, GreetResponse, names};
 use tinybus::Connection;
 use tinybus::broker::Broker;
 use tinybus::module::ModuleHost;

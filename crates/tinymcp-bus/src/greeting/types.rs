@@ -19,7 +19,7 @@ impl GreetRequest {
     /// # Examples
     ///
     /// ```
-    /// # use template_bus::GreetRequest;
+    /// # use tinymcp_bus::GreetRequest;
     /// assert_eq!(GreetRequest::new("Ferris").name, "Ferris");
     /// ```
     #[must_use]
@@ -42,7 +42,7 @@ impl GreetResponse {
     /// # Examples
     ///
     /// ```
-    /// # use template_bus::GreetResponse;
+    /// # use tinymcp_bus::GreetResponse;
     /// assert_eq!(GreetResponse::new("Hello, Ferris!").greeting, "Hello, Ferris!");
     /// ```
     #[must_use]
