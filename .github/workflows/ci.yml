@@ -53,11 +53,18 @@ jobs:
       - name: Test default features
         run: cargo test
 
-      # `cargo build --all-targets` only *compiles* an example. `AGENTS.md`
-      # promises `cargo run -p tinymcp --example basic` works, and a compiled
-      # example can still fail on its first line.
-      - name: Run the bundled example
-        run: cargo run -p tinymcp --example basic
+      # `cargo build --all-targets` only *compiles* the cdylib, and a module
+      # that compiles can still fail to load: a missing ABI export, a member
+      # list that drifted from the contract, a panic on the first call into it.
+      # The release workflow runs this same example against every artifact it
+      # ships; running it here means a break is found on the pull request that
+      # caused it rather than during a release.
+      - name: Verify the module loads and serves its interface
+        run: |
+          set -euo pipefail
+          cargo build --all-features --package tinymcp --lib
+          cargo run --package tinymcp --example verify_module -- \
+            target/debug/libtinymcp.so
 
       # `crates/tinymcp-bus` exists so a host can name the payload types
       # without compiling the module. That promise is invisible in a diff,
@@ -128,7 +135,7 @@ jobs:
         run: |
           set -euo pipefail
           msrv="$(cargo metadata --format-version 1 --no-deps \
-            | jq -r '.packages[] | select(.name == "template") | .rust_version')"
+            | jq -r '.packages[] | select(.name == "tinymcp") | .rust_version')"
           if [[ -z "$msrv" || "$msrv" == "null" ]]; then
             echo "workspace.package.rust-version is not set in Cargo.toml" >&2
             exit 1
