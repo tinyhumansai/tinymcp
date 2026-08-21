@@ -64,7 +64,7 @@ fn write_legacy_database(data_dir: &std::path::Path) {
                  installed_at, last_connected_at
              ) VALUES (
                  'srv-legacy', '@acme/weather', 'Weather', 'Forecasts', NULL,
-                 'npx', 'weather-mcp', '[\"--verbose\"]', '[\"API_KEY\"]', NULL,
+                 'node', 'weather-mcp', '[\"--verbose\"]', '[\"API_KEY\"]', NULL,
                  1700000000, 1700000100
              )",
             [],
@@ -94,7 +94,7 @@ fn an_install_written_before_the_extraction_is_still_listed() {
     assert_eq!(server.display_name, "Weather");
     assert_eq!(server.description.as_deref(), Some("Forecasts"));
     assert_eq!(server.command, "weather-mcp");
-    assert_eq!(server.command_kind, CommandKind::Npx);
+    assert_eq!(server.command_kind, CommandKind::Node);
     assert_eq!(server.args, vec!["--verbose".to_string()]);
     assert_eq!(server.env_keys, vec!["API_KEY".to_string()]);
     assert_eq!(server.installed_at, 1_700_000_000);
@@ -111,8 +111,9 @@ fn a_row_from_before_the_added_columns_takes_their_defaults() {
     let store = Store::open(workspace.path()).expect("the legacy file opens");
     let server = store.get_server("srv-legacy").expect("get");
 
+    // `deployment_url` folded into the transport on the way over: an empty one
+    // beside a stdio row was a state that could not mean anything.
     assert_eq!(server.transport, Transport::Stdio);
-    assert_eq!(server.deployment_url, None);
     assert!(server.enabled);
 }
 
