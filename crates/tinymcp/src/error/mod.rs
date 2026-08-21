@@ -33,7 +33,17 @@ pub enum Error {
     ///
     /// The server is reachable and needs credentials. Callers should offer an
     /// authentication path rather than report a failure; see the module note.
-    #[error("mcp unauthorized for `{endpoint}`")]
+    ///
+    /// The status is in the message on purpose. A host classifying errors for
+    /// its own reporting has only the rendered text to go on when the failure
+    /// has crossed an RPC boundary and been re-reported as a string — and
+    /// misclassifying this one turns preventable user state into an error
+    /// report, once per retry.
+    ///
+    /// The `resource_metadata` URL is deliberately *not* in the message. It
+    /// describes the server's authorization setup, it reaches logs and
+    /// telemetry, and a caller that needs it has the field.
+    #[error("mcp unauthorized for `{endpoint}` (HTTP 401)")]
     Unauthorized {
         /// The redacted endpoint the 401 came from.
         endpoint: String,

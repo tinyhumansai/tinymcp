@@ -137,6 +137,19 @@ fn an_unauthorized_error_names_its_endpoint() {
 }
 
 #[test]
+fn an_unauthorized_error_states_its_status() {
+    // A host classifying errors for its own reporting may have only the
+    // rendered text: the failure crosses an RPC boundary and comes back as a
+    // string. Without the status it reads as an ordinary transport failure, and
+    // preventable user state gets reported as an error once per retry.
+    for error in [bare_unauthorized_error(), oauth_challenge_error()] {
+        let rendered = error.to_string().to_lowercase();
+        assert!(rendered.contains("mcp unauthorized for "), "{rendered}");
+        assert!(rendered.contains("(http 401"), "{rendered}");
+    }
+}
+
+#[test]
 fn an_unauthorized_error_never_prints_the_oauth_metadata_url() {
     // The metadata URL is for the caller to act on, not to display: it is a
     // detail of the server's authorization setup and belongs in the affordance
