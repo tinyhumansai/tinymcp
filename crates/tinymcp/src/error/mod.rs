@@ -56,7 +56,13 @@ pub enum Error {
     },
 
     /// A remote server answered with a status other than success.
-    #[error("mcp http {status} from `{endpoint}`")]
+    ///
+    /// The body is rendered, bounded, because it is where the server says
+    /// *why*: a token endpoint answering `invalid_grant` reads differently from
+    /// one answering `invalid_client`, and a bare status cannot tell them
+    /// apart. Every producer of this variant already truncates what it stores;
+    /// the bound here is a second one, for a producer that forgets.
+    #[error("mcp http {status} from `{endpoint}`{}", rendered_body(body))]
     Http {
         /// The redacted endpoint.
         endpoint: String,
@@ -277,6 +283,32 @@ impl From<serde_json::Error> for Error {
 /// Use this alias in public signatures instead of spelling out
 /// `std::result::Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// How much of a failure body to put in a message.
+///
+/// These reach logs, telemetry, and user-facing errors. An upstream answering a
+/// failure with a whole HTML page would otherwise put all of it in every one.
+const MAX_RENDERED_BODY_BYTES: usize = 200;
+
+/// The body as it appears in a message: nothing at all when it is blank, and
+/// bounded on a character boundary when it is not.
+fn rendered_body(body: &str) -> String {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if trimmed.len() <= MAX_RENDERED_BODY_BYTES {
+        return format!(": {trimmed}");
+    }
+
+    let mut end = MAX_RENDERED_BODY_BYTES;
+    while end > 0 && !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    format!(": {}…", trimmed.get(..end).unwrap_or_default())
+}
 
 #[cfg(test)]
 mod test;
