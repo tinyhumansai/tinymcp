@@ -988,3 +988,215 @@ fn a_challenge_with_no_attributes_still_yields_its_scheme() {
 fn a_response_with_no_challenge_yields_none() {
     assert!(parse_www_authenticate_challenge(&HeaderMap::new()).is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Header helpers
+// ---------------------------------------------------------------------------
+//
+// Small, pure, and reached only on paths a live server does not exercise: a
+// challenge that has to be parsed before discovery can start, a tool schema
+// that asks for an argument to be mirrored into a header, and a configured
+// header whose name cannot be encoded.
+
+use super::headers::{
+    apply_auth, header_to_string, mcp_param_headers_from_schema, parse_auth_attribute_list,
+    parse_www_authenticate_challenge,
+};
+use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderValue as ReqwestHeaderValue};
+
+/// A header map holding one `WWW-Authenticate` value.
+fn challenge_headers(value: &str) -> ReqwestHeaderMap {
+    let mut headers = ReqwestHeaderMap::new();
+    headers.insert(
+        "WWW-Authenticate",
+        ReqwestHeaderValue::from_str(value).expect("a valid header value"),
+    );
+    headers
+}
+
+#[test]
+fn a_challenge_is_read_down_to_its_scheme_and_attributes() {
+    let challenge = parse_www_authenticate_challenge(&challenge_headers(
+        "Bearer realm=\"mcp\", resource_metadata=\"https://example.test/.well-known/x\"",
+    ))
+    .expect("a challenge");
+
+    assert_eq!(challenge.scheme, "Bearer");
+    assert_eq!(challenge.realm.as_deref(), Some("mcp"));
+    assert_eq!(
+        challenge.resource_metadata.as_deref(),
+        Some("https://example.test/.well-known/x")
+    );
+}
+
+#[test]
+fn a_challenge_with_no_attributes_is_still_a_challenge() {
+    // A bare `Bearer` is what a server that wants a static token sends. Reading
+    // it as nothing would lose the only signal that authentication is wanted.
+    let challenge =
+        parse_www_authenticate_challenge(&challenge_headers("Bearer")).expect("a challenge");
+
+    assert_eq!(challenge.scheme, "Bearer");
+    assert_eq!(challenge.resource_metadata, None);
+}
+
+#[test]
+fn no_challenge_header_reads_as_no_challenge() {
+    assert!(parse_www_authenticate_challenge(&ReqwestHeaderMap::new()).is_none());
+}
+
+#[test]
+fn an_attribute_list_tolerates_spacing_and_quoting() {
+    let attributes =
+        parse_auth_attribute_list("realm=\"mcp\" ,  resource_metadata=https://example.test");
+
+    assert_eq!(attributes.get("realm").map(String::as_str), Some("mcp"));
+    assert_eq!(
+        attributes.get("resource_metadata").map(String::as_str),
+        Some("https://example.test")
+    );
+}
+
+#[test]
+fn a_header_that_is_not_present_reads_as_none() {
+    assert_eq!(header_to_string(&ReqwestHeaderMap::new(), "Mcp-Session-Id"), None);
+}
+
+#[test]
+fn a_header_that_is_present_reads_as_its_text() {
+    let mut headers = ReqwestHeaderMap::new();
+    headers.insert("Mcp-Session-Id", ReqwestHeaderValue::from_static("s-1"));
+
+    assert_eq!(
+        header_to_string(&headers, "Mcp-Session-Id").as_deref(),
+        Some("s-1")
+    );
+}
+
+/// A remote tool whose `tenant` property asks to be mirrored into a header.
+fn tool_with_header_property() -> tinymcp_bus::McpRemoteTool {
+    serde_json::from_value(json!({
+        "name": "needs_header",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tenant": { "type": "string", "x-mcp-header": "tenant" },
+                "plain": { "type": "string" },
+            },
+        },
+    }))
+    .expect("a tool decodes")
+}
+
+#[test]
+fn an_argument_marked_for_mirroring_becomes_a_header() {
+    let headers =
+        mcp_param_headers_from_schema(&tool_with_header_property(), &json!({ "tenant": "acme" }))
+            .expect("headers build");
+
+    assert_eq!(headers.len(), 1);
+    assert_eq!(headers[0].0.as_str(), "mcp-param-tenant");
+    assert_eq!(headers[0].1.to_str().unwrap(), "acme");
+}
+
+#[test]
+fn an_argument_not_marked_for_mirroring_stays_in_the_body() {
+    let headers =
+        mcp_param_headers_from_schema(&tool_with_header_property(), &json!({ "plain": "value" }))
+            .expect("headers build");
+
+    assert!(headers.is_empty());
+}
+
+#[test]
+fn a_marked_argument_that_was_not_supplied_produces_no_header() {
+    let headers = mcp_param_headers_from_schema(&tool_with_header_property(), &json!({}))
+        .expect("headers build");
+
+    assert!(headers.is_empty());
+}
+
+#[test]
+fn a_non_string_argument_is_mirrored_as_its_json_form() {
+    let headers =
+        mcp_param_headers_from_schema(&tool_with_header_property(), &json!({ "tenant": 42 }))
+            .expect("headers build");
+
+    assert_eq!(headers[0].1.to_str().unwrap(), "42");
+}
+
+#[test]
+fn arguments_that_are_not_an_object_produce_no_headers() {
+    let headers = mcp_param_headers_from_schema(&tool_with_header_property(), &json!("not an object"))
+        .expect("headers build");
+
+    assert!(headers.is_empty());
+}
+
+#[test]
+fn a_tool_with_no_properties_produces_no_headers() {
+    let tool: tinymcp_bus::McpRemoteTool = serde_json::from_value(json!({
+        "name": "plain",
+        "inputSchema": { "type": "object" },
+    }))
+    .unwrap();
+
+    assert!(
+        mcp_param_headers_from_schema(&tool, &json!({ "anything": 1 }))
+            .expect("headers build")
+            .is_empty()
+    );
+}
+
+#[test]
+fn an_argument_value_that_cannot_be_a_header_is_refused() {
+    // A newline in a header value is request splitting. Refusing is the only
+    // safe answer, and it has to name the property so the user can fix it.
+    let error = mcp_param_headers_from_schema(
+        &tool_with_header_property(),
+        &json!({ "tenant": "acme\r\nX-Injected: yes" }),
+    )
+    .expect_err("an unusable header value");
+
+    assert!(error.to_string().contains("tenant"), "{error}");
+}
+
+#[test]
+fn a_schema_asking_for_an_unusable_header_name_is_refused() {
+    let tool: tinymcp_bus::McpRemoteTool = serde_json::from_value(json!({
+        "name": "bad",
+        "inputSchema": {
+            "type": "object",
+            "properties": { "tenant": { "x-mcp-header": "not a header name" } },
+        },
+    }))
+    .unwrap();
+
+    assert!(mcp_param_headers_from_schema(&tool, &json!({ "tenant": "acme" })).is_err());
+}
+
+#[tokio::test]
+async fn a_configured_header_that_cannot_be_encoded_is_skipped_rather_than_fatal() {
+    // One unusable entry in a user's configuration must not take down every
+    // request to that server; the rest of the credentials still apply.
+    let client = reqwest::Client::new();
+    let request = client.get("http://127.0.0.1:1/");
+
+    let auth = McpAuthConfig::Headers {
+        headers: vec![
+            HttpHeader {
+                name: "not a header name".into(),
+                value: "whatever".into(),
+            },
+            HttpHeader {
+                name: "X-Fine".into(),
+                value: "ok".into(),
+            },
+        ],
+    };
+
+    let built = apply_auth(request, &auth).build().expect("the request builds");
+
+    assert!(built.headers().get("X-Fine").is_some());
+    assert_eq!(built.headers().len(), 1);
+}
