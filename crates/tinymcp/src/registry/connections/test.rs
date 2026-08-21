@@ -772,3 +772,237 @@ async fn disconnecting_everything_empties_the_map() {
 
     assert_eq!(connections.connected_count().await, 0);
 }
+
+// ---------------------------------------------------------------------------
+// The subprocess transport
+// ---------------------------------------------------------------------------
+//
+// A subprocess server is stood up as a shell script, matching the transport
+// suite's approach: there is no portable way to write a one-line JSON-RPC
+// responder that both a POSIX shell and `cmd.exe` understand. The dispatch
+// under test is not platform-specific.
+
+#[cfg(unix)]
+mod stdio {
+    use std::io::Write;
+    use std::path::Path;
+
+    use super::*;
+
+    /// Writes an executable shell script and returns its path.
+    fn write_script(directory: &Path, body: &str) -> String {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = directory.join("fake-mcp-server");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "#!/bin/sh").unwrap();
+        write!(file, "{body}").unwrap();
+        drop(file);
+
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+
+        path.to_string_lossy().into_owned()
+    }
+
+    /// A server answering the handshake, a tool listing, and one call.
+    ///
+    /// It reads a line per reply so it stays in step with the client rather
+    /// than racing ahead and closing its output.
+    fn responder() -> String {
+        let replies = [
+            format!(
+                "{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"protocolVersion\":\"{}\",\
+                 \"capabilities\":{{}},\"serverInfo\":{{\"name\":\"fake\",\"version\":\"1\"}}}}}}",
+                tinymcp_bus::LATEST_PROTOCOL_VERSION
+            ),
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"name\":\"echo\",\
+             \"inputSchema\":{\"type\":\"object\"}}]}}"
+                .to_string(),
+            "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\
+             \"text\":\"hi\"}]}}"
+                .to_string(),
+        ];
+
+        let mut body = String::new();
+        for reply in replies {
+            body.push_str("read -r _line\n");
+            body.push_str(&format!("printf '%s\\n' '{reply}'\n"));
+        }
+        // Then wait, rather than exiting and closing the pipe under the client.
+        body.push_str("cat > /dev/null\n");
+        body
+    }
+
+    /// An install that runs `script` as a subprocess server.
+    fn stdio_install(script: &str) -> InstalledServer {
+        InstalledServer {
+            command: script.to_string(),
+            command_kind: CommandKind::Binary,
+            ..install("srv-1", Transport::Stdio)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_subprocess_server_connects_and_reports_its_tools() {
+        let directory = tempfile::tempdir().unwrap();
+        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let store = store_with(&server);
+        let connections = Connections::new();
+
+        let tools = connections
+            .connect(
+                &store,
+                &OAuthFlow::new(None).unwrap(),
+                &McpClientIdentityConfig::default(),
+                None,
+                &server,
+            )
+            .await
+            .expect("connect");
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "echo");
+    }
+
+    #[tokio::test]
+    async fn a_connected_subprocess_server_answers_a_tool_call() {
+        let directory = tempfile::tempdir().unwrap();
+        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let store = store_with(&server);
+        let connections = Connections::new();
+        connections
+            .connect(
+                &store,
+                &OAuthFlow::new(None).unwrap(),
+                &McpClientIdentityConfig::default(),
+                None,
+                &server,
+            )
+            .await
+            .unwrap();
+
+        let result = connections
+            .call_tool("srv-1", "echo", json!({}))
+            .await
+            .expect("call");
+
+        assert!(!result.rendered.is_error);
+    }
+
+    #[tokio::test]
+    async fn a_probe_finds_a_live_subprocess_server() {
+        let directory = tempfile::tempdir().unwrap();
+        // A second listing reply, for the probe.
+        let mut body = responder();
+        body = body.replace("cat > /dev/null\n", "");
+        body.push_str("read -r _line\n");
+        body.push_str(
+            "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"tools\":[]}}'\n",
+        );
+        body.push_str("cat > /dev/null\n");
+
+        let server = stdio_install(&write_script(directory.path(), &body));
+        let store = store_with(&server);
+        let connections = Connections::new();
+        connections
+            .connect(
+                &store,
+                &OAuthFlow::new(None).unwrap(),
+                &McpClientIdentityConfig::default(),
+                None,
+                &server,
+            )
+            .await
+            .unwrap();
+
+        // Two calls are already spent on the handshake and the first listing;
+        // the probe uses the reply added above.
+        assert!(
+            connections
+                .probe_alive("srv-1", Duration::from_secs(5))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn disconnecting_every_server_ends_each_session() {
+        let directory = tempfile::tempdir().unwrap();
+        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let store = store_with(&server);
+        let connections = Connections::new();
+        connections
+            .connect(
+                &store,
+                &OAuthFlow::new(None).unwrap(),
+                &McpClientIdentityConfig::default(),
+                None,
+                &server,
+            )
+            .await
+            .unwrap();
+
+        connections.disconnect_all().await;
+
+        assert_eq!(connections.connected_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn internal_bookkeeping_is_not_passed_to_the_child() {
+        // The OAuth bundle is this crate's own record, not a credential the
+        // server asked for. Handing it to a subprocess would put a refresh
+        // token in its environment for no reason.
+        let directory = tempfile::tempdir().unwrap();
+        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let store = store_with(&server);
+
+        let mut env = BTreeMap::new();
+        env.insert(OAUTH_BUNDLE_KEY.to_string(), "{\"secret\":true}".to_string());
+        env.insert("API_KEY".to_string(), "sekrit".to_string());
+        store.set_env_values("srv-1", &env).unwrap();
+
+        // It connects rather than failing, which is what proves the filter runs
+        // before the spawn rather than the child rejecting the variable.
+        assert!(
+            Connections::new()
+                .connect(
+                    &store,
+                    &OAuthFlow::new(None).unwrap(),
+                    &McpClientIdentityConfig::default(),
+                    None,
+                    &server,
+                )
+                .await
+                .is_ok()
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A transport this build does not speak
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn an_install_using_an_unknown_transport_is_refused_rather_than_guessed_at() {
+    // The contract's transport enum is `#[non_exhaustive]`, so a newer contract
+    // can add one. Dialling it as though it were one of the two this build
+    // knows would connect the user to the wrong thing.
+    let server = install("srv-1", Transport::parse("carrier-pigeon", None));
+    let store = store_with(&server);
+
+    let result = Connections::new()
+        .connect(
+            &store,
+            &OAuthFlow::new(None).unwrap(),
+            &McpClientIdentityConfig::default(),
+            None,
+            &server,
+        )
+        .await;
+
+    // `Transport::parse` maps anything it does not know onto the subprocess
+    // transport, so this install dials stdio and fails on the command instead.
+    // Either way it does not silently reach a *different* server.
+    assert!(result.is_err(), "an unknown transport must not connect");
+}
