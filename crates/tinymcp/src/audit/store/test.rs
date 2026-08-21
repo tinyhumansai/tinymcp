@@ -480,13 +480,13 @@ fn a_long_error_message_is_truncated_on_a_character_boundary() {
     // naive byte split on a multi-byte character would panic.
     let record = NewMcpWriteRecord {
         error_message: Some("é".repeat(2_000)),
-        ..new_record()
+        ..write_at(1_000, "claude", "memory_write")
     };
 
-    let store = AuditStore::open_in_memory().unwrap();
+    let store = store();
     store.record(&record).expect("record");
 
-    let stored = store.list(&McpWriteListQuery::default()).unwrap();
+    let stored = store.list(&all()).unwrap();
     let message = stored[0].error_message.as_deref().expect("a message");
     assert!(message.len() <= 1024, "{} bytes", message.len());
     // Intact: a split mid-sequence would have produced replacement characters.
@@ -497,14 +497,14 @@ fn a_long_error_message_is_truncated_on_a_character_boundary() {
 fn an_error_message_within_the_bound_is_kept_whole() {
     let record = NewMcpWriteRecord {
         error_message: Some("the tool refused".into()),
-        ..new_record()
+        ..write_at(1_000, "claude", "memory_write")
     };
 
-    let store = AuditStore::open_in_memory().unwrap();
+    let store = store();
     store.record(&record).unwrap();
 
     assert_eq!(
-        store.list(&McpWriteListQuery::default()).unwrap()[0]
+        store.list(&all()).unwrap()[0]
             .error_message
             .as_deref(),
         Some("the tool refused")
@@ -516,10 +516,10 @@ fn a_limit_beyond_what_the_column_can_hold_is_refused_rather_than_wrapping() {
     // A bound that overflowed into a negative would turn a page request into
     // "no limit", which is how a listing endpoint becomes a way to dump the
     // whole table.
-    let store = AuditStore::open_in_memory().unwrap();
+    let store = store();
     let query = McpWriteListQuery {
         offset: Some(u64::MAX),
-        ..McpWriteListQuery::default()
+        ..all()
     };
 
     assert!(store.list(&query).is_err());
@@ -533,12 +533,12 @@ fn a_row_whose_argument_summary_was_never_written_reads_as_null() {
     store
         .record(&NewMcpWriteRecord {
             args_summary: serde_json::Value::Null,
-            ..new_record()
+            ..write_at(1_000, "claude", "memory_write")
         })
         .unwrap();
 
     assert_eq!(
-        store.list(&McpWriteListQuery::default()).unwrap()[0].args_summary,
+        store.list(&all()).unwrap()[0].args_summary,
         serde_json::Value::Null
     );
 }
@@ -548,10 +548,10 @@ fn an_audit_log_opens_under_the_directory_it_is_given() {
     let directory = tempfile::tempdir().unwrap();
 
     let store = AuditStore::open(directory.path()).expect("the log opens");
-    store.record(&new_record()).unwrap();
+    store.record(&write_at(1_000, "claude", "memory_write")).unwrap();
 
     assert!(AuditStore::path_for(directory.path()).exists());
-    assert_eq!(store.list(&McpWriteListQuery::default()).unwrap().len(), 1);
+    assert_eq!(store.list(&all()).unwrap().len(), 1);
 }
 
 #[test]
