@@ -492,63 +492,63 @@ use tinymcp_bus::LATEST_PROTOCOL_VERSION;
 /// How many tool calls the loopback server saw.
 type Calls = Arc<AtomicUsize>;
 
+async fn handle(State(calls): State<Calls>, axum::Json(body): axum::Json<Value>) -> Response {
+    let id = body["id"].clone();
+    match body
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+    {
+        "initialize" => axum::Json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "protocolVersion": LATEST_PROTOCOL_VERSION,
+                "capabilities": {},
+                "serverInfo": { "name": "loopback", "version": "1.0.0" },
+            },
+        }))
+        .into_response(),
+        "notifications/initialized" => StatusCode::NO_CONTENT.into_response(),
+        "tools/list" => axum::Json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "tools": [
+                    { "name": "allowed", "inputSchema": { "type": "object" } },
+                    { "name": "denied", "inputSchema": { "type": "object" } },
+                ],
+            },
+        }))
+        .into_response(),
+        "tools/call" => {
+            calls.fetch_add(1, Ordering::SeqCst);
+            axum::Json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "done" }] },
+            }))
+            .into_response()
+        }
+        other => (StatusCode::BAD_REQUEST, format!("unexpected {other}")).into_response(),
+    }
+}
+
 /// Binds a loopback port and serves an MCP endpoint advertising two tools.
 async fn mcp_endpoint() -> (String, Calls) {
-    let calls: Calls = Arc::new(AtomicUsize::new(0));
+let calls: Calls = Arc::new(AtomicUsize::new(0));
 
-    async fn handle(State(calls): State<Calls>, axum::Json(body): axum::Json<Value>) -> Response {
-        let id = body["id"].clone();
-        match body
-            .get("method")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-        {
-            "initialize" => axum::Json(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "protocolVersion": LATEST_PROTOCOL_VERSION,
-                    "capabilities": {},
-                    "serverInfo": { "name": "loopback", "version": "1.0.0" },
-                },
-            }))
-            .into_response(),
-            "notifications/initialized" => StatusCode::NO_CONTENT.into_response(),
-            "tools/list" => axum::Json(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "tools": [
-                        { "name": "allowed", "inputSchema": { "type": "object" } },
-                        { "name": "denied", "inputSchema": { "type": "object" } },
-                    ],
-                },
-            }))
-            .into_response(),
-            "tools/call" => {
-                calls.fetch_add(1, Ordering::SeqCst);
-                axum::Json(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": "done" }] },
-                }))
-                .into_response()
-            }
-            other => (StatusCode::BAD_REQUEST, format!("unexpected {other}")).into_response(),
-        }
-    }
+let app = Router::new()
+    .route("/mcp", post(handle))
+    .with_state(Arc::clone(&calls));
 
-    let app = Router::new()
-        .route("/mcp", post(handle))
-        .with_state(Arc::clone(&calls));
+let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+let addr = listener.local_addr().unwrap();
+tokio::spawn(async move {
+    axum::serve(listener, app).await.unwrap();
+});
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-
-    (format!("http://{addr}/mcp"), calls)
+(format!("http://{addr}/mcp"), calls)
 }
 
 #[tokio::test]
