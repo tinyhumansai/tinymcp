@@ -71,7 +71,7 @@ impl CommandKind {
 /// `transport` column, so the two strings it returns are a storage format, not
 /// a display detail. They are pinned by test for that reason.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "`snake_case`")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Transport {
     /// A local subprocess speaking JSON-RPC over stdin and stdout.
@@ -316,7 +316,7 @@ impl ServerStatus {
 /// checking the two agreed. The wire form is unchanged: each variant
 /// serializes to exactly the code it replaced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "`snake_case`")]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum McpAuthHint {
     /// The server advertised OAuth. A pasted static token will not work; the
