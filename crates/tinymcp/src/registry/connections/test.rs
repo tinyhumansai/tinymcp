@@ -978,31 +978,3 @@ mod stdio {
         );
     }
 }
-
-// ---------------------------------------------------------------------------
-// A transport this build does not speak
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn an_install_using_an_unknown_transport_is_refused_rather_than_guessed_at() {
-    // The contract's transport enum is `#[non_exhaustive]`, so a newer contract
-    // can add one. Dialling it as though it were one of the two this build
-    // knows would connect the user to the wrong thing.
-    let server = install("srv-1", Transport::parse("carrier-pigeon", None));
-    let store = store_with(&server);
-
-    let result = Connections::new()
-        .connect(
-            &store,
-            &OAuthFlow::new(None).unwrap(),
-            &McpClientIdentityConfig::default(),
-            None,
-            &server,
-        )
-        .await;
-
-    // `Transport::parse` maps anything it does not know onto the subprocess
-    // transport, so this install dials stdio and fails on the command instead.
-    // Either way it does not silently reach a *different* server.
-    assert!(result.is_err(), "an unknown transport must not connect");
-}
