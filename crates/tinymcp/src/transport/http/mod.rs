@@ -181,7 +181,9 @@ impl McpHttpClientBuilder {
         }
 
         let http = builder.build().map_err(|source| Error::ClientBuild {
-            source: Box::new(source),
+            // Stripped for the reason on `Error::transport`: a proxy URL can
+            // carry credentials, and this error is printed.
+            source: Box::new(source.without_url()),
         })?;
 
         Ok(McpHttpClient {
