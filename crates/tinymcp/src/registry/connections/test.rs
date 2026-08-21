@@ -893,16 +893,23 @@ mod stdio {
 
     #[tokio::test]
     async fn a_probe_finds_a_live_subprocess_server() {
-        let directory = tempfile::tempdir().unwrap();
-        // A second listing reply, for the probe.
-        let mut body = responder();
-        body = body.replace("cat > /dev/null\n", "");
+        // The probe is a tools/list, so the script needs a second listing reply
+        // after the one the handshake consumes.
+        let mut body = String::new();
         body.push_str("read -r _line\n");
-        body.push_str(
-            "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"tools\":[]}}'\n",
-        );
+        body.push_str(&format!(
+            "printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"protocolVersion\":\"{}\",\"capabilities\":{{}},\"serverInfo\":{{\"name\":\"fake\",\"version\":\"1\"}}}}}}'\n",
+            tinymcp_bus::LATEST_PROTOCOL_VERSION
+        ));
+        for id in [2, 3] {
+            body.push_str("read -r _line\n");
+            body.push_str(&format!(
+                "printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"tools\":[]}}}}'\n"
+            ));
+        }
         body.push_str("cat > /dev/null\n");
 
+        let directory = tempfile::tempdir().unwrap();
         let server = stdio_install(&write_script(directory.path(), &body));
         let store = store_with(&server);
         let connections = Connections::new();
@@ -917,8 +924,6 @@ mod stdio {
             .await
             .unwrap();
 
-        // Two calls are already spent on the handshake and the first listing;
-        // the probe uses the reply added above.
         assert!(
             connections
                 .probe_alive("srv-1", Duration::from_secs(5))
