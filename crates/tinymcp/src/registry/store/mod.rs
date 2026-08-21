@@ -32,7 +32,7 @@
 //!
 //! [`InstalledServer`]: tinymcp_bus::InstalledServer
 
-mod schema;
+pub(crate) mod schema;
 mod types;
 
 pub use types::Store;
