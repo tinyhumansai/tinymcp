@@ -288,3 +288,163 @@ mod against_a_fake_server {
             .expect("a closed session can be reopened");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Working directory, environment, and how a write failure reads
+// ---------------------------------------------------------------------------
+
+#[cfg(unix)]
+mod more {
+    use std::io::Write;
+    use std::path::Path;
+
+    use super::*;
+
+    /// Writes an executable shell script and returns its path.
+    fn script(directory: &Path, body: &str) -> String {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = directory.join("server");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "#!/bin/sh").unwrap();
+        write!(file, "{body}").unwrap();
+        drop(file);
+
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+
+        path.to_string_lossy().into_owned()
+    }
+
+    /// One handshake reply, then wait.
+    fn handshake_only() -> String {
+        format!(
+            "read -r _line\nprintf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\
+             {{\"protocolVersion\":\"{}\",\"capabilities\":{{}},\"serverInfo\":\
+             {{\"name\":\"fake\",\"version\":\"1\"}}}}}}'\ncat > /dev/null\n",
+            LATEST_PROTOCOL_VERSION
+        )
+    }
+
+    #[tokio::test]
+    async fn a_working_directory_is_where_the_server_is_started() {
+        // A server given a project directory has to actually be started in it;
+        // resolving relative paths against the host's cwd would read the wrong
+        // files.
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("marker");
+        std::fs::write(&marker, "here").unwrap();
+
+        // Fails the handshake unless `marker` is in the process's cwd.
+        let body = format!(
+            "test -f marker || exit 3\n{}",
+            handshake_only()
+        );
+        let path = script(directory.path(), &body);
+
+        let client = McpStdioClient::new(
+            path,
+            Vec::new(),
+            Vec::new(),
+            Some(directory.path().to_path_buf()),
+            &McpClientIdentityConfig::default(),
+        );
+
+        assert!(client.initialize().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_configured_variable_reaches_the_server() {
+        let directory = tempfile::tempdir().unwrap();
+        let body = format!(
+            "test \"$API_KEY\" = \"sekrit\" || exit 3\n{}",
+            handshake_only()
+        );
+        let path = script(directory.path(), &body);
+
+        let client = McpStdioClient::new(
+            path,
+            Vec::new(),
+            vec![("API_KEY".to_string(), "sekrit".to_string())],
+            None,
+            &McpClientIdentityConfig::default(),
+        );
+
+        assert!(client.initialize().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_server_that_answers_with_an_rpc_error_reports_it_as_one() {
+        // Distinct from a transport failure: the server answered, and it said
+        // no. Telling the user their network is broken would send them looking
+        // in the wrong place.
+        let directory = tempfile::tempdir().unwrap();
+        let body = "read -r _line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\
+                    \"error\":{\"code\":-32601,\"message\":\"method not found\"}}'\n\
+                    cat > /dev/null\n";
+        let path = script(directory.path(), body);
+
+        let client = McpStdioClient::new(
+            path,
+            Vec::new(),
+            Vec::new(),
+            None,
+            &McpClientIdentityConfig::default(),
+        );
+
+        let error = client.initialize().await.expect_err("an rpc error");
+
+        assert!(matches!(error, Error::Rpc { .. }), "{error:?}");
+        assert!(error.to_string().contains("method not found"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_reply_that_is_not_json_is_reported_with_what_was_read() {
+        // A server that prints a banner to stdout is a common mistake, and the
+        // offending line is what makes it diagnosable.
+        let directory = tempfile::tempdir().unwrap();
+        let path = script(
+            directory.path(),
+            "read -r _line\nprintf '%s\\n' 'Server v1 starting'\ncat > /dev/null\n",
+        );
+
+        let client = McpStdioClient::new(
+            path,
+            Vec::new(),
+            Vec::new(),
+            None,
+            &McpClientIdentityConfig::default(),
+        );
+
+        let error = client.initialize().await.expect_err("not json");
+
+        assert!(error.to_string().contains("not json"), "{error}");
+        assert!(error.to_string().contains("Server v1 starting"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_server_that_exits_immediately_says_the_server_is_gone() {
+        // Noticed on the write or on the read depending on scheduling, so both
+        // paths have to end at the same wording; a bare "broken pipe" tells a
+        // user nothing they can act on.
+        let directory = tempfile::tempdir().unwrap();
+        let path = script(directory.path(), "exit 0\n");
+
+        let client = McpStdioClient::new(
+            path,
+            Vec::new(),
+            Vec::new(),
+            None,
+            &McpClientIdentityConfig::default(),
+        );
+
+        let error = client.initialize().await.expect_err("the server exited");
+        let message = error.to_string();
+
+        assert!(
+            message.contains("closed its output"),
+            "expected the server-has-gone wording, got: {message}"
+        );
+    }
+}
