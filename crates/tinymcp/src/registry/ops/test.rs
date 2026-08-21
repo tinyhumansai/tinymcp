@@ -126,7 +126,10 @@ fn an_unpublished_hosted_endpoint_still_beats_a_published_package() {
 
 #[test]
 fn a_published_package_is_used_when_there_is_no_hosted_endpoint() {
-    let connections = vec![connection("stdio", false, None), connection("stdio", true, None)];
+    let connections = vec![
+        connection("stdio", false, None),
+        connection("stdio", true, None),
+    ];
 
     let picked = pick_connection(&connections).expect("a connection");
     assert!(picked.published);
@@ -209,7 +212,10 @@ fn a_hosted_connection_with_no_endpoint_is_refused() {
     let error = build_install_transport("com.vendor/server", &connection("http", true, None))
         .expect_err("no endpoint");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 #[test]
@@ -288,12 +294,7 @@ async fn a_blank_identifier_is_refused_by_every_operation_that_takes_one() {
     assert!(registry.list_tools("   ").await.is_err());
     assert!(registry.detect_auth("").await.is_err());
     assert!(registry.registry_get("   ").await.is_err());
-    assert!(
-        registry
-            .tool_call("srv-1", "  ", json!({}))
-            .await
-            .is_err()
-    );
+    assert!(registry.tool_call("srv-1", "  ", json!({})).await.is_err());
 }
 
 // ---------------------------------------------------------------------------
@@ -340,7 +341,13 @@ async fn uninstalling_takes_the_credentials_with_it() {
 
     registry.uninstall("srv-1").await.unwrap();
 
-    assert!(registry.store().load_env_values("srv-1").unwrap().is_empty());
+    assert!(
+        registry
+            .store()
+            .load_env_values("srv-1")
+            .unwrap()
+            .is_empty()
+    );
 }
 
 // ---------------------------------------------------------------------------

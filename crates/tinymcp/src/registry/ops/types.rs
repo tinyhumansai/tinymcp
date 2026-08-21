@@ -9,10 +9,9 @@ use super::install::{build_install_transport, collect_required_env_keys, pick_co
 use crate::error::{Error, Result};
 use crate::registry::{AuthDetection, Connections, OAuthFlow, Registries, SecretVault, Store};
 use tinymcp_bus::{
-    ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
-    InstalledServer, McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool,
-    RegistrySearchPage, RegistryServerDetail, RegistrySettings, ToolCallOutcome, UpdateEnvOutcome,
-    UpdateEnvStatus,
+    ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome, InstalledServer,
+    McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool, RegistrySearchPage,
+    RegistryServerDetail, RegistrySettings, ToolCallOutcome, UpdateEnvOutcome, UpdateEnvStatus,
 };
 
 /// The separator a source-routed name uses.
@@ -196,8 +195,7 @@ impl McpRegistry {
                 "`{canonical}` offers neither a hosted endpoint nor a package; there is nothing to install"
             ))
         })?;
-        let (transport, command_kind, command, args) =
-            build_install_transport(canonical, picked)?;
+        let (transport, command_kind, command, args) = build_install_transport(canonical, picked)?;
 
         let server = InstalledServer {
             server_id: uuid::Uuid::new_v4().to_string(),
@@ -265,7 +263,8 @@ impl McpRegistry {
         }
 
         if let Some(config) = config {
-            self.store.update_config(&existing.server_id, Some(config))?;
+            self.store
+                .update_config(&existing.server_id, Some(config))?;
             existing.config = Some(config.clone());
         }
 
@@ -486,9 +485,7 @@ impl McpRegistry {
     /// whatever discovery and registration return.
     pub async fn oauth_begin(&self, server_id: &str, redirect_uri: &str) -> Result<String> {
         let server_id = require_non_empty(server_id, "server_id")?;
-        self.oauth
-            .begin(&self.store, server_id, redirect_uri)
-            .await
+        self.oauth.begin(&self.store, server_id, redirect_uri).await
     }
 
     /// Finishes a browser sign-in and connects the server.
