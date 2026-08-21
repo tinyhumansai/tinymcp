@@ -13,7 +13,8 @@ use crate::registry::{
 use tinymcp_bus::{
     ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome, InstalledServer,
     McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool, RegistrySearchPage,
-    RegistryServerDetail, RegistrySettings, ToolCallOutcome, UpdateEnvOutcome, UpdateEnvStatus,
+    RegistryServerDetail, RegistrySettings, ToolCallOutcome, Transport, UpdateEnvOutcome,
+    UpdateEnvStatus,
 };
 
 /// The separator a source-routed name uses.
