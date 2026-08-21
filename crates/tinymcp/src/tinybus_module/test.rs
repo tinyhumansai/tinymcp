@@ -886,3 +886,103 @@ async fn every_member_the_contract_names_is_dispatchable() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Serving the interface on a real bus
+// ---------------------------------------------------------------------------
+//
+// `setup` is what a host's module loader calls. It is short, but everything it
+// does is a place the module can fail to come up: an object path that does not
+// parse, a name the broker refuses, a service that cannot be built. A failure
+// here fails the load on purpose — a module that came up without its store
+// would answer every call with the same error.
+
+use tinybus::broker::Broker;
+use tinybus::transport::memory::MemoryBus;
+use tinybus::Connection;
+
+/// A connection to a broker running in this process.
+async fn in_process_connection() -> Connection {
+    let bus = MemoryBus::new();
+    Broker::new().spawn(bus.clone());
+    Connection::connect(bus.connect().await.expect("a transport"))
+        .await
+        .expect("a connection")
+}
+
+#[tokio::test]
+async fn setting_up_serves_the_interface_and_claims_its_name() {
+    let directory = tempfile::tempdir().unwrap();
+    let connection = in_process_connection().await;
+
+    super::setup_for_test(
+        connection,
+        ModuleConfig {
+            data_dir: Some(directory.path().to_path_buf()),
+            client: McpClientConfig::default(),
+        },
+    )
+    .await
+    .expect("the module comes up");
+}
+
+#[tokio::test]
+async fn a_module_that_came_up_answers_a_call_on_its_object_path() {
+    // The end-to-end shape a host sees: it calls a member at the contract's
+    // object path and gets a reply, without knowing anything about this crate.
+    let directory = tempfile::tempdir().unwrap();
+    let bus = MemoryBus::new();
+    Broker::new().spawn(bus.clone());
+
+    let serving = Connection::connect(bus.connect().await.unwrap())
+        .await
+        .unwrap();
+    super::setup_for_test(
+        serving,
+        ModuleConfig {
+            data_dir: Some(directory.path().to_path_buf()),
+            client: McpClientConfig::default(),
+        },
+    )
+    .await
+    .expect("the module comes up");
+
+    let caller = Connection::connect(bus.connect().await.unwrap())
+        .await
+        .unwrap();
+
+    let installed: serde_json::Value = caller
+        .call(
+            names::INTERFACE,
+            names::OBJECT_PATH,
+            names::methods::INSTALLED_LIST,
+            serde_json::json!([]),
+        )
+        .await
+        .expect("the call reaches the module");
+
+    assert_eq!(installed, serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn a_module_that_cannot_open_its_store_fails_to_come_up() {
+    // Rather than coming up and answering every call with the same error: a
+    // load failure says so once, at the moment a host can still react.
+    let directory = tempfile::tempdir().unwrap();
+    let occupied = directory.path().join("mcp_clients");
+    std::fs::create_dir_all(occupied.join("mcp_clients.db")).unwrap();
+
+    let connection = in_process_connection().await;
+
+    let error = super::setup_for_test(
+        connection,
+        ModuleConfig {
+            data_dir: Some(directory.path().to_path_buf()),
+            client: McpClientConfig::default(),
+        },
+    )
+    .await
+    .expect_err("the store cannot be opened");
+
+    assert!(error.to_string().contains("tinymcp could not start"), "{error}");
+}

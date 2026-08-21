@@ -98,3 +98,6 @@ tinybus_module::module_export! {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+pub(crate) use setup as setup_for_test;
