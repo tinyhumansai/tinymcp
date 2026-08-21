@@ -144,8 +144,7 @@ impl OfficialServer {
     fn declares_secret_credential(&self) -> bool {
         let secret_header = self.remotes.iter().any(|remote| {
             remote.headers.iter().any(|header| {
-                header.is_secret == Some(true)
-                    || header.name.eq_ignore_ascii_case("authorization")
+                header.is_secret == Some(true) || header.name.eq_ignore_ascii_case("authorization")
             })
         });
 
@@ -165,7 +164,11 @@ impl OfficialServer {
     /// reverse-DNS name with separators turned into spaces, which is a better
     /// thing to show a user than `io.github.someone/some-server`.
     pub(super) fn display_name(&self) -> String {
-        if let Some(title) = self.title.as_deref().filter(|title| !title.trim().is_empty()) {
+        if let Some(title) = self
+            .title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty())
+        {
             return title.to_string();
         }
 
@@ -347,12 +350,16 @@ impl OfficialPackage {
             return self.config_schema.clone();
         }
 
-        build_schema(self.environment_variables.iter().map(|variable| SchemaField {
-            name: &variable.name,
-            description: variable.description.as_deref(),
-            is_secret: variable.is_secret == Some(true),
-            is_required: variable.is_required == Some(true),
-        }))
+        build_schema(
+            self.environment_variables
+                .iter()
+                .map(|variable| SchemaField {
+                    name: &variable.name,
+                    description: variable.description.as_deref(),
+                    is_secret: variable.is_secret == Some(true),
+                    is_required: variable.is_required == Some(true),
+                }),
+        )
     }
 }
 

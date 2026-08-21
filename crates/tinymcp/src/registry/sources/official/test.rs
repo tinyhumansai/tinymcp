@@ -147,10 +147,7 @@ fn a_row_with_an_active_status_is_kept() {
 
 #[test]
 fn a_repeated_name_appears_once() {
-    let response = list_response(
-        json!([envelope("same/name"), envelope("same/name")]),
-        None,
-    );
+    let response = list_response(json!([envelope("same/name"), envelope("same/name")]), None);
 
     assert_eq!(response.into_summaries().len(), 1);
 }
@@ -190,8 +187,7 @@ fn a_name_is_derived_from_its_last_segment_with_separators_spaced() {
         ("com.vendor.product", "product"),
         ("bare", "bare"),
     ] {
-        let server: OfficialServer =
-            serde_json::from_value(json!({ "name": name })).unwrap();
+        let server: OfficialServer = serde_json::from_value(json!({ "name": name })).unwrap();
         assert_eq!(server.display_name(), expected, "for {name}");
     }
 }
@@ -360,7 +356,10 @@ fn declared_headers_become_an_input_schema() {
         .clone()
         .expect("a schema");
 
-    assert_eq!(schema["properties"]["X-Api-Key"]["description"], json!("your key"));
+    assert_eq!(
+        schema["properties"]["X-Api-Key"]["description"],
+        json!("your key")
+    );
     assert_eq!(schema["properties"]["X-Api-Key"]["x-secret"], json!(true));
     assert_eq!(schema["required"], json!(["X-Api-Key"]));
     // Not marked secret, so no masking marker.

@@ -7,9 +7,7 @@ use serde_json::json;
 use super::encode::encode_path_segment;
 use super::shared::{MAX_ERROR_BODY_BYTES, truncate};
 use super::smithery::tag_source;
-use super::types::{
-    Registries, RegistrySource, SOURCE_MCP_OFFICIAL, SOURCE_SMITHERY,
-};
+use super::types::{Registries, RegistrySource, SOURCE_MCP_OFFICIAL, SOURCE_SMITHERY};
 use tinymcp_bus::{McpRegistryAuthConfig, RegistryServerSummary};
 
 /// A dispatcher with the given registry credentials.

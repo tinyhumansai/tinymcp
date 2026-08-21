@@ -274,7 +274,9 @@ impl McpOfficialRegistry {
         );
 
         let url = format!("{}/v0/servers", base_url(auth));
-        let mut request = self.request(auth, &url).query(&[("limit", limit.to_string())]);
+        let mut request = self
+            .request(auth, &url)
+            .query(&[("limit", limit.to_string())]);
         if !query.is_empty() {
             request = request.query(&[("search", query)]);
         }
@@ -325,25 +327,14 @@ fn search_cache_key(query: &str, page: u32, page_size: u32) -> String {
 }
 
 /// Records which cursor produced a page.
-fn remember_cursor(
-    cursors: &CursorCache,
-    query: &str,
-    page_size: u32,
-    page: u32,
-    cursor: String,
-) {
+fn remember_cursor(cursors: &CursorCache, query: &str, page_size: u32, page: u32, cursor: String) {
     cursors
         .lock()
         .insert((query.to_string(), page_size, page), cursor);
 }
 
 /// Recalls which cursor produced a page.
-fn recall_cursor(
-    cursors: &CursorCache,
-    query: &str,
-    page_size: u32,
-    page: u32,
-) -> Option<String> {
+fn recall_cursor(cursors: &CursorCache, query: &str, page_size: u32, page: u32) -> Option<String> {
     cursors
         .lock()
         .get(&(query.to_string(), page_size, page))

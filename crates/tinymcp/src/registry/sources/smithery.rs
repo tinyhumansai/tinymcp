@@ -125,10 +125,7 @@ impl SmitheryRegistry {
             return Ok(detail);
         }
 
-        let url = format!(
-            "{BASE_URL}/servers/{}",
-            encode_path_segment(qualified_name)
-        );
+        let url = format!("{BASE_URL}/servers/{}", encode_path_segment(qualified_name));
         let mut request = self.http.get(&url).header("Accept", "application/json");
         if let Some(key) = api_key {
             request = request.bearer_auth(key);

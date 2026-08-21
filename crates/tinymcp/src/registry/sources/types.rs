@@ -129,7 +129,13 @@ impl Registries {
             }
             RegistrySource::Smithery => {
                 self.smithery
-                    .search(store, self.smithery_key().as_deref(), query, page, page_size)
+                    .search(
+                        store,
+                        self.smithery_key().as_deref(),
+                        query,
+                        page,
+                        page_size,
+                    )
                     .await
             }
         }
@@ -185,5 +191,7 @@ impl Registries {
 /// variables keep working; breaking them to satisfy a principle would be a poor
 /// trade.
 pub(super) fn non_blank_env(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.trim().is_empty())
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }

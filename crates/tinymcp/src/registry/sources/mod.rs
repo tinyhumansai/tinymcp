@@ -37,7 +37,7 @@ pub(crate) mod types;
 pub use encode::encode_path_segment;
 pub use official::McpOfficialRegistry;
 pub use smithery::SmitheryRegistry;
-pub use types::{RegistrySource, Registries, SOURCE_MCP_OFFICIAL, SOURCE_SMITHERY};
+pub use types::{Registries, RegistrySource, SOURCE_MCP_OFFICIAL, SOURCE_SMITHERY};
 
 #[cfg(test)]
 mod test;
