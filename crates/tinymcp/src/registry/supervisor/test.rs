@@ -417,10 +417,7 @@ async fn a_tick_leaves_a_disabled_install_alone() {
     // rather than inheriting an old penalty.
     let store = Store::open_in_memory().unwrap();
     store
-        .insert_server(&InstalledServer {
-            enabled: false,
-            ..install("srv-1", Transport::Stdio)
-        })
+        .insert_server(&install("srv-1", Transport::Stdio, false))
         .unwrap();
 
     let connections = Connections::new();
