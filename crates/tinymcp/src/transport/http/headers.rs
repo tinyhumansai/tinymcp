@@ -130,7 +130,6 @@ pub(super) fn mcp_param_headers_from_schema(
 /// to reach a server that the remaining headers might well authenticate.
 pub(super) fn apply_auth(request: RequestBuilder, auth: &McpAuthConfig) -> RequestBuilder {
     match auth {
-        McpAuthConfig::None => request,
         McpAuthConfig::BearerToken { token } => {
             request.header(AUTHORIZATION, format!("Bearer {}", token.trim()))
         }
@@ -146,26 +145,24 @@ pub(super) fn apply_auth(request: RequestBuilder, auth: &McpAuthConfig) -> Reque
         McpAuthConfig::QueryParam { name, value } => {
             request.query(&[(name.as_str(), value.as_str())])
         }
-        // The contract's auth enum is `#[non_exhaustive]`, so a variant added
-        // there compiles here rather than breaking the build. Sending no
+        // `McpAuthConfig::None`, and — because the contract's auth enum is
+        // `#[non_exhaustive]` — any variant a newer contract adds. Sending no
         // credential is the safe reading of "a credential this build does not
         // understand": the request fails with a 401 the caller can act on,
         // rather than with a header the server rejects for reasons nobody can
         // see.
-        _ => request,
+        McpAuthConfig::None | _ => request,
     }
 }
 
 /// Adds one header, skipping it if either half cannot be encoded.
 fn apply_one_header(request: RequestBuilder, name: &str, value: &str) -> RequestBuilder {
-    match (HeaderName::try_from(name), HeaderValue::from_str(value)) {
-        (Ok(name), Ok(value)) => request.header(name, value),
-        _ => {
-            tracing::warn!(
-                header = %name,
-                "skipping a configured auth header that cannot be encoded"
-            );
-            request
-        }
+    if let (Ok(header), Ok(value)) = (HeaderName::try_from(name), HeaderValue::from_str(value)) {
+        return request.header(header, value);
     }
+    tracing::warn!(
+        header = %name,
+        "skipping a configured auth header that cannot be encoded"
+    );
+    request
 }

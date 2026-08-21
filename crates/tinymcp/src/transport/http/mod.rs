@@ -313,8 +313,10 @@ impl McpHttpClient {
         {
             let mut state = self.state.lock();
             state.initialized = true;
-            state.negotiated_protocol_version = initialized.protocol_version.clone();
-            state.session_id = response.session_id.clone();
+            state
+                .negotiated_protocol_version
+                .clone_from(&initialized.protocol_version);
+            state.session_id.clone_from(&response.session_id);
             state.initialize = Some(initialized.clone());
         }
 
