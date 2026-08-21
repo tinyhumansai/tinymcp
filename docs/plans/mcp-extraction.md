@@ -158,8 +158,12 @@ Two defects found while porting, each fixed with a regression test:
       enforcement stays fail-closed and pre-transport; its tests come with it.
 - [x] `crates/tinymcp/src/registry/store/` — the SQLite store (965 lines).
       Schema unchanged. The data directory arrives from module configuration.
-- [ ] `crates/tinymcp/src/registry/sources/` — `smithery.rs` (268) and
-      `mcp_official.rs` (1438), plus the 10-minute cache in `registry.rs` (498).
+- [x] `crates/tinymcp/src/registry/sources/` — `smithery.rs` (268) and
+      `mcp_official.rs` (1438), plus the cache. Dispatch is an **enum** rather
+      than a boxed trait, which keeps it visible and makes the compiler name
+      every site a third source would have to be handled at. The official
+      registry's page-to-cursor map is owned by the dispatcher rather than
+      being a process global, for the same reason the connection map is.
 - [x] `crates/tinymcp/src/registry/connections/` — the live connection map
       (979 lines), and `supervisor/` (223). The map and the failure record are
       **owned**, not process-global: two hosts in one process would otherwise
@@ -287,6 +291,7 @@ cargo run -p tinymcp --example verify_module
 - [~] Phase 2 — contract crate (all payload families and names done; per-member request/response types outstanding)
 - [x] Phase 3 — transports
 - [~] Phase 4 — registries (static set, store, curation, audit store, OAuth,
-      connections and supervisor done; sources, boot, setup and ops outstanding)
+      connections, supervisor and sources done; boot, setup and ops
+      outstanding)
 - [ ] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
