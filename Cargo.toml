@@ -53,7 +53,7 @@ serde_json = "1"
 # payloads, so a host can generate a settings user interface from the same
 # definitions the module reads. Enabled through `tinymcp-bus`'s `schemars`
 # feature; nothing in this workspace turns it on by default.
-schemars = { version = "0.8", default-features = false, features = ["derive"] }
+schemars = { version = "1", default-features = false, features = ["derive"] }
 # Module integration tests exercise the real asynchronous in-memory TinyBus.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
