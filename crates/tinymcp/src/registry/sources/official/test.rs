@@ -613,6 +613,7 @@ struct Seen {
     pages: AtomicUsize,
     cursors: Mutex<Vec<Option<String>>>,
     authorization: Mutex<Option<String>>,
+    detail_path: Mutex<Option<String>>,
 }
 
 /// One query parameter off a request URI.
@@ -678,10 +679,12 @@ async fn paged_registry(pages: usize) -> (String, Arc<Seen>) {
             get(|State(seen): State<Arc<Seen>>, uri: Uri| async move {
                 seen.pages.fetch_add(1, Ordering::SeqCst);
                 // The path carries `{name}/versions`; the name is everything
-                // before the trailing segment.
+                // before the trailing segment, and it arrives percent-encoded
+                // as one segment — which is the point of encoding it.
                 let path = uri.path().trim_start_matches("/v0/servers/");
-                let name = path.trim_end_matches("/versions");
-                axum::Json(json!({ "servers": [envelope(name)] }))
+                let name = path.trim_end_matches("/versions").replace("%2F", "/");
+                *seen.detail_path.lock() = Some(uri.path().to_string());
+                axum::Json(json!({ "servers": [envelope(&name)] }))
             }),
         )
         .with_state(Arc::clone(&seen));
@@ -1004,6 +1007,24 @@ async fn a_repeated_detail_lookup_is_served_from_the_cache() {
 
     assert_eq!(seen.pages.load(Ordering::SeqCst), 1);
     assert_eq!(detail.qualified_name, "@acme/weather");
+}
+
+#[tokio::test]
+async fn a_name_containing_a_slash_is_sent_as_one_escaped_segment() {
+    // `@acme/weather` is one name. Sent raw it would be two path segments and
+    // reach a different route, or none — and the trailing `/versions` the
+    // adapter appends would no longer be the last segment.
+    let (base, seen) = paged_registry(1).await;
+
+    adapter()
+        .get(&store(), &auth_at(&base), "@acme/weather")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        seen.detail_path.lock().as_deref(),
+        Some("/v0/servers/@acme%2Fweather/versions")
+    );
 }
 
 #[tokio::test]
