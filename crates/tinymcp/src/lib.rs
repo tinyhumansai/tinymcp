@@ -80,7 +80,10 @@ pub use config_servers::{
     McpRegistrySource, McpServerDefinition, McpServerRegistry, McpTransportClient,
 };
 pub use error::{Error, Result};
-pub use registry::{AuthDetection, Connections, OAuthFlow, Store, Supervisor, SupervisorConfig};
+pub use registry::{
+    AuthDetection, Connections, McpRegistry, OAuthFlow, SecretRef, SecretVault, Store, Supervisor,
+    SupervisorConfig,
+};
 #[cfg(feature = "module")]
 pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
