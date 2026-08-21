@@ -414,21 +414,33 @@ impl Store {
     }
 }
 
-/// The JSON-encoded columns of a server row, held so they outlive the
-/// parameter slice that borrows them.
+/// The derived columns of a server row, owned so the parameter slice that
+/// borrows them outlives the call.
 struct ServerColumns {
     args: String,
     env_keys: String,
     config: Option<String>,
+    command_kind: &'static str,
+    transport_kind: &'static str,
+    deployment_url: Option<String>,
+    enabled: i64,
 }
 
 impl ServerColumns {
-    /// Encodes the three JSON columns.
+    /// Derives every column that is not a plain field of the record.
     fn encode(server: &InstalledServer) -> Result<Self> {
         Ok(Self {
             args: serde_json::to_string(&server.args)?,
             env_keys: serde_json::to_string(&server.env_keys)?,
-            config: server.config.as_ref().map(serde_json::to_string).transpose()?,
+            config: server
+                .config
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?,
+            command_kind: server.command_kind.as_str(),
+            transport_kind: server.transport.dispatch_kind(),
+            deployment_url: server.transport.deployment_url().map(ToString::to_string),
+            enabled: i64::from(server.enabled),
         })
     }
 
@@ -440,53 +452,17 @@ impl ServerColumns {
             &server.display_name,
             &server.description,
             &server.icon_url,
-            &CommandKindSql(server.command_kind),
+            &self.command_kind,
             &server.command,
             &self.args,
             &self.env_keys,
             &self.config,
             &server.installed_at,
             &server.last_connected_at,
-            &TransportKindSql(&server.transport),
-            &DeploymentUrlSql(&server.transport),
-            &EnabledSql(server.enabled),
+            &self.transport_kind,
+            &self.deployment_url,
+            &self.enabled,
         ]
-    }
-}
-
-/// Binds a [`CommandKind`] as its stable string.
-struct CommandKindSql(CommandKind);
-
-impl rusqlite::ToSql for CommandKindSql {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        self.0.as_str().to_sql()
-    }
-}
-
-/// Binds a [`Transport`] as its stable dispatch string.
-struct TransportKindSql<'a>(&'a Transport);
-
-impl rusqlite::ToSql for TransportKindSql<'_> {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        self.0.dispatch_kind().to_sql()
-    }
-}
-
-/// Binds a [`Transport`]'s endpoint, or null for a subprocess.
-struct DeploymentUrlSql<'a>(&'a Transport);
-
-impl rusqlite::ToSql for DeploymentUrlSql<'_> {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        self.0.deployment_url().to_sql()
-    }
-}
-
-/// Binds a flag as SQLite's integer boolean.
-struct EnabledSql(bool);
-
-impl rusqlite::ToSql for EnabledSql {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        i64::from(self.0).to_sql()
     }
 }
 
