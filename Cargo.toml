@@ -109,6 +109,7 @@ uuid = { version = "1", features = ["v4"] }
 axum = { version = "0.8", default-features = false, features = [
     "http1",
     "json",
+    "form",
     "tokio",
 ] }
 
