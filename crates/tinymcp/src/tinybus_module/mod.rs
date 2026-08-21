@@ -5,8 +5,8 @@
 //! names and payload types it serves come from [`tinymcp_bus`], so a host
 //! spells them from the contract crate instead of repeating string literals.
 
-use tinymcp_bus::{GreetRequest, GreetResponse, names};
 use tinybus::{Connection, Result as TinyBusResult};
+use tinymcp_bus::{GreetRequest, GreetResponse, names};
 
 struct GreetingService;
 

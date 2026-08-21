@@ -114,7 +114,11 @@ fn fence_tokens_are_ascii_and_lowercase() {
     // ASCII. Lowercase is what makes the catalogue readable as canonical.
     for token in INSTRUCTION_FENCE_TOKENS {
         assert!(token.is_ascii(), "token {token} is not ASCII");
-        assert_eq!(*token, token.to_lowercase(), "token {token} is not lowercase");
+        assert_eq!(
+            *token,
+            token.to_lowercase(),
+            "token {token} is not lowercase"
+        );
     }
 }
 

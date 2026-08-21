@@ -72,4 +72,8 @@ pub mod version;
 
 pub use greeting::{GreetRequest, GreetResponse};
 pub use names::{INTERFACE, METHODS, OBJECT_PATH};
+pub use sanitize::{
+    MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, sanitize_for_llm, strip_control_chars,
+    strip_instruction_fences, truncate_utf8_safe,
+};
 pub use version::{CONTRACT_VERSION, is_compatible};

@@ -1,10 +1,10 @@
 //! Tests for the `TinyBus` module adapter and its declared surface.
 
 use super::{GreetingService, setup};
-use tinymcp_bus::{GreetRequest, GreetResponse, names};
 use tinybus::broker::Broker;
 use tinybus::transport::memory::MemoryBus;
 use tinybus::{Connection, Interface};
+use tinymcp_bus::{GreetRequest, GreetResponse, names};
 
 #[test]
 fn declared_methods_match_the_dispatch_table() {
