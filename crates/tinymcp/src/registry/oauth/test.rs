@@ -591,30 +591,57 @@ struct Authority {
     refuse_exchange: std::sync::atomic::AtomicBool,
 }
 
+/// The registration and token endpoints, split out to keep the router builder
+/// above readable rather than one expression the length of the function.
+fn endpoints() -> Router<Arc<Authority>> {
+    Router::new()
+        .route(
+            "/register",
+            post(|State(state): State<Arc<Authority>>| async move {
+                state.registrations.fetch_add(1, Ordering::SeqCst);
+                axum::Json(json!({
+                    "client_id": "client-1",
+                    "client_secret": "client-secret-1",
+                }))
+            }),
+        )
+        .route(
+            "/token",
+            post(
+                |State(state): State<Arc<Authority>>, body: String| async move {
+                    state.exchanges.fetch_add(1, Ordering::SeqCst);
+                    *state.last_form.lock() = Some(body);
+
+                    if state.refuse_exchange.load(Ordering::SeqCst) {
+                        return (
+                            AxumStatus::BAD_REQUEST,
+                            "{\"error\":\"invalid_grant\"}".to_string(),
+                        )
+                            .into_response();
+                    }
+
+                    axum::Json(json!({
+                        "access_token": "at-1",
+                        "refresh_token": "rt-1",
+                        "token_type": "Bearer",
+                        "expires_in": 3600,
+                    }))
+                    .into_response()
+                },
+            ),
+        )
+}
+
 /// An MCP server that demands OAuth, together with the authorization server it
 /// points at. Both live on one origin, which is legal and keeps the test short.
 async fn authority() -> (String, Arc<Authority>) {
     let state = Arc::new(Authority::default());
-
-    /// The MCP endpoint: always 401, always pointing at the metadata.
-    async fn mcp() -> Response {
-        (
-            AxumStatus::UNAUTHORIZED,
-            [(
-                "WWW-Authenticate",
-                "Bearer resource_metadata=\"__ORIGIN__/.well-known/oauth-protected-resource\"",
-            )],
-            "unauthorized",
-        )
-            .into_response()
-    }
 
     // The origin is not known until the listener binds, so the challenge is
     // rewritten by a layer once it is.
     let origin: Arc<parking_lot::Mutex<String>> = Arc::new(parking_lot::Mutex::new(String::new()));
 
     let app = Router::new()
-        .route("/mcp", post(mcp).get(mcp))
         .route(
             "/.well-known/oauth-protected-resource",
             get({
@@ -665,41 +692,7 @@ async fn authority() -> (String, Arc<Authority>) {
                 }
             }),
         )
-        .route(
-            "/register",
-            post(|State(state): State<Arc<Authority>>| async move {
-                state.registrations.fetch_add(1, Ordering::SeqCst);
-                axum::Json(json!({
-                    "client_id": "client-1",
-                    "client_secret": "client-secret-1",
-                }))
-            }),
-        )
-        .route(
-            "/token",
-            post(
-                |State(state): State<Arc<Authority>>, body: String| async move {
-                    state.exchanges.fetch_add(1, Ordering::SeqCst);
-                    *state.last_form.lock() = Some(body);
-
-                    if state.refuse_exchange.load(Ordering::SeqCst) {
-                        return (
-                            AxumStatus::BAD_REQUEST,
-                            "{\"error\":\"invalid_grant\"}".to_string(),
-                        )
-                            .into_response();
-                    }
-
-                    axum::Json(json!({
-                        "access_token": "at-1",
-                        "refresh_token": "rt-1",
-                        "token_type": "Bearer",
-                        "expires_in": 3600,
-                    }))
-                    .into_response()
-                },
-            ),
-        )
+        .merge(endpoints())
         .with_state(Arc::clone(&state));
 
     let base = serve(app).await;
