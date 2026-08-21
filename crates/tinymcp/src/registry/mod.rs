@@ -9,6 +9,7 @@
 //! everything that follows from a user's choice outliving the process: a store,
 //! credentials at rest, and a supervisor for what got spawned.
 
+pub mod boot;
 pub mod connections;
 pub mod curation;
 pub mod oauth;
@@ -16,6 +17,7 @@ pub mod sources;
 pub mod store;
 pub mod supervisor;
 
+pub use boot::{BootOutcome, connect_installed_servers};
 pub use connections::Connections;
 pub use oauth::{AuthDetection, OAuthFlow};
 pub use sources::{Registries, RegistrySource};
