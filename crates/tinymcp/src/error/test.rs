@@ -171,6 +171,62 @@ fn a_blocked_tool_names_both_the_server_and_the_tool() {
 }
 
 #[test]
+fn an_http_error_says_what_the_server_answered() {
+    // The body is where the server says *why*. A token endpoint answering
+    // `invalid_grant` reads differently from one answering `invalid_client`,
+    // and a caller that only sees the status cannot tell a user which.
+    let rendered = Error::Http {
+        endpoint: "https://example.test".into(),
+        status: 400,
+        body: "{\"error\":\"invalid_grant\"}".into(),
+    }
+    .to_string();
+
+    assert!(rendered.contains("invalid_grant"), "{rendered}");
+}
+
+#[test]
+fn an_http_error_with_no_body_does_not_trail_a_separator() {
+    let rendered = Error::Http {
+        endpoint: "https://example.test".into(),
+        status: 502,
+        body: "   ".into(),
+    }
+    .to_string();
+
+    assert!(rendered.ends_with('`'), "{rendered}");
+}
+
+#[test]
+fn a_very_long_failure_body_is_bounded_in_the_message() {
+    // These reach logs, telemetry, and user-facing errors. An upstream that
+    // answers a failure with a whole HTML page would otherwise put all of it
+    // in every one.
+    let rendered = Error::Http {
+        endpoint: "https://example.test".into(),
+        status: 500,
+        body: "x".repeat(5_000),
+    }
+    .to_string();
+
+    assert!(rendered.len() < 400, "{} bytes", rendered.len());
+    assert!(rendered.ends_with('…'), "{rendered}");
+}
+
+#[test]
+fn a_failure_body_is_bounded_on_a_character_boundary() {
+    // Splitting a multi-byte character mid-sequence would panic.
+    let rendered = Error::Http {
+        endpoint: "https://example.test".into(),
+        status: 500,
+        body: "é".repeat(500),
+    }
+    .to_string();
+
+    assert!(rendered.ends_with('…'), "{rendered}");
+}
+
+#[test]
 fn an_http_error_names_its_status() {
     let rendered = Error::Http {
         endpoint: "https://example.test".into(),
