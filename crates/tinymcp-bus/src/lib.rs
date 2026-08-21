@@ -67,6 +67,7 @@
 
 pub mod greeting;
 pub mod names;
+pub mod sanitize;
 pub mod version;
 
 pub use greeting::{GreetRequest, GreetResponse};
