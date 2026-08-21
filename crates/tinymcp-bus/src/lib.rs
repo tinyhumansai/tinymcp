@@ -111,6 +111,7 @@
 
 pub mod audit;
 pub mod config;
+pub mod method;
 pub mod names;
 pub mod registry;
 pub mod sanitize;
@@ -124,6 +125,10 @@ pub use audit::{
 pub use config::{
     HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpProxyConfig,
     McpRegistryAuthConfig, McpServerConfig,
+};
+pub use method::{
+    ConnectOutcome, InstallOutcome, RegistrySearchPage, RegistrySettings, ToolCallOutcome,
+    UpdateEnvOutcome, UpdateEnvStatus,
 };
 pub use names::{INTERFACE, METHODS, OBJECT_PATH};
 pub use registry::{
