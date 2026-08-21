@@ -573,3 +573,414 @@ fn unset_registry_settings_report_nothing_configured() {
     assert!(!settings.smithery_api_key_set || std::env::var("SMITHERY_API_KEY").is_ok());
     assert_eq!(settings.mcp_official_base, None);
 }
+
+// ---------------------------------------------------------------------------
+// The facade against a live server
+// ---------------------------------------------------------------------------
+//
+// Everything above works on records and the store. What follows connects to a
+// loopback MCP server, because the paths that matter most — connecting,
+// listing, calling, and what a reconnect does to a stored credential — only
+// exist once something answers.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use axum::Router;
+use axum::extract::State;
+use axum::http::{HeaderMap as AxumHeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use serde_json::Value;
+
+use tinymcp_bus::LATEST_PROTOCOL_VERSION;
+
+/// What the loopback server saw.
+#[derive(Debug, Default)]
+struct Server {
+    calls: AtomicUsize,
+    /// The credential the last request carried, if any.
+    authorization: parking_lot::Mutex<Option<String>>,
+    /// Whether to refuse every request with a 401.
+    demand_auth: std::sync::atomic::AtomicBool,
+}
+
+/// Binds a loopback port and serves `app`, returning its endpoint.
+async fn serve(app: Router) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}/mcp")
+}
+
+/// An MCP server answering the handshake and one tool.
+async fn mcp_server() -> (String, Arc<Server>) {
+    let state = Arc::new(Server::default());
+
+    async fn handle(
+        State(state): State<Arc<Server>>,
+        headers: AxumHeaderMap,
+        axum::Json(body): axum::Json<Value>,
+    ) -> Response {
+        *state.authorization.lock() = headers
+            .get("authorization")
+            .and_then(|value| value.to_str().ok())
+            .map(ToString::to_string);
+
+        if state.demand_auth.load(Ordering::SeqCst)
+            && state.authorization.lock().is_none()
+        {
+            return (
+                StatusCode::UNAUTHORIZED,
+                [(
+                    "WWW-Authenticate",
+                    "Bearer resource_metadata=\"https://example.test/.well-known/oauth-protected-resource\"",
+                )],
+                "unauthorized",
+            )
+                .into_response();
+        }
+
+        let id = body["id"].clone();
+        match body.get("method").and_then(Value::as_str).unwrap_or_default() {
+            "initialize" => (
+                [("Mcp-Session-Id", "session-1")],
+                axum::Json(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "protocolVersion": LATEST_PROTOCOL_VERSION,
+                        "capabilities": { "tools": {} },
+                        "serverInfo": { "name": "loopback", "version": "1.0.0" },
+                    },
+                })),
+            )
+                .into_response(),
+            "notifications/initialized" => StatusCode::NO_CONTENT.into_response(),
+            "tools/list" => axum::Json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "tools": [{
+                        "name": "forecast",
+                        "description": "tomorrow's weather",
+                        "inputSchema": { "type": "object" },
+                    }],
+                },
+            }))
+            .into_response(),
+            "tools/call" => {
+                state.calls.fetch_add(1, Ordering::SeqCst);
+                axum::Json(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "content": [{ "type": "text", "text": "sunny" }] },
+                }))
+                .into_response()
+            }
+            other => (StatusCode::BAD_REQUEST, format!("unexpected {other}")).into_response(),
+        }
+    }
+
+    let app = Router::new()
+        .route("/mcp", post(handle).get(|| async { StatusCode::METHOD_NOT_ALLOWED }))
+        .with_state(Arc::clone(&state));
+
+    (serve(app).await, state)
+}
+
+/// An install record pointing at `endpoint` over Streamable HTTP.
+fn remote_record(server_id: &str, endpoint: &str) -> InstalledServer {
+    InstalledServer {
+        transport: Transport::HttpRemote {
+            url: endpoint.to_string(),
+        },
+        ..install_record(server_id, "com.vendor/server", true)
+    }
+}
+
+/// A facade holding `server` as an enabled install.
+fn registry_with(server: &InstalledServer) -> McpRegistry {
+    let registry = registry();
+    registry.store().insert_server(server).expect("insert");
+    registry
+}
+
+// ---------------------------------------------------------------------------
+// Connecting
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn connecting_reports_the_tools_the_server_advertised() {
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    let outcome = registry.connect("srv-1").await.expect("connect");
+
+    assert_eq!(outcome.tools.len(), 1);
+    assert_eq!(outcome.tools[0].name, "forecast");
+}
+
+#[tokio::test]
+async fn connecting_records_when_it_last_succeeded() {
+    // What a status view shows, and the only evidence a server ever worked
+    // after it stops working.
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    registry.connect("srv-1").await.unwrap();
+
+    let stored = registry.store().get_server("srv-1").unwrap();
+    assert!(stored.last_connected_at.is_some());
+}
+
+#[tokio::test]
+async fn a_connected_server_reports_its_tools_and_answers_a_call() {
+    let (endpoint, state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    let tools = registry.list_tools("srv-1").await.expect("list");
+    assert_eq!(tools.len(), 1);
+
+    let outcome = registry
+        .tool_call("srv-1", "forecast", json!({ "when": "tomorrow" }))
+        .await
+        .expect("call");
+
+    assert!(!outcome.is_error);
+    assert_eq!(state.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn status_reports_a_connected_server_as_connected() {
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    let statuses = registry.status().await.expect("status");
+
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].status, "connected");
+}
+
+#[tokio::test]
+async fn disconnecting_drops_the_connection_and_reports_that_it_did() {
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    assert!(registry.disconnect("srv-1").await.expect("disconnect"));
+
+    let error = registry
+        .list_tools("srv-1")
+        .await
+        .expect_err("no longer connected");
+    assert!(matches!(error, Error::NotConnected { .. }), "{error:?}");
+}
+
+#[tokio::test]
+async fn turning_a_server_off_drops_its_connection() {
+    // Otherwise a disabled server would keep answering tool calls, which is
+    // exactly what turning it off is meant to stop.
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    registry.set_enabled("srv-1", false).await.expect("disable");
+
+    let error = registry.list_tools("srv-1").await.expect_err("disconnected");
+    assert!(matches!(error, Error::NotConnected { .. }), "{error:?}");
+}
+
+#[tokio::test]
+async fn turning_a_server_back_on_does_not_connect_it_by_itself() {
+    // Enabling states an intent; connecting is an action with a cost and a
+    // failure mode, and the caller decides when to pay it.
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.set_enabled("srv-1", false).await.unwrap();
+
+    registry.set_enabled("srv-1", true).await.expect("enable");
+
+    assert!(!registry.connections().is_connected("srv-1").await);
+}
+
+// ---------------------------------------------------------------------------
+// Replacing credentials
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn updating_credentials_on_a_connected_server_reconnects_it() {
+    // A credential that changed is only in effect once the session carrying the
+    // old one is gone.
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    let mut env = BTreeMap::new();
+    env.insert("Authorization".to_string(), "Bearer new-token".to_string());
+    let outcome = registry.update_env("srv-1", env).await.expect("update");
+
+    assert_eq!(outcome.status, UpdateEnvStatus::Connected);
+    assert_eq!(outcome.tools.len(), 1);
+}
+
+#[tokio::test]
+async fn a_stored_credential_is_sent_on_the_next_connect() {
+    let (endpoint, state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    let mut env = BTreeMap::new();
+    env.insert("Authorization".to_string(), "Bearer stored".to_string());
+    registry.update_env("srv-1", env).await.expect("update");
+    registry.connect("srv-1").await.expect("connect");
+
+    assert_eq!(state.authorization.lock().as_deref(), Some("Bearer stored"));
+}
+
+// ---------------------------------------------------------------------------
+// A server that wants credentials
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_401_is_reported_as_unauthorized_rather_than_as_a_failure() {
+    // Reachable and wanting credentials is not broken, and a caller has to be
+    // able to tell the difference in order to offer a sign-in.
+    let (endpoint, state) = mcp_server().await;
+    state.demand_auth.store(true, Ordering::SeqCst);
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    let error = registry.connect("srv-1").await.expect_err("401");
+
+    assert!(error.is_unauthorized(), "{error:?}");
+}
+
+#[tokio::test]
+async fn a_401_advertising_oauth_is_distinguishable_from_one_that_does_not() {
+    // It decides between offering a browser sign-in and offering a token field.
+    // A server that only accepts OAuth refuses a pasted token however valid it
+    // looks.
+    let (endpoint, state) = mcp_server().await;
+    state.demand_auth.store(true, Ordering::SeqCst);
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    let error = registry.connect("srv-1").await.expect_err("401");
+
+    assert!(error.advertises_oauth(), "{error:?}");
+}
+
+#[tokio::test]
+async fn a_failed_connect_is_recorded_so_a_status_read_can_report_it() {
+    // Without re-attempting: polling status must not dial the server again.
+    let (endpoint, state) = mcp_server().await;
+    state.demand_auth.store(true, Ordering::SeqCst);
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    let _ = registry.connect("srv-1").await;
+
+    assert!(
+        registry
+            .connections()
+            .last_error("srv-1")
+            .await
+            .is_some_and(|message| !message.is_empty())
+    );
+}
+
+#[tokio::test]
+async fn a_later_success_clears_the_recorded_failure() {
+    let (endpoint, state) = mcp_server().await;
+    state.demand_auth.store(true, Ordering::SeqCst);
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    let _ = registry.connect("srv-1").await;
+
+    state.demand_auth.store(false, Ordering::SeqCst);
+    registry.connect("srv-1").await.expect("connect");
+
+    assert_eq!(registry.connections().last_error("srv-1").await, None);
+}
+
+#[tokio::test]
+async fn detecting_auth_on_a_server_that_demands_it_says_so() {
+    let (endpoint, state) = mcp_server().await;
+    state.demand_auth.store(true, Ordering::SeqCst);
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    let detection = registry.detect_auth("srv-1").await.expect("detect");
+
+    assert!(detection.requires_auth);
+}
+
+#[tokio::test]
+async fn detecting_auth_on_a_server_that_does_not_demand_it_says_so() {
+    let (endpoint, _state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+
+    let detection = registry.detect_auth("srv-1").await.expect("detect");
+
+    assert!(!detection.requires_auth);
+}
+
+// ---------------------------------------------------------------------------
+// The guided setup flow
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_requested_secret_comes_back_as_a_handle_that_accepts_one_value() {
+    let registry = registry();
+
+    let handle = registry
+        .setup_request_secret("API_KEY")
+        .await
+        .expect("request");
+    assert!(handle.starts_with("secret://"), "{handle}");
+
+    assert!(
+        registry
+            .setup_submit_secret(&handle, "sekrit".into())
+            .await
+            .expect("submit")
+    );
+}
+
+#[tokio::test]
+async fn a_handle_that_was_never_issued_is_refused() {
+    let registry = registry();
+
+    assert!(
+        !registry
+            .setup_submit_secret("secret://deadbeefdeadbeef", "sekrit".into())
+            .await
+            .expect("submit")
+    );
+}
+
+#[tokio::test]
+async fn a_value_that_is_not_a_handle_is_refused() {
+    let registry = registry();
+
+    assert!(
+        !registry
+            .setup_submit_secret("plainly-a-value", "sekrit".into())
+            .await
+            .expect("submit")
+    );
+}
