@@ -400,13 +400,32 @@ mod more {
     }
 
     #[tokio::test]
-    async fn a_reply_that_is_not_json_is_reported_with_what_was_read() {
-        // A server that prints a banner to stdout is a common mistake, and the
-        // offending line is what makes it diagnosable.
+    async fn a_banner_line_on_the_output_is_skipped_rather_than_read_as_a_reply() {
+        // Printing a startup banner to stdout is a common mistake in a server,
+        // and it must not break the handshake of an otherwise working one.
+        let directory = tempfile::tempdir().unwrap();
+        let body = format!("printf '%s\\n' 'Server v1 starting'\n{}", handshake_only());
+        let path = script(directory.path(), &body);
+
+        let client = McpStdioClient::new(
+            path,
+            Vec::new(),
+            Vec::new(),
+            None,
+            &McpClientIdentityConfig::default(),
+        );
+
+        assert!(client.initialize().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_line_that_looks_like_json_but_is_not_is_reported_with_what_was_read() {
+        // Unlike a banner, this cannot be skipped: it is where a reply should
+        // be, and the offending text is what makes it diagnosable.
         let directory = tempfile::tempdir().unwrap();
         let path = script(
             directory.path(),
-            "read -r _line\nprintf '%s\\n' 'Server v1 starting'\ncat > /dev/null\n",
+            "read -r _line\nprintf '%s\\n' '{ not json'\ncat > /dev/null\n",
         );
 
         let client = McpStdioClient::new(
@@ -420,7 +439,29 @@ mod more {
         let error = client.initialize().await.expect_err("not json");
 
         assert!(error.to_string().contains("not json"), "{error}");
-        assert!(error.to_string().contains("Server v1 starting"), "{error}");
+        assert!(error.to_string().contains("{ not json"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_reply_carrying_neither_a_result_nor_an_error_is_reported() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = script(
+            directory.path(),
+            "read -r _line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1}'\n\
+             cat > /dev/null\n",
+        );
+
+        let client = McpStdioClient::new(
+            path,
+            Vec::new(),
+            Vec::new(),
+            None,
+            &McpClientIdentityConfig::default(),
+        );
+
+        let error = client.initialize().await.expect_err("no result");
+
+        assert!(error.to_string().contains("no `result`"), "{error}");
     }
 
     #[tokio::test]
