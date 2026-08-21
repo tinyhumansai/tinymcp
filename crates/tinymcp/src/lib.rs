@@ -81,6 +81,7 @@ pub use config_servers::{
 };
 pub use error::{Error, Result};
 pub use registry::{AuthDetection, Connections, OAuthFlow, Store, Supervisor, SupervisorConfig};
+#[cfg(feature = "module")]
 pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
