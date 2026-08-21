@@ -322,9 +322,18 @@ async fn registry_search_returns_a_page() {
     let (base, _hits) = catalog().await;
     let service = service_at(directory.path(), &base);
 
-    let page = ok(&service, names::methods::REGISTRY_SEARCH, json!([null, 1, 20])).await;
+    let page = ok(
+        &service,
+        names::methods::REGISTRY_SEARCH,
+        json!([null, 1, 20]),
+    )
+    .await;
 
-    assert!(page["servers"].as_array().is_some_and(|rows| !rows.is_empty()));
+    assert!(
+        page["servers"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
+    );
 }
 
 #[tokio::test]
@@ -396,7 +405,11 @@ async fn registry_settings_report_which_credentials_are_set_and_never_their_valu
     ok(
         &service,
         names::methods::REGISTRY_SETTINGS_SET,
-        json!(["sk-secret-value", "https://registry.test", "tok-secret-value"]),
+        json!([
+            "sk-secret-value",
+            "https://registry.test",
+            "tok-secret-value"
+        ]),
     )
     .await;
     let settings = ok(&service, names::methods::REGISTRY_SETTINGS_GET, json!([])).await;
@@ -405,7 +418,10 @@ async fn registry_settings_report_which_credentials_are_set_and_never_their_valu
     assert_eq!(settings["mcp_official_token_set"], json!(true));
     // The base is not a secret, and a user who cannot see which registry they
     // are pointed at cannot debug it.
-    assert_eq!(settings["mcp_official_base"], json!("https://registry.test"));
+    assert_eq!(
+        settings["mcp_official_base"],
+        json!("https://registry.test")
+    );
 
     let rendered = settings.to_string();
     assert!(!rendered.contains("sk-secret-value"), "{rendered}");
@@ -653,9 +669,18 @@ async fn setup_search_and_get_answer_the_same_shapes_as_browsing() {
     let service = service_at(directory.path(), &base);
 
     let page = ok(&service, names::methods::SETUP_SEARCH, json!([null, 1, 20])).await;
-    assert!(page["servers"].as_array().is_some_and(|rows| !rows.is_empty()));
+    assert!(
+        page["servers"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
+    );
 
-    let detail = ok(&service, names::methods::SETUP_GET, json!(["@acme/weather"])).await;
+    let detail = ok(
+        &service,
+        names::methods::SETUP_GET,
+        json!(["@acme/weather"]),
+    )
+    .await;
     assert_eq!(detail["required_env_keys"], json!(["API_KEY"]));
 }
 
@@ -897,9 +922,9 @@ async fn every_member_the_contract_names_is_dispatchable() {
 // here fails the load on purpose — a module that came up without its store
 // would answer every call with the same error.
 
+use tinybus::Connection;
 use tinybus::broker::Broker;
 use tinybus::transport::memory::MemoryBus;
-use tinybus::Connection;
 
 /// A connection to a broker running in this process.
 async fn in_process_connection() -> Connection {
@@ -991,5 +1016,8 @@ async fn a_module_that_cannot_open_its_store_fails_to_come_up() {
     .await
     .expect_err("the store cannot be opened");
 
-    assert!(error.to_string().contains("tinymcp could not start"), "{error}");
+    assert!(
+        error.to_string().contains("tinymcp could not start"),
+        "{error}"
+    );
 }

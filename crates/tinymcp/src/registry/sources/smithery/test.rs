@@ -207,7 +207,10 @@ async fn a_blank_query_is_left_off_the_request() {
     // entitled to treat an empty term as a filter that matches nothing.
     let (base, seen) = working_catalog().await;
 
-    adapter(&base).search(&store(), None, "", 1, 20).await.unwrap();
+    adapter(&base)
+        .search(&store(), None, "", 1, 20)
+        .await
+        .unwrap();
 
     assert_eq!(*seen.query.lock(), None);
 }
@@ -229,7 +232,10 @@ async fn no_key_means_no_authorization_header() {
     // A bare `Bearer ` is worse than nothing: every request fails on it.
     let (base, seen) = working_catalog().await;
 
-    adapter(&base).search(&store(), None, "weather", 1, 20).await.unwrap();
+    adapter(&base)
+        .search(&store(), None, "weather", 1, 20)
+        .await
+        .unwrap();
 
     assert_eq!(*seen.authorization.lock(), None);
 }
@@ -240,8 +246,14 @@ async fn a_second_identical_search_is_served_from_the_cache() {
     let store = store();
     let adapter = adapter(&base);
 
-    adapter.search(&store, None, "weather", 1, 20).await.unwrap();
-    let (servers, total_pages) = adapter.search(&store, None, "weather", 1, 20).await.unwrap();
+    adapter
+        .search(&store, None, "weather", 1, 20)
+        .await
+        .unwrap();
+    let (servers, total_pages) = adapter
+        .search(&store, None, "weather", 1, 20)
+        .await
+        .unwrap();
 
     assert_eq!(seen.requests.load(Ordering::SeqCst), 1);
     assert_eq!(servers.len(), 1);
@@ -254,8 +266,14 @@ async fn a_different_page_is_not_served_from_another_page_s_cache() {
     let store = store();
     let adapter = adapter(&base);
 
-    adapter.search(&store, None, "weather", 1, 20).await.unwrap();
-    adapter.search(&store, None, "weather", 2, 20).await.unwrap();
+    adapter
+        .search(&store, None, "weather", 1, 20)
+        .await
+        .unwrap();
+    adapter
+        .search(&store, None, "weather", 2, 20)
+        .await
+        .unwrap();
 
     assert_eq!(seen.requests.load(Ordering::SeqCst), 2);
 }
@@ -292,7 +310,10 @@ async fn a_body_that_is_not_a_list_response_is_reported_as_malformed() {
         .await
         .expect_err("the body does not parse");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -390,7 +411,10 @@ async fn a_detail_body_that_does_not_parse_is_reported_as_malformed() {
         .await
         .expect_err("the body does not parse");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -421,12 +445,15 @@ async fn an_upstream_failure_status_is_reported_with_its_body() {
 async fn a_long_failure_body_is_truncated() {
     // These reach a log line and an error message. An upstream answering a
     // failure with a whole HTML page would otherwise put all of it there.
-    let base = failing_catalog(500, concat!(
-        "0123456789012345678901234567890123456789012345678901234567890123456789",
-        "0123456789012345678901234567890123456789012345678901234567890123456789",
-        "0123456789012345678901234567890123456789012345678901234567890123456789",
-        "0123456789012345678901234567890123456789",
-    ))
+    let base = failing_catalog(
+        500,
+        concat!(
+            "0123456789012345678901234567890123456789012345678901234567890123456789",
+            "0123456789012345678901234567890123456789012345678901234567890123456789",
+            "0123456789012345678901234567890123456789012345678901234567890123456789",
+            "0123456789012345678901234567890123456789",
+        ),
+    )
     .await;
 
     let error = adapter(&base)

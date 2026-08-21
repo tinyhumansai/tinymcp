@@ -963,7 +963,10 @@ mod stdio {
         let store = store_with(&server);
 
         let mut env = BTreeMap::new();
-        env.insert(OAUTH_BUNDLE_KEY.to_string(), "{\"secret\":true}".to_string());
+        env.insert(
+            OAUTH_BUNDLE_KEY.to_string(),
+            "{\"secret\":true}".to_string(),
+        );
         env.insert("API_KEY".to_string(), "sekrit".to_string());
         store.set_env_values("srv-1", &env).unwrap();
 

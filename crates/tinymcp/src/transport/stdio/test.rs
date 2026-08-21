@@ -337,10 +337,7 @@ mod more {
         std::fs::write(&marker, "here").unwrap();
 
         // Fails the handshake unless `marker` is in the process's cwd.
-        let body = format!(
-            "test -f marker || exit 3\n{}",
-            handshake_only()
-        );
+        let body = format!("test -f marker || exit 3\n{}", handshake_only());
         let path = script(directory.path(), &body);
 
         let client = McpStdioClient::new(

@@ -45,8 +45,8 @@ pub(crate) mod tokens;
 pub(crate) mod types;
 
 pub use flow::OAuthFlow;
-pub use types::{AuthDetection, AuthKind};
 pub use tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
+pub use types::{AuthDetection, AuthKind};
 
 #[cfg(test)]
 mod test;

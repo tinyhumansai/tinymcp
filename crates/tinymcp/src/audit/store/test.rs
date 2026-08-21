@@ -504,9 +504,7 @@ fn an_error_message_within_the_bound_is_kept_whole() {
     store.record(&record).unwrap();
 
     assert_eq!(
-        store.list(&all()).unwrap()[0]
-            .error_message
-            .as_deref(),
+        store.list(&all()).unwrap()[0].error_message.as_deref(),
         Some("the tool refused")
     );
 }
@@ -548,7 +546,9 @@ fn an_audit_log_opens_under_the_directory_it_is_given() {
     let directory = tempfile::tempdir().unwrap();
 
     let store = AuditStore::open(directory.path()).expect("the log opens");
-    store.record(&write_at(1_000, "claude", "memory_write")).unwrap();
+    store
+        .record(&write_at(1_000, "claude", "memory_write"))
+        .unwrap();
 
     assert!(AuditStore::path_for(directory.path()).exists());
     assert_eq!(store.list(&all()).unwrap().len(), 1);
@@ -573,7 +573,9 @@ fn an_absurd_limit_is_capped_rather_than_refused() {
     // would turn a clumsy request into a broken one.
     let store = store();
     for index in 0..3 {
-        store.record(&write_at(1_000 + index, "claude", "memory_write")).unwrap();
+        store
+            .record(&write_at(1_000 + index, "claude", "memory_write"))
+            .unwrap();
     }
 
     let rows = store
@@ -594,7 +596,9 @@ fn a_row_whose_argument_summary_is_unreadable_fails_the_read() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("audit.db");
     let store = AuditStore::open_file(&path).unwrap();
-    store.record(&write_at(1_000, "claude", "memory_write")).unwrap();
+    store
+        .record(&write_at(1_000, "claude", "memory_write"))
+        .unwrap();
     drop(store);
 
     let connection = rusqlite::Connection::open(&path).unwrap();

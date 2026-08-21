@@ -1058,7 +1058,10 @@ fn an_attribute_list_tolerates_spacing_and_quoting() {
 
 #[test]
 fn a_header_that_is_not_present_reads_as_none() {
-    assert_eq!(header_to_string(&ReqwestHeaderMap::new(), "Mcp-Session-Id"), None);
+    assert_eq!(
+        header_to_string(&ReqwestHeaderMap::new(), "Mcp-Session-Id"),
+        None
+    );
 }
 
 #[test]
@@ -1126,8 +1129,9 @@ fn a_non_string_argument_is_mirrored_as_its_json_form() {
 
 #[test]
 fn arguments_that_are_not_an_object_produce_no_headers() {
-    let headers = mcp_param_headers_from_schema(&tool_with_header_property(), &json!("not an object"))
-        .expect("headers build");
+    let headers =
+        mcp_param_headers_from_schema(&tool_with_header_property(), &json!("not an object"))
+            .expect("headers build");
 
     assert!(headers.is_empty());
 }
@@ -1194,7 +1198,9 @@ async fn a_configured_header_that_cannot_be_encoded_is_skipped_rather_than_fatal
         ],
     };
 
-    let built = apply_auth(request, &auth).build().expect("the request builds");
+    let built = apply_auth(request, &auth)
+        .build()
+        .expect("the request builds");
 
     assert!(built.headers().get("X-Fine").is_some());
     assert_eq!(built.headers().len(), 1);
@@ -1212,7 +1218,10 @@ fn a_body_with_no_data_frame_is_reported_rather_than_read_as_empty() {
     // returning nothing would look like a server that answered with null.
     let error = parse_sse_message(": keepalive\n\n").expect_err("no data frame");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 #[test]

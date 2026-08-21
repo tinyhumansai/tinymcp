@@ -714,9 +714,8 @@ async fn authority_with_challenge() -> (String, Arc<Authority>) {
     let (base, state) = authority().await;
 
     // Re-serve the MCP endpoint with the origin baked into the challenge.
-    let challenge = format!(
-        "Bearer resource_metadata=\"{base}/.well-known/oauth-protected-resource\""
-    );
+    let challenge =
+        format!("Bearer resource_metadata=\"{base}/.well-known/oauth-protected-resource\"");
     // A bare handler rather than `get(..)`: the transport POSTs to the MCP
     // endpoint, and a GET-only fallback would answer 405 instead of the 401
     // that starts discovery.
@@ -785,10 +784,7 @@ async fn the_authorize_url_carries_the_pkce_challenge_and_its_method() {
         authorize_param(&url, "code_challenge_method").as_deref(),
         Some("S256")
     );
-    assert!(
-        authorize_param(&url, "code_challenge")
-            .is_some_and(|challenge| !challenge.is_empty())
-    );
+    assert!(authorize_param(&url, "code_challenge").is_some_and(|challenge| !challenge.is_empty()));
 }
 
 #[tokio::test]
@@ -816,7 +812,10 @@ async fn the_authorize_url_names_the_resource_being_authorized() {
         .await
         .unwrap();
 
-    assert_eq!(authorize_param(&url, "resource").as_deref(), Some(&*endpoint));
+    assert_eq!(
+        authorize_param(&url, "resource").as_deref(),
+        Some(&*endpoint)
+    );
 }
 
 #[tokio::test]
@@ -873,7 +872,11 @@ async fn discovery_falls_back_from_the_openid_document_to_the_oauth_one() {
 async fn a_stdio_server_cannot_be_signed_in_to() {
     // OAuth is a property of an HTTP endpoint; a subprocess has none.
     let error = flow()
-        .begin(&store_with_stdio(), "srv-1", "http://127.0.0.1:7788/callback")
+        .begin(
+            &store_with_stdio(),
+            "srv-1",
+            "http://127.0.0.1:7788/callback",
+        )
         .await
         .expect_err("stdio");
 
@@ -916,9 +919,8 @@ async fn an_authorization_server_not_offering_the_authorization_code_grant_is_re
 async fn a_server_that_does_not_want_authorization_is_refused() {
     // Beginning a sign-in against a server that never asked for one would
     // send the user to an authorization page for nothing.
-    let app = Router::new().fallback(|| async {
-        Json(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))
-    });
+    let app = Router::new()
+        .fallback(|| async { Json(json!({ "jsonrpc": "2.0", "id": 1, "result": {} })) });
     let base = serve(app).await;
     let store = store_with_remote(&base);
 
@@ -977,7 +979,10 @@ async fn completing_stores_the_token_as_an_ordinary_authorization_header() {
         .unwrap();
 
     let env = store.load_env_values("srv-1").unwrap();
-    assert_eq!(env.get("Authorization").map(String::as_str), Some("Bearer at-1"));
+    assert_eq!(
+        env.get("Authorization").map(String::as_str),
+        Some("Bearer at-1")
+    );
 }
 
 #[tokio::test]
@@ -1125,7 +1130,12 @@ async fn detection_reports_the_grants_the_authorization_server_listed() {
 
     let detection = flow().detect(&store, "srv-1").await.unwrap();
 
-    assert!(detection.grant_types.iter().any(|grant| grant == "authorization_code"));
+    assert!(
+        detection
+            .grant_types
+            .iter()
+            .any(|grant| grant == "authorization_code")
+    );
 }
 
 // ---------------------------------------------------------------------------

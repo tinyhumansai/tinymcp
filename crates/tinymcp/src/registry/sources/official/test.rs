@@ -784,7 +784,10 @@ async fn a_configured_token_is_sent_as_a_bearer() {
         .await
         .unwrap();
 
-    assert_eq!(seen.authorization.lock().as_deref(), Some("Bearer tok-test"));
+    assert_eq!(
+        seen.authorization.lock().as_deref(),
+        Some("Bearer tok-test")
+    );
 }
 
 #[tokio::test]
@@ -918,9 +921,16 @@ async fn a_page_beyond_the_walk_limit_is_refused() {
         .await
         .expect_err("beyond the walk limit");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
     assert!(error.to_string().contains("page sequentially"), "{error}");
-    assert_eq!(seen.pages.load(Ordering::SeqCst), 0, "nothing was requested");
+    assert_eq!(
+        seen.pages.load(Ordering::SeqCst),
+        0,
+        "nothing was requested"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1052,7 +1062,10 @@ async fn a_versions_body_that_is_not_json_is_reported_as_malformed() {
         .await
         .expect_err("unparseable");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1079,12 +1092,15 @@ async fn an_upstream_failure_status_is_reported_with_its_body() {
 
 #[tokio::test]
 async fn a_long_failure_body_is_truncated() {
-    let base = failing_registry(500, concat!(
-        "0123456789012345678901234567890123456789012345678901234567890123456789",
-        "0123456789012345678901234567890123456789012345678901234567890123456789",
-        "0123456789012345678901234567890123456789012345678901234567890123456789",
-        "0123456789012345678901234567890123456789",
-    ))
+    let base = failing_registry(
+        500,
+        concat!(
+            "0123456789012345678901234567890123456789012345678901234567890123456789",
+            "0123456789012345678901234567890123456789012345678901234567890123456789",
+            "0123456789012345678901234567890123456789012345678901234567890123456789",
+            "0123456789012345678901234567890123456789",
+        ),
+    )
     .await;
 
     let error = adapter()
@@ -1101,7 +1117,14 @@ async fn a_long_failure_body_is_truncated() {
 #[tokio::test]
 async fn an_unreachable_registry_is_reported_as_a_transport_failure() {
     let error = adapter()
-        .search(&store(), &auth_at("http://127.0.0.1:1"), &cursors(), "", 1, 20)
+        .search(
+            &store(),
+            &auth_at("http://127.0.0.1:1"),
+            &cursors(),
+            "",
+            1,
+            20,
+        )
         .await
         .expect_err("unreachable");
 
@@ -1117,5 +1140,8 @@ async fn a_list_body_that_does_not_decode_is_reported_as_malformed() {
         .await
         .expect_err("unparseable");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }

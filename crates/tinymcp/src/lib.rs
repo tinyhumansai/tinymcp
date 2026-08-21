@@ -82,8 +82,7 @@ pub use config_servers::{
 pub use error::{Error, Result};
 pub use registry::{
     AuthDetection, AuthKind, Connections, McpRegistry, OAuthFlow, SecretRef, SecretVault, Store,
-    Supervisor,
-    SupervisorConfig,
+    Supervisor, SupervisorConfig,
 };
 #[cfg(feature = "module")]
 pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};

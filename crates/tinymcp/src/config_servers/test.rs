@@ -480,12 +480,12 @@ fn a_clone_shares_its_transports_rather_than_reconnecting() {
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use axum::Router;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use tinymcp_bus::LATEST_PROTOCOL_VERSION;
 
@@ -496,12 +496,13 @@ type Calls = Arc<AtomicUsize>;
 async fn mcp_endpoint() -> (String, Calls) {
     let calls: Calls = Arc::new(AtomicUsize::new(0));
 
-    async fn handle(
-        State(calls): State<Calls>,
-        axum::Json(body): axum::Json<Value>,
-    ) -> Response {
+    async fn handle(State(calls): State<Calls>, axum::Json(body): axum::Json<Value>) -> Response {
         let id = body["id"].clone();
-        match body.get("method").and_then(Value::as_str).unwrap_or_default() {
+        match body
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
             "initialize" => axum::Json(json!({
                 "jsonrpc": "2.0",
                 "id": id,

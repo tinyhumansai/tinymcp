@@ -678,5 +678,10 @@ fn a_row_whose_configuration_is_unreadable_fails_the_read() {
         .unwrap();
     drop(connection);
 
-    assert!(Store::open_file(&path).unwrap().get_server("srv-1").is_err());
+    assert!(
+        Store::open_file(&path)
+            .unwrap()
+            .get_server("srv-1")
+            .is_err()
+    );
 }

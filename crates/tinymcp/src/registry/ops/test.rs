@@ -632,9 +632,7 @@ async fn mcp_server() -> (String, Arc<Server>) {
             .and_then(|value| value.to_str().ok())
             .map(ToString::to_string);
 
-        if state.demand_auth.load(Ordering::SeqCst)
-            && state.authorization.lock().is_none()
-        {
+        if state.demand_auth.load(Ordering::SeqCst) && state.authorization.lock().is_none() {
             return (
                 StatusCode::UNAUTHORIZED,
                 [(
@@ -647,7 +645,11 @@ async fn mcp_server() -> (String, Arc<Server>) {
         }
 
         let id = body["id"].clone();
-        match body.get("method").and_then(Value::as_str).unwrap_or_default() {
+        match body
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
             "initialize" => (
                 [("Mcp-Session-Id", "session-1")],
                 axum::Json(json!({
@@ -688,7 +690,10 @@ async fn mcp_server() -> (String, Arc<Server>) {
     }
 
     let app = Router::new()
-        .route("/mcp", post(handle).get(|| async { StatusCode::METHOD_NOT_ALLOWED }))
+        .route(
+            "/mcp",
+            post(handle).get(|| async { StatusCode::METHOD_NOT_ALLOWED }),
+        )
         .with_state(Arc::clone(&state));
 
     (serve(app).await, state)
@@ -800,7 +805,10 @@ async fn turning_a_server_off_drops_its_connection() {
 
     registry.set_enabled("srv-1", false).await.expect("disable");
 
-    let error = registry.list_tools("srv-1").await.expect_err("disconnected");
+    let error = registry
+        .list_tools("srv-1")
+        .await
+        .expect_err("disconnected");
     assert!(matches!(error, Error::NotConnected { .. }), "{error:?}");
 }
 
@@ -1096,7 +1104,10 @@ async fn a_connection_test_resolves_a_handle_without_consuming_it() {
     let catalog = catalog_pointing_at(&endpoint).await;
     let registry = registry_browsing(&catalog);
 
-    let handle = registry.setup_request_secret("Authorization").await.unwrap();
+    let handle = registry
+        .setup_request_secret("Authorization")
+        .await
+        .unwrap();
     registry
         .setup_submit_secret(&handle, "Bearer from-the-vault".into())
         .await
@@ -1148,7 +1159,10 @@ async fn installing_and_connecting_stores_the_resolved_credential() {
     let catalog = catalog_pointing_at(&endpoint).await;
     let registry = registry_browsing(&catalog);
 
-    let handle = registry.setup_request_secret("Authorization").await.unwrap();
+    let handle = registry
+        .setup_request_secret("Authorization")
+        .await
+        .unwrap();
     registry
         .setup_submit_secret(&handle, "Bearer stored".into())
         .await
@@ -1214,7 +1228,10 @@ async fn a_catalog_entry_offering_nothing_to_connect_to_is_refused() {
         .await
         .expect_err("nothing to connect to");
 
-    assert!(error.to_string().contains("neither a hosted endpoint"), "{error}");
+    assert!(
+        error.to_string().contains("neither a hosted endpoint"),
+        "{error}"
+    );
 }
 
 #[tokio::test]
@@ -1380,7 +1397,12 @@ async fn a_sign_in_that_fails_to_connect_afterwards_is_still_a_successful_sign_i
 
     // No pending authorization, so the exchange itself fails first — the
     // outcome under test is the one below it, reached through `connect`.
-    assert!(registry.oauth_complete("never-issued", "code").await.is_err());
+    assert!(
+        registry
+            .oauth_complete("never-issued", "code")
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
