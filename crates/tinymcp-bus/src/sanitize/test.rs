@@ -82,10 +82,9 @@ fn every_catalogued_token_is_actually_stripped() {
 ///
 /// Searching a lowercased copy and splicing the original is only sound when
 /// lowercasing preserves byte offsets, and Unicode does not: `İ` (U+0130) is
-/// two bytes and lowercases to three. An offset found in the lowercased copy
-/// then lands mid-codepoint in the original, and splicing there corrupts the
-/// string or panics outright. The scan runs over the original bytes for
-/// exactly this reason.
+/// two bytes and lowercases to three, so an offset found in the lowercased
+/// copy is shifted in the original.
+///
 /// Corruption: the shifted offset lands inside the token and splices the
 /// wrong range. The offset-on-a-lowercased-copy implementation returns
 /// `"İİİ<syload"` here, leaving `<sy` behind and eating six innocent bytes.

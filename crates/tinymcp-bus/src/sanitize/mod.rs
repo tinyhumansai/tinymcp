@@ -21,7 +21,7 @@
 //! The HTTP transport applies this pipeline to every remote tool description
 //! and title before a caller sees them, so the bound is part of what a caller
 //! is promised rather than an implementation detail. A host that renders the
-//! same vocabulary — OpenHuman runs *skill* descriptions through the identical
+//! same vocabulary — `OpenHuman` runs *skill* descriptions through the identical
 //! pipeline from its orchestrator prompt builder — needs the same rule, and two
 //! copies of a security-relevant stripping rule in two repositories would
 //! drift. The code is pure and allocation-only, so it costs this crate nothing
