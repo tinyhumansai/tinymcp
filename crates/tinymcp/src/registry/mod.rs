@@ -10,6 +10,8 @@
 //! credentials at rest, and a supervisor for what got spawned.
 
 pub mod curation;
+pub mod oauth;
 pub mod store;
 
+pub use oauth::{AuthDetection, OAuthFlow};
 pub use store::Store;
