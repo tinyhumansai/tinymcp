@@ -126,10 +126,10 @@ pulls in no transport.
       draining, session lifecycle, `WWW-Authenticate` parsing, the
       reinitialize-and-retry-once rule, `x-mcp-header` mirroring,
       `render_tool_result`, and `redact_endpoint` all move unchanged.
-- [ ] `crates/tinymcp/src/transport/spawn_env/` — from
+- [x] `crates/tinymcp/src/transport/stdio/spawn_env/` — from
       `config_servers/spawn_env.rs` (524 lines). The login-shell PATH probe and
       the up-front command resolution.
-- [ ] `crates/tinymcp/src/transport/stdio/` — `McpStdioClient` from
+- [x] `crates/tinymcp/src/transport/stdio/` — `McpStdioClient` from
       `config_servers/stdio.rs` (314 lines).
 - [x] Hoist `SUPPORTED_PROTOCOL_VERSIONS` and `LATEST_PROTOCOL_VERSION` into one
       place — done in Phase 2, in `tinymcp-bus::transport`. They were duplicated
@@ -137,6 +137,15 @@ pulls in no transport.
       test pins it.
 
 **Verify:** `cargo test -p tinymcp transport`.
+
+Two defects found while porting, each fixed with a regression test:
+
+- The stdio transport never validated the protocol version the server
+  negotiated, though the HTTP one always did. A subprocess is no more
+  trustworthy than a remote endpoint; both check now.
+- A stdio child was spawned without `kill_on_drop`, so a client dropped without
+  an explicit close orphaned the server process. These are `npx` and `uvx`
+  processes a user never started directly and has no obvious way to find.
 
 ---
 
@@ -263,7 +272,7 @@ cargo run -p tinymcp --example verify_module
 - [x] Phase 0 — de-template (partial: renames and metadata done)
 - [x] Phase 1 — `sanitize`
 - [~] Phase 2 — contract crate (all payload families and names done; per-member request/response types outstanding)
-- [~] Phase 3 — transports (HTTP done; stdio and spawn-env outstanding)
+- [x] Phase 3 — transports
 - [ ] Phase 4 — registries
 - [ ] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
