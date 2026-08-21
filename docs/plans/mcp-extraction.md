@@ -218,24 +218,28 @@ ported into `crates/tinymcp/tests/`.
 ## Phase 5 — The bus adapter
 
 `crates/tinymcp/src/tinybus_module/` and the two `verify_*` examples were
-**removed** when the placeholder `greeting` behavior they served was deleted,
-and are rebuilt here against the real interface. Until then the workspace
-builds a `cdylib` that exports nothing, and the manifest-versus-`METHODS`
-assertion has nothing to assert. That is the one gap between the contract and
-the implementation, and it closes in this phase — nothing else is stubbed.
+removed when the placeholder `greeting` behavior they served was deleted, and
+are rebuilt here against the real interface. That gap is now closed: the
+`cdylib` loads through the real `TinyBus` loader and answers on all 28
+members.
 
-- [ ] `crates/tinymcp/src/tinybus_module/mod.rs` — one `#[tinybus::interface]`
-      method per member, each deserializing a contract request type and
-      returning a contract response type, delegating to Phase 4.
-- [ ] Declare `provides`, `methods`, and `signals` in `module_export!`, and
-      assert the served members against `tinymcp_bus::names::METHODS` in order,
-      so a member added to one and not the other fails a test here rather than
-      surfacing as an unknown method in a host.
-- [ ] Module configuration: data directory, `McpClientConfig`, and registry
-      auth, parsed from the configuration blob with a typed error on a
-      malformed one.
-- [ ] Update `examples/verify_module.rs` and `examples/verify_github_release.rs`
-      to exercise a real member.
+- [x] `crates/tinymcp/src/tinybus_module/` — one `#[tinybus::interface]`
+      method per member, returning the contract's reply types and delegating to
+      Phase 4.
+- [x] Declare `provides`, `methods`, and `signals` in `module_export!`, and
+      assert the served members against `tinymcp_bus::names::METHODS` in order.
+      The assertion reads the list off the interface the macro *generated*, not
+      a restatement — a restatement agrees with itself whatever the code does.
+      The manifest carries the names a third time, because the macro takes
+      literals; that copy is checked by `verify_module`, which loads the built
+      library and calls it.
+- [x] Module configuration: an optional data directory and an
+      `McpClientConfig`. No directory keeps both stores in memory, which is the
+      right shape for a host that only wants its statically declared servers.
+- [x] `examples/verify_module.rs` and `examples/verify_github_release.rs`
+      exercise real members: `StaticList`, which needs nothing configured and
+      proves dispatch works, and `InstalledList`, which touches the store and
+      proves the module came up.
 
 **Verify:** `cargo run -p tinymcp --example verify_module`.
 
@@ -305,5 +309,5 @@ cargo run -p tinymcp --example verify_module
 - [x] Phase 2 — contract crate
 - [x] Phase 3 — transports
 - [x] Phase 4 — registries
-- [ ] Phase 5 — bus adapter
+- [x] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
