@@ -536,19 +536,19 @@ async fn handle(State(calls): State<Calls>, axum::Json(body): axum::Json<Value>)
 
 /// Binds a loopback port and serves an MCP endpoint advertising two tools.
 async fn mcp_endpoint() -> (String, Calls) {
-let calls: Calls = Arc::new(AtomicUsize::new(0));
+    let calls: Calls = Arc::new(AtomicUsize::new(0));
 
-let app = Router::new()
-    .route("/mcp", post(handle))
-    .with_state(Arc::clone(&calls));
+    let app = Router::new()
+        .route("/mcp", post(handle))
+        .with_state(Arc::clone(&calls));
 
-let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-let addr = listener.local_addr().unwrap();
-tokio::spawn(async move {
-    axum::serve(listener, app).await.unwrap();
-});
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
 
-(format!("http://{addr}/mcp"), calls)
+    (format!("http://{addr}/mcp"), calls)
 }
 
 #[tokio::test]

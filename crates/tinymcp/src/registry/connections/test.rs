@@ -828,7 +828,7 @@ mod stdio {
         let mut body = String::new();
         for reply in replies {
             body.push_str("read -r _line\n");
-            let _ = write!(body, "printf '%s\\n' '{reply}'\n"));
+            let _ = writeln!(body, "printf '%s\\n' '{reply}'");
         }
         // Then wait, rather than exiting and closing the pipe under the client.
         body.push_str("cat > /dev/null\n");
@@ -897,15 +897,17 @@ mod stdio {
         // after the one the handshake consumes.
         let mut body = String::new();
         body.push_str("read -r _line\n");
-        let _ = write!(body, 
-            "printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"protocolVersion\":\"{}\",\"capabilities\":{{}},\"serverInfo\":{{\"name\":\"fake\",\"version\":\"1\"}}}}}}'\n",
+        let _ = writeln!(
+            body,
+            "printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"protocolVersion\":\"{}\",\"capabilities\":{{}},\"serverInfo\":{{\"name\":\"fake\",\"version\":\"1\"}}}}}}'",
             tinymcp_bus::LATEST_PROTOCOL_VERSION
-        ));
+        );
         for id in [2, 3] {
             body.push_str("read -r _line\n");
-            let _ = write!(body, 
-                "printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"tools\":[]}}}}'\n"
-            ));
+            let _ = writeln!(
+                body,
+                "printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"tools\":[]}}}}'"
+            );
         }
         body.push_str("cat > /dev/null\n");
 
