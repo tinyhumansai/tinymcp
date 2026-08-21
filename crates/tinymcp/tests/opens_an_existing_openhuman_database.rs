@@ -1,12 +1,12 @@
 //! Reading a database written before the extraction.
 //!
-//! The registry's file, `mcp_clients/mcp_clients.db`, was created by OpenHuman
+//! The registry's file, `mcp_clients/mcp_clients.db`, was created by `OpenHuman`
 //! and is not migrated on the way over: an installed server is state a user
 //! set up, and losing it would mean re-authorizing every integration by hand.
 //! So this crate has to open the file as it stands, including files old enough
 //! to predate the `transport`, `deployment_url`, and `enabled` columns.
 //!
-//! The schema below is copied verbatim from OpenHuman's original
+//! The schema below is copied verbatim from `OpenHuman`'s original
 //! `mcp_clients` initialiser rather than derived from this crate's, which is
 //! the point: a test built from the current schema would agree with itself no
 //! matter how far the two had drifted.
@@ -15,7 +15,7 @@
 
 use tinymcp::{CommandKind, Store, Transport};
 
-/// The tables as OpenHuman first cut them, before any column was added.
+/// The tables as `OpenHuman` first cut them, before any column was added.
 const ORIGINAL_SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS mcp_servers (
         server_id           TEXT PRIMARY KEY,
