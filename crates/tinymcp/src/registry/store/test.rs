@@ -621,3 +621,62 @@ fn any_other_migration_failure_still_propagates() {
         assert!(matches!(error, Error::Store { .. }), "{error:?}");
     });
 }
+
+// ---------------------------------------------------------------------------
+// Opening, and rows that predate a column
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_store_that_cannot_be_opened_is_reported_rather_than_panicking() {
+    // A directory where the file should be. Reported so a host can log it and
+    // decide, rather than failing to start on a path problem.
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("occupied.db");
+    std::fs::create_dir(&path).unwrap();
+
+    assert!(Store::open_file(&path).is_err());
+}
+
+#[test]
+fn a_row_whose_json_columns_are_unreadable_fails_the_read_rather_than_being_guessed_at() {
+    // `args` and `env_keys` are JSON in a text column. A value that does not
+    // decode is corruption, and inventing an empty list would silently drop a
+    // server's arguments or hide which credentials it holds.
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("store.db");
+    let store = Store::open_file(&path).unwrap();
+    store.insert_server(&record("srv-1")).unwrap();
+    drop(store);
+
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection
+        .execute(
+            "UPDATE mcp_servers SET args_json = 'not json' WHERE server_id = 'srv-1'",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let store = Store::open_file(&path).unwrap();
+    assert!(store.list_servers().is_err());
+}
+
+#[test]
+fn a_row_whose_configuration_is_unreadable_fails_the_read() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("store.db");
+    let store = Store::open_file(&path).unwrap();
+    store.insert_server(&record("srv-1")).unwrap();
+    drop(store);
+
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection
+        .execute(
+            "UPDATE mcp_servers SET config_json = '{ not json' WHERE server_id = 'srv-1'",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    assert!(Store::open_file(&path).unwrap().get_server("srv-1").is_err());
+}
