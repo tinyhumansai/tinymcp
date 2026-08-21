@@ -354,3 +354,90 @@ fn the_default_pacing_is_a_minute_with_an_eight_second_probe() {
     assert_eq!(config.tick_interval, Duration::from_secs(60));
     assert_eq!(config.probe_timeout, Duration::from_secs(8));
 }
+
+// ---------------------------------------------------------------------------
+// The loop itself
+// ---------------------------------------------------------------------------
+
+#[tokio::test(start_paused = true)]
+async fn the_first_tick_waits_a_whole_interval_before_it_runs() {
+    // So it does not race the startup connect pass: reconnecting a server that
+    // is halfway through connecting would tear down work already in flight.
+    let store = Store::open_in_memory().unwrap();
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+
+    let supervisor = Supervisor::new(
+        SupervisorConfig {
+            tick_interval: Duration::from_secs(30),
+            ..SupervisorConfig::default()
+        },
+        McpClientIdentityConfig::default(),
+        None,
+    );
+
+    // The loop never returns, so it is raced against a clock this test owns.
+    // Reaching the timeout is the assertion: the first tick has not fired.
+    let running = tokio::spawn(async move {
+        let store = Store::open_in_memory().unwrap();
+        let connections = Connections::new();
+        let oauth = OAuthFlow::new(None).unwrap();
+        supervisor.run(&store, &connections, &oauth).await;
+    });
+
+    tokio::time::sleep(Duration::from_secs(90)).await;
+
+    assert!(!running.is_finished(), "the supervisor loop ended");
+    running.abort();
+    drop((store, connections, oauth));
+}
+
+#[tokio::test]
+async fn a_tick_over_an_empty_store_does_nothing_and_does_not_fail() {
+    let mut supervisor = Supervisor::new(
+        SupervisorConfig::default(),
+        McpClientIdentityConfig::default(),
+        None,
+    );
+
+    supervisor
+        .tick(
+            &Store::open_in_memory().unwrap(),
+            &Connections::new(),
+            &OAuthFlow::new(None).unwrap(),
+            Instant::now(),
+        )
+        .await;
+}
+
+#[tokio::test]
+async fn a_tick_leaves_a_disabled_install_alone() {
+    // The disable path owns tearing the connection down. All the supervisor
+    // does is forget the backoff, so re-enabling gets an immediate attempt
+    // rather than inheriting an old penalty.
+    let store = Store::open_in_memory().unwrap();
+    store
+        .insert_server(&InstalledServer {
+            enabled: false,
+            ..install("srv-1", Transport::Stdio)
+        })
+        .unwrap();
+
+    let connections = Connections::new();
+    let mut supervisor = Supervisor::new(
+        SupervisorConfig::default(),
+        McpClientIdentityConfig::default(),
+        None,
+    );
+
+    supervisor
+        .tick(
+            &store,
+            &connections,
+            &OAuthFlow::new(None).unwrap(),
+            Instant::now(),
+        )
+        .await;
+
+    assert_eq!(connections.connected_count().await, 0);
+}
