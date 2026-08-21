@@ -100,8 +100,10 @@ only thing standing between a field rename and a production decode failure.
       `src/openhuman/mcp/registry/types.rs` (706 lines).
 - [x] `crates/tinymcp-bus/src/audit/` — the record types from
       `src/openhuman/mcp/audit/types.rs`.
-- [ ] `crates/tinymcp-bus/src/method/` — one request and one response type per
-      member listed in the specification.
+- [x] `crates/tinymcp-bus/src/method/` — a reply type per operation whose
+      answer is more than a value already modelled. There is deliberately **no
+      success-or-error envelope**: a failure crosses the bus as a failure, so a
+      caller does not unwrap two layers to learn whether anything went wrong.
 - [x] `crates/tinymcp-bus/src/names/` — `INTERFACE =
       "ai.tinyhumans.tinymcp.Mcp"`, `OBJECT_PATH = "/ai/tinyhumans/tinymcp/Mcp"`,
       one constant per member, and `METHODS` in dispatch order.
@@ -187,8 +189,17 @@ Two defects found while porting, each fixed with a regression test:
       `mcp_setup_config_assist` reaches `agent::turn_origin` to run an agent
       turn. That is host policy; the module's `ConfigAssist` member returns the
       prepared context and the host runs the turn.
-- [ ] `crates/tinymcp/src/registry/ops/` — the operation bodies from `ops.rs`
-      (1057), returning contract response types instead of `RpcOutcome<Value>`.
+- [x] `crates/tinymcp/src/registry/ops/` — the operation bodies from `ops.rs`
+      (1057), as an `McpRegistry` **facade** rather than free functions: every
+      operation needs several of the pieces, and those pieces need each other in
+      a fixed order, so free functions would mean every caller assembling that
+      themselves and every caller getting a chance to assemble it differently.
+      Returns the contract's reply types instead of `RpcOutcome<Value>`.
+
+      Two things stay with the host, and the facade returns what they need
+      rather than doing them: publishing an event, and running a model turn for
+      `config_assist`.
+
       `schemas.rs` (1268) does **not** move: it is OpenHuman's RPC controller
       wiring and is replaced by the bus adapter in Phase 5.
 - [ ] Drop `registry/bus.rs`. It was pure `tracing` logging over `DomainEvent`
@@ -291,10 +302,8 @@ cargo run -p tinymcp --example verify_module
 
 - [x] Phase 0 — de-template (partial: renames and metadata done)
 - [x] Phase 1 — `sanitize`
-- [~] Phase 2 — contract crate (all payload families and names done; per-member request/response types outstanding)
+- [x] Phase 2 — contract crate
 - [x] Phase 3 — transports
-- [~] Phase 4 — registries (static set, store, curation, audit store, OAuth,
-      connections, supervisor, sources, boot and the setup vault done; the
-      setup operations and `ops` outstanding)
+- [x] Phase 4 — registries
 - [ ] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
