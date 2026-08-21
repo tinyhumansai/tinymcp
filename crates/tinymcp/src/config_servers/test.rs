@@ -669,7 +669,8 @@ async fn ending_a_session_on_a_declared_server_succeeds() {
     }]);
     registry.initialize("weather").await.unwrap();
 
-    assert!(registry.close_session("weather").await.is_ok());
+    let definition = registry.get("weather").expect("a declared server");
+    assert!(definition.client.close_session().await.is_ok());
 }
 
 #[tokio::test]
@@ -681,7 +682,6 @@ async fn every_operation_on_a_server_that_was_never_declared_is_unknown() {
         registry.list_tools("nothing").await.err(),
         registry.call_tool("nothing", "t", json!({})).await.err(),
         registry.discover_authorization("nothing").await.err(),
-        registry.close_session("nothing").await.err(),
     ] {
         let error = error.expect("an unknown server is an error");
         assert!(matches!(error, Error::UnknownServer { .. }), "{error:?}");
