@@ -1240,7 +1240,8 @@ async fn the_facade_hands_out_the_pieces_a_host_drives_directly() {
     // supported, so both accessors are part of the surface.
     let registry = registry();
 
-    assert_eq!(registry.vault().pending_count(), 0);
+    let (handle, _receiver) = registry.vault().request("API_KEY").await;
+    assert!(registry.vault().submit(&handle, "sekrit".into()).await);
     assert_eq!(registry.oauth().pending_count(), 0);
     assert!(registry.connected_overview().await.is_empty());
 }
