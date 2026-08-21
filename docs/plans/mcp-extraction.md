@@ -176,14 +176,17 @@ Two defects found while porting, each fixed with a regression test:
       Completing an authorization stores the token and stops — reconnecting is
       the caller's job, which is what lets the connection map depend on this
       module for refresh without a cycle.
-- [~] `crates/tinymcp/src/registry/curation/` (174) done; `boot/` (110)
-      outstanding, with `boot_tests.rs` as `boot/test.rs`.
-- [ ] `crates/tinymcp/src/registry/setup/` — `setup.rs` (327) and the
-      `setup_ops.rs` operations (690), minus the OpenHuman agent invocation:
-      `mcp_setup_config_assist` reaches `agent::turn_origin` to run an
-      OpenHuman agent turn. That call is host policy and stays in OpenHuman;
-      the module's `ConfigAssist` member returns the prepared prompt context
-      and the host runs the turn.
+- [x] `crates/tinymcp/src/registry/curation/` (174) and `boot/` (110).
+- [~] `crates/tinymcp/src/registry/setup/` — the secret vault from `setup.rs`
+      (327) is done; the `setup_ops.rs` operations (690) land with `ops`. The
+      vault is **owned**, not a process global, and its handle parser now trims
+      before stripping the scheme — a padded handle, which is what a model
+      producing one in prose writes, was being rejected.
+
+      The OpenHuman agent invocation does not come across:
+      `mcp_setup_config_assist` reaches `agent::turn_origin` to run an agent
+      turn. That is host policy; the module's `ConfigAssist` member returns the
+      prepared context and the host runs the turn.
 - [ ] `crates/tinymcp/src/registry/ops/` — the operation bodies from `ops.rs`
       (1057), returning contract response types instead of `RpcOutcome<Value>`.
       `schemas.rs` (1268) does **not** move: it is OpenHuman's RPC controller
@@ -291,7 +294,7 @@ cargo run -p tinymcp --example verify_module
 - [~] Phase 2 — contract crate (all payload families and names done; per-member request/response types outstanding)
 - [x] Phase 3 — transports
 - [~] Phase 4 — registries (static set, store, curation, audit store, OAuth,
-      connections, supervisor and sources done; boot, setup and ops
-      outstanding)
+      connections, supervisor, sources, boot and the setup vault done; the
+      setup operations and `ops` outstanding)
 - [ ] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
