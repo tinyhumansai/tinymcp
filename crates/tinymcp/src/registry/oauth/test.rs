@@ -573,20 +573,8 @@ async fn a_fresh_flow_has_nothing_parked() {
 // client registration, the authorize URL that gets built, and the code
 // exchange that ends it. None of that exists without something answering.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use axum::Router;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use serde_json::{Value, json};
-
-use super::flow::OAuthFlow;
-use crate::error::Error;
-use crate::registry::Store;
-use tinymcp_bus::{CommandKind, InstalledServer, Transport};
+use axum::response::Response;
+use axum::routing::get;
 
 /// How the loopback authorization server should behave.
 #[derive(Debug, Default)]
@@ -603,16 +591,6 @@ struct Authority {
     refuse_exchange: std::sync::atomic::AtomicBool,
 }
 
-/// Binds a loopback port and serves `app`, returning its origin.
-async fn serve(app: Router) -> String {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-    format!("http://{addr}")
-}
-
 /// An MCP server that demands OAuth, together with the authorization server it
 /// points at. Both live on one origin, which is legal and keeps the test short.
 async fn authority() -> (String, Arc<Authority>) {
@@ -621,7 +599,7 @@ async fn authority() -> (String, Arc<Authority>) {
     /// The MCP endpoint: always 401, always pointing at the metadata.
     async fn mcp() -> Response {
         (
-            StatusCode::UNAUTHORIZED,
+            AxumStatus::UNAUTHORIZED,
             [(
                 "WWW-Authenticate",
                 "Bearer resource_metadata=\"__ORIGIN__/.well-known/oauth-protected-resource\"",
@@ -655,7 +633,7 @@ async fn authority() -> (String, Arc<Authority>) {
         // Absent on purpose: the client tries this first and must fall back.
         .route(
             "/.well-known/openid-configuration",
-            get(|| async { StatusCode::NOT_FOUND }),
+            get(|| async { AxumStatus::NOT_FOUND }),
         )
         .route(
             "/.well-known/oauth-authorization-server",
@@ -706,7 +684,7 @@ async fn authority() -> (String, Arc<Authority>) {
 
                     if state.refuse_exchange.load(Ordering::SeqCst) {
                         return (
-                            StatusCode::BAD_REQUEST,
+                            AxumStatus::BAD_REQUEST,
                             "{\"error\":\"invalid_grant\"}".to_string(),
                         )
                             .into_response();
@@ -743,7 +721,7 @@ async fn authority_with_challenge() -> (String, Arc<Authority>) {
         let challenge = challenge.clone();
         async move {
             (
-                StatusCode::UNAUTHORIZED,
+                AxumStatus::UNAUTHORIZED,
                 [("WWW-Authenticate", challenge)],
                 "unauthorized",
             )
@@ -753,32 +731,6 @@ async fn authority_with_challenge() -> (String, Arc<Authority>) {
     let mcp_base = serve(app).await;
 
     (format!("{mcp_base}/mcp"), state)
-}
-
-/// A store holding one HTTP-remote install at `endpoint`.
-fn store_with(endpoint: &str) -> Store {
-    let store = Store::open_in_memory().expect("a store");
-    store
-        .insert_server(&InstalledServer {
-            server_id: "srv-1".into(),
-            qualified_name: "com.vendor/server".into(),
-            display_name: "Server".into(),
-            description: None,
-            icon_url: None,
-            command_kind: CommandKind::Node,
-            command: "npx".into(),
-            args: Vec::new(),
-            env_keys: Vec::new(),
-            config: None,
-            installed_at: 1_000,
-            last_connected_at: None,
-            transport: Transport::HttpRemote {
-                url: endpoint.to_string(),
-            },
-            enabled: true,
-        })
-        .expect("insert");
-    store
 }
 
 /// One query parameter off an authorize URL.
@@ -802,7 +754,7 @@ fn flow() -> OAuthFlow {
 #[tokio::test]
 async fn beginning_a_sign_in_registers_a_client_and_returns_an_authorize_url() {
     let (endpoint, state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let url = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -819,7 +771,7 @@ async fn the_authorize_url_carries_the_pkce_challenge_and_its_method() {
     // matters as much as the challenge: `plain` would make the verifier
     // pointless.
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let url = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -839,7 +791,7 @@ async fn the_authorize_url_carries_the_pkce_challenge_and_its_method() {
 #[tokio::test]
 async fn the_authorize_url_carries_the_state_the_callback_will_return() {
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let url = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -854,7 +806,7 @@ async fn the_authorize_url_names_the_resource_being_authorized() {
     // A token minted for one resource must not be usable at another, and the
     // authorization server can only scope it if it is told.
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let url = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -868,7 +820,7 @@ async fn the_authorize_url_names_the_resource_being_authorized() {
 async fn the_authorize_url_carries_the_redirect_the_host_bound() {
     // Only the host knows which port it actually bound.
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let url = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:9999/callback")
@@ -884,7 +836,7 @@ async fn the_authorize_url_carries_the_redirect_the_host_bound() {
 #[tokio::test]
 async fn beginning_parks_exactly_one_pending_authorization() {
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
 
     flow.begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -900,7 +852,7 @@ async fn discovery_falls_back_from_the_openid_document_to_the_oauth_one() {
     // authority answers 404 on the OpenID document, so reaching an authorize
     // URL at all proves the fallback ran.
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     assert!(
         flow()
@@ -917,28 +869,8 @@ async fn discovery_falls_back_from_the_openid_document_to_the_oauth_one() {
 #[tokio::test]
 async fn a_stdio_server_cannot_be_signed_in_to() {
     // OAuth is a property of an HTTP endpoint; a subprocess has none.
-    let store = Store::open_in_memory().unwrap();
-    store
-        .insert_server(&InstalledServer {
-            server_id: "srv-1".into(),
-            qualified_name: "com.vendor/server".into(),
-            display_name: "Server".into(),
-            description: None,
-            icon_url: None,
-            command_kind: CommandKind::Node,
-            command: "npx".into(),
-            args: Vec::new(),
-            env_keys: Vec::new(),
-            config: None,
-            installed_at: 1_000,
-            last_connected_at: None,
-            transport: Transport::Stdio,
-            enabled: true,
-        })
-        .unwrap();
-
     let error = flow()
-        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .begin(&store_with_stdio(), "srv-1", "http://127.0.0.1:7788/callback")
         .await
         .expect_err("stdio");
 
@@ -951,7 +883,7 @@ async fn an_authorization_server_without_dynamic_registration_is_refused() {
     // that cannot finish the flow would fail later and less clearly.
     let (endpoint, state) = authority_with_challenge().await;
     state.without_registration.store(true, Ordering::SeqCst);
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let error = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -967,7 +899,7 @@ async fn an_authorization_server_not_offering_the_authorization_code_grant_is_re
     state
         .without_authorization_code
         .store(true, Ordering::SeqCst);
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let error = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -985,7 +917,7 @@ async fn a_server_that_does_not_want_authorization_is_refused() {
         axum::Json(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))
     }));
     let base = serve(app).await;
-    let store = store_with(&base);
+    let store = store_with_remote(&base);
 
     let error = flow()
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1007,7 +939,7 @@ async fn completing_exchanges_the_code_and_reports_the_server_to_reconnect() {
     // Reconnecting is the caller's: this flow has no connection map, and the
     // caller does.
     let (endpoint, state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
     let url = flow
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1029,7 +961,7 @@ async fn completing_stores_the_token_as_an_ordinary_authorization_header() {
     // Storing it as a header means the connect path needs no special case for
     // an OAuth server: it builds headers from stored credentials either way.
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
     let url = flow
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1048,7 +980,7 @@ async fn completing_stores_the_token_as_an_ordinary_authorization_header() {
 #[tokio::test]
 async fn the_exchange_sends_the_verifier_that_matches_the_challenge() {
     let (endpoint, state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
     let url = flow
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1070,7 +1002,7 @@ async fn the_stored_bundle_keeps_the_refresh_token_out_of_the_credential_listing
     // The bundle key is marked internal, so the connect path never sends it to
     // a server and a credential listing does not show it to the user.
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
     let url = flow
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1083,15 +1015,15 @@ async fn the_stored_bundle_keeps_the_refresh_token_out_of_the_credential_listing
         .unwrap();
 
     let env = store.load_env_values("srv-1").unwrap();
-    let bundle = env.get(super::OAUTH_BUNDLE_KEY).expect("a bundle");
+    let bundle = env.get(OAUTH_BUNDLE_KEY).expect("a bundle");
     assert!(bundle.contains("rt-1"), "the refresh token is kept");
-    assert!(super::OAUTH_BUNDLE_KEY.starts_with("__"), "marked internal");
+    assert!(OAUTH_BUNDLE_KEY.starts_with("__"), "marked internal");
 }
 
 #[tokio::test]
 async fn an_unknown_state_is_refused() {
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let error = flow()
         .complete(&store, "never-issued", "the-code")
@@ -1107,7 +1039,7 @@ async fn a_state_is_consumed_even_when_the_exchange_fails() {
     // and keeping the entry would only hold a secret in memory.
     let (endpoint, state) = authority_with_challenge().await;
     state.refuse_exchange.store(true, Ordering::SeqCst);
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
     let url = flow
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1131,7 +1063,7 @@ async fn a_refused_exchange_reports_what_the_token_endpoint_said() {
     // differently from `invalid_client`, and a bare status tells them apart.
     let (endpoint, state) = authority_with_challenge().await;
     state.refuse_exchange.store(true, Ordering::SeqCst);
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
     let url = flow
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1151,7 +1083,7 @@ async fn a_refused_exchange_reports_what_the_token_endpoint_said() {
 async fn a_failed_exchange_stores_no_credential() {
     let (endpoint, state) = authority_with_challenge().await;
     state.refuse_exchange.store(true, Ordering::SeqCst);
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
     let flow = flow();
     let url = flow
         .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
@@ -1171,11 +1103,11 @@ async fn a_failed_exchange_stores_no_credential() {
 #[tokio::test]
 async fn detection_reports_oauth_when_discovery_reaches_an_authorize_endpoint() {
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let detection = flow().detect(&store, "srv-1").await.expect("detect");
 
-    assert_eq!(detection.kind, super::AuthKind::Oauth);
+    assert_eq!(detection.kind, AuthKind::Oauth);
     assert!(
         detection
             .authorization_endpoint
@@ -1186,7 +1118,7 @@ async fn detection_reports_oauth_when_discovery_reaches_an_authorize_endpoint() 
 #[tokio::test]
 async fn detection_reports_the_grants_the_authorization_server_listed() {
     let (endpoint, _state) = authority_with_challenge().await;
-    let store = store_with(&endpoint);
+    let store = store_with_remote(&endpoint);
 
     let detection = flow().detect(&store, "srv-1").await.unwrap();
 
