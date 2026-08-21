@@ -16,7 +16,7 @@
 //! query parameter and occasionally credentials in userinfo, and errors reach
 //! logs, telemetry, and user interfaces alike.
 
-pub mod http;
+pub(crate) mod http;
 
 use serde_json::Value;
 use tinymcp_bus::{McpToolResult, SUPPORTED_PROTOCOL_VERSIONS};
