@@ -564,3 +564,35 @@ fn an_audit_log_that_cannot_be_opened_is_reported_rather_than_panicking() {
 
     assert!(AuditStore::open_file(&path).is_err());
 }
+
+#[test]
+fn a_limit_beyond_what_the_column_can_hold_is_refused() {
+    // The other half of the bound test above: the limit as well as the offset.
+    let store = store();
+    let query = McpWriteListQuery {
+        limit: Some(u64::MAX),
+        ..all()
+    };
+
+    assert!(store.list(&query).is_err());
+}
+
+#[test]
+fn a_row_whose_argument_summary_is_unreadable_fails_the_read() {
+    // The column is JSON in a text column. A value that does not decode is
+    // corruption, and inventing an empty summary would make an audit record
+    // say something the write did not.
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("audit.db");
+    let store = AuditStore::open_file(&path).unwrap();
+    store.record(&write_at(1_000, "claude", "memory_write")).unwrap();
+    drop(store);
+
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection
+        .execute("UPDATE mcp_writes SET args_summary = '{ not json'", [])
+        .unwrap();
+    drop(connection);
+
+    assert!(AuditStore::open_file(&path).unwrap().list(&all()).is_err());
+}
