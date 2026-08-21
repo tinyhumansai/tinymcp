@@ -236,9 +236,17 @@ fn deleting_a_server_takes_its_credentials_with_it() {
 fn installing_if_absent_deduplicates_on_the_qualified_name() {
     let (_directory, store) = store();
 
-    assert!(store.insert_server_if_absent(&stdio_server("srv-1")).unwrap());
+    assert!(
+        store
+            .insert_server_if_absent(&stdio_server("srv-1"))
+            .unwrap()
+    );
     // Same qualified name, different identifier: the second must not land.
-    assert!(!store.insert_server_if_absent(&stdio_server("srv-2")).unwrap());
+    assert!(
+        !store
+            .insert_server_if_absent(&stdio_server("srv-2"))
+            .unwrap()
+    );
 
     assert_eq!(store.list_servers().unwrap().len(), 1);
 }
@@ -347,7 +355,13 @@ fn recording_a_connection_sets_a_timestamp_where_there_was_none() {
 
     store.touch_last_connected("srv-1").unwrap();
 
-    assert!(store.get_server("srv-1").unwrap().last_connected_at.is_some());
+    assert!(
+        store
+            .get_server("srv-1")
+            .unwrap()
+            .last_connected_at
+            .is_some()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -440,7 +454,9 @@ fn an_empty_cache_misses() {
 #[test]
 fn a_freshly_written_entry_hits() {
     let (_directory, store) = store();
-    store.cache("servers?q=weather", r#"{"servers":[]}"#).unwrap();
+    store
+        .cache("servers?q=weather", r#"{"servers":[]}"#)
+        .unwrap();
 
     assert_eq!(
         store.cached("servers?q=weather").unwrap().as_deref(),
@@ -523,11 +539,13 @@ fn an_older_database_gains_the_columns_it_is_missing() {
 
     let store = Store::open_file(&path).expect("the older file opens");
 
-    let columns = store.with_connection(|connection| {
-        schema::columns_of(connection, "mcp_servers").unwrap()
-    });
+    let columns =
+        store.with_connection(|connection| schema::columns_of(connection, "mcp_servers").unwrap());
     for column in ["transport", "deployment_url", "enabled"] {
-        assert!(columns.iter().any(|name| name == column), "missing {column}");
+        assert!(
+            columns.iter().any(|name| name == column),
+            "missing {column}"
+        );
     }
 }
 
