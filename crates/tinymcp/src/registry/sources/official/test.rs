@@ -14,7 +14,7 @@ use super::types::{OfficialListResponse, OfficialServer};
 use super::{page_bound, search_cache_key};
 
 /// A list response wrapping `servers`.
-fn list_response(servers: Value, next_cursor: Option<&str>) -> OfficialListResponse {
+fn list_response(servers: &Value, next_cursor: Option<&str>) -> OfficialListResponse {
     let mut document = json!({ "servers": servers });
     if let Some(cursor) = next_cursor {
         document["metadata"] = json!({ "nextCursor": cursor });
@@ -42,7 +42,7 @@ fn a_row_is_read_from_inside_its_envelope() {
     // The bug this guards: an earlier adapter parsed the inner shape at the top
     // level, so serde filled every field with a default and the catalog
     // rendered pages of blank cards.
-    let response = list_response(json!([envelope("io.github.example/server")]), None);
+    let response = list_response(&json!([envelope("io.github.example/server")]), None);
     let summaries = response.into_summaries();
 
     assert_eq!(summaries.len(), 1);
@@ -64,7 +64,7 @@ fn a_row_with_no_server_key_is_a_parse_error_rather_than_a_blank_card() {
 
 #[test]
 fn an_empty_response_yields_no_rows() {
-    assert!(list_response(json!([]), None).into_summaries().is_empty());
+    assert!(list_response(&json!([]), None).into_summaries().is_empty());
     let empty: OfficialListResponse = serde_json::from_value(json!({})).unwrap();
     assert!(empty.into_summaries().is_empty());
 }
@@ -123,7 +123,7 @@ fn a_deprecated_row_is_dropped() {
 #[test]
 fn a_row_with_no_metadata_is_not_treated_as_deprecated() {
     // That is what a row cached by an older build looks like.
-    let response = list_response(json!([envelope("io.github.example/server")]), None);
+    let response = list_response(&json!([envelope("io.github.example/server")]), None);
     assert_eq!(response.into_summaries().len(), 1);
 }
 
@@ -147,7 +147,7 @@ fn a_row_with_an_active_status_is_kept() {
 
 #[test]
 fn a_repeated_name_appears_once() {
-    let response = list_response(json!([envelope("same/name"), envelope("same/name")]), None);
+    let response = list_response(&json!([envelope("same/name"), envelope("same/name")]), None);
 
     assert_eq!(response.into_summaries().len(), 1);
 }
@@ -555,7 +555,7 @@ fn the_page_bound_does_not_overflow() {
 
 #[test]
 fn a_cursor_is_read_from_the_metadata() {
-    let response = list_response(json!([]), Some("token-1"));
+    let response = list_response(&json!([]), Some("token-1"));
     assert_eq!(response.next_cursor(), Some("token-1"));
 }
 
@@ -563,13 +563,13 @@ fn a_cursor_is_read_from_the_metadata() {
 fn an_empty_cursor_counts_as_no_cursor() {
     // The registry sends one at the end of a result set, and treating it as a
     // cursor would page forever.
-    let response = list_response(json!([]), Some(""));
+    let response = list_response(&json!([]), Some(""));
     assert_eq!(response.next_cursor(), None);
 }
 
 #[test]
 fn a_response_with_no_metadata_has_no_cursor() {
-    assert_eq!(list_response(json!([]), None).next_cursor(), None);
+    assert_eq!(list_response(&json!([]), None).next_cursor(), None);
 }
 
 #[test]

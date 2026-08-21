@@ -29,14 +29,17 @@ const fn is_unreserved(byte: u8) -> bool {
 /// ```
 #[must_use]
 pub fn encode_path_segment(segment: &str) -> String {
+    use std::fmt::Write as _;
+
     let mut encoded = String::with_capacity(segment.len());
 
     for byte in segment.bytes() {
         if is_unreserved(byte) {
             encoded.push(byte as char);
         } else {
-            encoded.push('%');
-            encoded.push_str(&format!("{byte:02X}"));
+            // Writing into the buffer cannot fail; the result is ignored
+            // rather than unwrapped so no library path can panic.
+            let _ = write!(encoded, "%{byte:02X}");
         }
     }
 

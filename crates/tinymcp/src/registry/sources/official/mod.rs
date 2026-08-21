@@ -229,15 +229,14 @@ impl McpOfficialRegistry {
             // empty but a previous run's page bodies may still be on disk, and
             // using them removes network calls that have nothing to do with
             // what the network currently holds.
-            let body = match store.cached(&cache_key) {
-                Ok(Some(body)) => body,
-                _ => {
-                    let body = self
-                        .fetch_page(auth, query, page_size, cursor.as_deref())
-                        .await?;
-                    cache(store, &cache_key, &body);
-                    body
-                }
+            let body = if let Ok(Some(body)) = store.cached(&cache_key) {
+                body
+            } else {
+                let body = self
+                    .fetch_page(auth, query, page_size, cursor.as_deref())
+                    .await?;
+                cache(store, &cache_key, &body);
+                body
             };
 
             let parsed: OfficialListResponse = serde_json::from_str(&body)

@@ -229,7 +229,7 @@ impl OfficialServer {
                 r#type: "stdio".to_string(),
                 deployment_url: None,
                 config_schema: package.to_config_schema(),
-                example_config: package.to_example_config(),
+                example_config: Some(package.to_example_config()),
                 published: true,
                 extra: ExtraFields::new(),
             });
@@ -306,7 +306,7 @@ impl OfficialPackage {
     /// `uvx` for Python, `npx -y` for Node, and `npx -y` for anything
     /// unrecognised — most of the ecosystem is Node, so it is the least
     /// surprising guess when the registry does not say.
-    pub(super) fn to_example_config(&self) -> Option<Value> {
+    pub(super) fn to_example_config(&self) -> Value {
         let (command, mut args) = match self.registry_type.as_deref() {
             Some("pypi") => (
                 self.runtime_hint.as_deref().unwrap_or("uvx").to_string(),
@@ -338,7 +338,7 @@ impl OfficialPackage {
             args.push(identifier.clone());
         }
 
-        Some(serde_json::json!({ "command": command, "args": args }))
+        serde_json::json!({ "command": command, "args": args })
     }
 
     /// The package's input schema.
