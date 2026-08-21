@@ -39,7 +39,6 @@ pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
 /// the transports; the boundary that matters is where the value is *consumed*,
 /// not where it is *stored*.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct McpRemoteTool {
     /// The tool's programmatic name, as the server spells it.
@@ -235,7 +234,7 @@ impl McpToolResult {
     pub fn success(text: impl Into<String>) -> Self {
         Self {
             content: vec![McpToolContent::Text { text: text.into() }],
-            is_error: true.then_some(false).unwrap_or(false),
+            is_error: false,
             markdown_formatted: None,
         }
     }
