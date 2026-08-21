@@ -593,7 +593,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serde_json::Value;
 
-use crate::registry::oauth::AuthKind;
+use crate::registry::AuthKind;
 use tinymcp_bus::LATEST_PROTOCOL_VERSION;
 
 /// What the loopback server saw.
