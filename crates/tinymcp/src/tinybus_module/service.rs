@@ -118,8 +118,8 @@ impl McpService {
 // blocking one would stall the connection's dispatch task for every other
 // caller. A handful of them have nothing to await, and that is fine — the
 // uniformity is what the macro is buying.
-#[allow(clippy::unused_async)]
 #[tinybus::interface(name = "ai.tinyhumans.tinymcp.Mcp")]
+#[allow(clippy::unused_async)]
 impl McpService {
     // -- browsing -----------------------------------------------------------
 
