@@ -60,7 +60,7 @@ impl RegistrySource {
 /// whatever a previous test left in it.
 #[derive(Debug)]
 pub struct Registries {
-    auth: McpRegistryAuthConfig,
+    auth: Mutex<McpRegistryAuthConfig>,
     official: McpOfficialRegistry,
     smithery: SmitheryRegistry,
     /// Which cursor produced which page, keyed by query, page size, and page.
@@ -77,7 +77,7 @@ impl Registries {
         Ok(Self {
             official: McpOfficialRegistry::new()?,
             smithery: SmitheryRegistry::new()?,
-            auth,
+            auth: Mutex::new(auth),
             cursors: Mutex::new(HashMap::new()),
         })
     }
@@ -126,7 +126,7 @@ impl Registries {
         match source {
             RegistrySource::McpOfficial => {
                 self.official
-                    .search(store, &self.auth, &self.cursors, query, page, page_size)
+                    .search(store, &self.auth.lock().clone(), &self.cursors, query, page, page_size)
                     .await
             }
             RegistrySource::Smithery => {
@@ -161,7 +161,9 @@ impl Registries {
 
         match source {
             RegistrySource::McpOfficial => {
-                self.official.get(store, &self.auth, qualified_name).await
+                self.official
+                    .get(store, &self.auth.lock().clone(), qualified_name)
+                    .await
             }
             // Deliberately not gated on the key: an already-installed Smithery
             // server must stay inspectable after the key is removed.
@@ -187,6 +189,7 @@ impl Registries {
             // pointed at cannot debug it.
             mcp_official_base: self
                 .auth
+                .lock()
                 .mcp_official_base
                 .clone()
                 .filter(|base| !base.trim().is_empty()),
@@ -198,10 +201,39 @@ impl Registries {
     #[must_use]
     pub fn official_token(&self) -> Option<String> {
         self.auth
+            .lock()
             .mcp_official_token
             .clone()
             .filter(|token| !token.trim().is_empty())
             .or_else(|| non_blank_env("MCP_OFFICIAL_REGISTRY_TOKEN"))
+    }
+
+    /// Replaces the registry credentials this dispatcher uses.
+    ///
+    /// Per field: `None` leaves the stored value alone, and `Some` sets it —
+    /// where a blank string clears it, falling back to the environment.
+    ///
+    /// This changes only what *this* process uses. Persisting the settings is
+    /// the host's: it owns where its configuration lives, and a module writing
+    /// into that would be reaching into a file it does not own.
+    pub fn set_settings(
+        &self,
+        smithery_api_key: Option<String>,
+        mcp_official_base: Option<String>,
+        mcp_official_token: Option<String>,
+    ) {
+        /// A blank update clears the field; an absent one leaves it.
+        fn apply(field: &mut Option<String>, update: Option<String>) {
+            if let Some(value) = update {
+                let trimmed = value.trim();
+                *field = (!trimmed.is_empty()).then(|| trimmed.to_string());
+            }
+        }
+
+        let mut auth = self.auth.lock();
+        apply(&mut auth.smithery_api_key, smithery_api_key);
+        apply(&mut auth.mcp_official_base, mcp_official_base);
+        apply(&mut auth.mcp_official_token, mcp_official_token);
     }
 
     /// The effective Smithery key: configuration first, then the environment.
@@ -211,6 +243,7 @@ impl Registries {
     #[must_use]
     pub fn smithery_key(&self) -> Option<String> {
         self.auth
+            .lock()
             .smithery_api_key
             .clone()
             .filter(|key| !key.trim().is_empty())
