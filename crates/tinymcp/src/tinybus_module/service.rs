@@ -1,15 +1,5 @@
 //! The interface implementation.
 
-// Every member below is `async fn` because `#[tinybus::interface]` requires it
-// — it rejects a blocking method outright, on the grounds that one would stall
-// the connection's dispatch task for every other caller. A handful of members
-// have nothing to await, so `unused_async` fires on them, and the lint cannot
-// be answered where it is raised: the macro re-emits the impl without the
-// attributes it was given, so neither an `#[allow]` on the block nor one on the
-// method survives expansion. Module scope is the narrowest place left, and this
-// module holds nothing but that impl and its helpers.
-#![allow(clippy::unused_async)]
-
 use std::collections::{BTreeMap, HashMap};
 
 use serde_json::Value;
@@ -128,6 +118,12 @@ impl McpService {
 // blocking one would stall the connection's dispatch task for every other
 // caller. A handful of them have nothing to await, and that is fine — the
 // uniformity is what the macro is buying.
+// Every member is `async fn` because the interface macro requires it: it
+// rejects a blocking method outright, on the grounds that one would stall the
+// connection's dispatch task for every other caller. A handful of members have
+// nothing to await, and that is fine — the uniformity is what the macro is
+// buying, and it is not this impl's call to make.
+#[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
 #[tinybus::interface(name = "ai.tinyhumans.tinymcp.Mcp")]
 #[allow(clippy::unused_async)]
 impl McpService {
