@@ -40,7 +40,10 @@ async fn serve_working_server() -> String {
     let app = Router::new().route(
         "/",
         post(|Json(body): Json<Value>| async move {
-            let method = body.get("method").and_then(Value::as_str).unwrap_or_default();
+            let method = body
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let result = if method == "initialize" {
                 json!({
                     "protocolVersion": tinymcp_bus::LATEST_PROTOCOL_VERSION,

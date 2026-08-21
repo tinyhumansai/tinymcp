@@ -148,12 +148,18 @@ impl SecretVault {
         let mut entries = self.entries.lock().await;
 
         let Some(entry) = entries.get_mut(handle) else {
-            tracing::warn!(handle = handle.as_str(), "a submission named an unknown handle");
+            tracing::warn!(
+                handle = handle.as_str(),
+                "a submission named an unknown handle"
+            );
             return false;
         };
 
         if entry.value.is_some() {
-            tracing::warn!(handle = handle.as_str(), "a handle was submitted against twice");
+            tracing::warn!(
+                handle = handle.as_str(),
+                "a handle was submitted against twice"
+            );
             return false;
         }
 

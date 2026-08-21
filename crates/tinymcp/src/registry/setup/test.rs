@@ -48,7 +48,10 @@ fn anything_that_is_not_hexadecimal_is_refused() {
     // A model that invents a handle gets a clear rejection rather than a lookup
     // miss that reads like an expiry.
     for invalid in ["not-hex", "", "secret://", "   ", "abc-123", "zzz"] {
-        assert!(SecretRef::parse(invalid).is_none(), "{invalid:?} was accepted");
+        assert!(
+            SecretRef::parse(invalid).is_none(),
+            "{invalid:?} was accepted"
+        );
     }
 }
 
@@ -150,7 +153,10 @@ async fn an_unanswered_handle_cannot_be_resolved() {
         .await
         .expect_err("not answered yet");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
     assert!(error.to_string().contains("not been answered"), "{error}");
 }
 
@@ -164,7 +170,10 @@ async fn an_unknown_handle_cannot_be_resolved() {
         .await
         .expect_err("no such handle");
 
-    assert!(error.to_string().contains("no such secret handle"), "{error}");
+    assert!(
+        error.to_string().contains("no such secret handle"),
+        "{error}"
+    );
 }
 
 #[tokio::test]
