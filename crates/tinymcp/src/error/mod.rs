@@ -147,7 +147,7 @@ pub enum Error {
     Store {
         /// What was being attempted, in the present participle.
         action: String,
-        /// What SQLite reported.
+        /// What `SQLite` reported.
         #[source]
         source: Box<rusqlite::Error>,
     },

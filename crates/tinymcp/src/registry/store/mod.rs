@@ -1,6 +1,6 @@
 //! Persistence for installed servers, their credentials, and the browse cache.
 //!
-//! Three tables in one SQLite file, `mcp_clients/mcp_clients.db` under the data
+//! Three tables in one `SQLite` file, `mcp_clients/mcp_clients.db` under the data
 //! directory the host supplies:
 //!
 //! | Table | Holds |

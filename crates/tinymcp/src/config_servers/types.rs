@@ -114,13 +114,18 @@ impl McpServerDefinition {
 }
 
 /// Either transport, behind one interface.
+///
+/// Both arms are boxed. The two clients differ substantially in size — the HTTP
+/// one carries a `reqwest` client and a session, the subprocess one a pair of
+/// pipes — and an unboxed enum is as large as its biggest arm everywhere it is
+/// stored, including in the registry's map of every configured server.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum McpTransportClient {
     /// A Streamable HTTP server.
-    Http(McpHttpClient),
+    Http(Box<McpHttpClient>),
     /// A subprocess server.
-    Stdio(McpStdioClient),
+    Stdio(Box<McpStdioClient>),
 }
 
 impl McpTransportClient {
@@ -452,7 +457,7 @@ fn build_transport(
             .identity(identity.clone())
             .proxy(proxy.cloned())
             .build()?;
-        return Ok(McpTransportClient::Http(client));
+        return Ok(McpTransportClient::Http(Box::new(client)));
     }
 
     let env = server
@@ -461,13 +466,13 @@ fn build_transport(
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
 
-    Ok(McpTransportClient::Stdio(McpStdioClient::new(
+    Ok(McpTransportClient::Stdio(Box::new(McpStdioClient::new(
         command,
         server.args.clone(),
         env,
         server.cwd.as_ref().map(PathBuf::from),
         identity,
-    )))
+    ))))
 }
 
 /// Trims tool names, drops empties, and removes duplicates.

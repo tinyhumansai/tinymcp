@@ -86,7 +86,7 @@ fn migrate(connection: &Connection) -> Result<()> {
 
 /// Runs one `ADD COLUMN`, treating "already exists" as success.
 ///
-/// SQLite's `ADD COLUMN` has no `IF NOT EXISTS`, and the check above is not
+/// `SQLite`'s `ADD COLUMN` has no `IF NOT EXISTS`, and the check above is not
 /// atomic against another *process* holding the same file. Swallowing exactly
 /// the duplicate-column failure is what makes this idempotent: the column
 /// existing is the post-condition wanted, and reporting it turns a benign race
