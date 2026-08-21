@@ -117,10 +117,9 @@ pub fn strip_control_chars(input: &str) -> String {
 /// Lowercasing is not length-preserving in Unicode — `İ` (U+0130, two bytes)
 /// lowercases to two codepoints totalling three — so a byte offset found in a
 /// lowercased string can land mid-codepoint in the original. Splicing at such
-/// an offset would corrupt the string or panic. Because every token in
-/// [`INSTRUCTION_FENCE_TOKENS`] is ASCII, an ASCII-case-insensitive scan of the
-/// original is both exactly equivalent for the tokens that matter and immune to
-/// that class of bug.
+/// an offset would corrupt the string or panic. Because every token this scans
+/// for is ASCII, an ASCII-case-insensitive scan of the original is both exactly
+/// equivalent for the tokens that matter and immune to that class of bug.
 ///
 /// # Examples
 ///
