@@ -151,6 +151,7 @@ impl McpService {
     }
 
     /// `()`
+    #[allow(clippy::unused_async)]
     async fn registry_settings_get(&self) -> tinybus::Result<RegistrySettings> {
         Ok(self.dynamic.registry_settings())
     }
