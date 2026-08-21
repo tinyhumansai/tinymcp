@@ -905,7 +905,7 @@ fn a_crlf_stream_splits_on_the_same_boundary() {
 #[test]
 fn a_multi_line_data_frame_is_joined_with_newlines() {
     // The event-stream format allows a payload to be split across `data:` lines.
-    let buffer = "data: {\n data: \"a\": 1\n data: }\n\n";
+    let buffer = "data: {\ndata: \"a\": 1\ndata: }\n\n";
 
     let data = first_complete_sse_data(buffer)
         .expect("no error")

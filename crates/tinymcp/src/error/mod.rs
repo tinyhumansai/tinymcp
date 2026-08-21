@@ -125,7 +125,8 @@ pub enum Error {
     /// The HTTP client could not be constructed from the supplied settings.
     ///
     /// In practice this is a malformed proxy URL or an unusable TLS
-    /// configuration.
+    /// configuration. The URL is stripped from the cause for the reason given
+    /// on [`Self::transport`] — a proxy URL can carry credentials too.
     #[error("could not build an http client: {source}")]
     ClientBuild {
         /// What the HTTP client reported.
@@ -144,10 +145,17 @@ pub enum Error {
 
 impl Error {
     /// Builds a [`Self::Transport`] for `endpoint`, redacting it.
+    ///
+    /// The URL is stripped from the underlying `reqwest` error before it is
+    /// stored. That error's own `Display` renders the request URL in full —
+    /// query string included — so keeping it would print the credential this
+    /// crate redacts everywhere else, through the `#[source]` chain that every
+    /// logger walks. Redacting one field and leaving the cause intact is worse
+    /// than not redacting at all, because it reads as safe.
     pub(crate) fn transport(endpoint: &str, source: reqwest::Error) -> Self {
         Self::Transport {
             endpoint: crate::redact_endpoint(endpoint),
-            source: Box::new(source),
+            source: Box::new(source.without_url()),
         }
     }
 
