@@ -6,6 +6,8 @@
 //! literal about the JSON rather than round-tripping through the Rust types and
 //! calling that proof.
 
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use super::{
     HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpProxyConfig,
     McpRegistryAuthConfig, McpServerConfig,

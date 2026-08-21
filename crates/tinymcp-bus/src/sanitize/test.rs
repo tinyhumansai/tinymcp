@@ -4,6 +4,8 @@
 //! deliberately exhaustive about boundaries: what survives, what does not, and
 //! what happens at the degenerate ends of the byte budget.
 
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use super::{
     INSTRUCTION_FENCE_TOKENS, MAX_DESCRIPTION_BYTES, TRUNCATION_SUFFIX, sanitize_for_llm,
     strip_control_chars, strip_instruction_fences, truncate_utf8_safe,
