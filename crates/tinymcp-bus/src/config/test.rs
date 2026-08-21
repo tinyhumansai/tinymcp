@@ -92,9 +92,7 @@ fn auth_query_param_serializes_with_its_name_and_value() {
 fn every_auth_variant_round_trips() {
     let variants = [
         McpAuthConfig::None,
-        McpAuthConfig::BearerToken {
-            token: "t".into(),
-        },
+        McpAuthConfig::BearerToken { token: "t".into() },
         McpAuthConfig::Basic {
             username: "u".into(),
             password: "p".into(),
@@ -165,7 +163,10 @@ fn a_server_decodes_from_the_field_names_a_host_writes() {
     assert_eq!(server.allowed_tools, ["forecast"]);
     assert_eq!(server.disallowed_tools, ["debug"]);
     assert_eq!(server.timeout_secs, 5);
-    assert_eq!(server.auth, McpAuthConfig::BearerToken { token: "t".into() });
+    assert_eq!(
+        server.auth,
+        McpAuthConfig::BearerToken { token: "t".into() }
+    );
 }
 
 #[test]
