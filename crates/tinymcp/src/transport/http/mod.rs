@@ -17,7 +17,7 @@
 //! `Authorization` and `Cookie` on a cross-origin redirect, so a bearer token
 //! does not follow the request to another host.
 //!
-//! **The SSE body is read incrementally.** See [`sse`] for why that is
+//! **The SSE body is read incrementally.** See the `sse` module for why that is
 //! load-bearing rather than an optimization.
 //!
 //! # Session state is behind a synchronous mutex

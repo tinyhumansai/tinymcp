@@ -343,7 +343,8 @@ impl McpRegistry {
 
     /// Replaces an install's credentials and reconnects it.
     ///
-    /// Merged over what is stored, for the reason in [`Self::refresh_install`].
+    /// Merged over what is stored: replacing the map wholesale would erase a
+    /// credential the caller did not name.
     /// The credentials are persisted *before* the reconnect and kept whatever
     /// it does — see [`UpdateEnvOutcome`].
     ///
