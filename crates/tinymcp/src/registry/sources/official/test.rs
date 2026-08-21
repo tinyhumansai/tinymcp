@@ -582,3 +582,519 @@ fn a_cache_key_separates_query_page_and_size() {
     assert_ne!(search_cache_key("a", 1, 20), search_cache_key("a", 1, 50));
     assert_ne!(search_cache_key("a", 1, 20), search_cache_key("b", 1, 20));
 }
+
+// ---------------------------------------------------------------------------
+// The adapter against a loopback registry
+// ---------------------------------------------------------------------------
+//
+// Everything above is shape conversion, which needs no server. What follows
+// exercises the parts that only exist because the registry pages by opaque
+// cursor: the walk, the two caches, and what happens when the chain ends early.
+// Those are the paths a fixture cannot reach.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use axum::Router;
+use axum::extract::State;
+use axum::http::{HeaderMap, Uri};
+use axum::routing::get;
+use parking_lot::Mutex;
+
+use super::{MAX_CURSOR_WALK_PAGES, McpOfficialRegistry};
+use crate::error::Error;
+use crate::registry::Store;
+use tinymcp_bus::McpRegistryAuthConfig;
+
+/// What the mock registry saw.
+#[derive(Debug, Default)]
+struct Seen {
+    pages: AtomicUsize,
+    cursors: Mutex<Vec<Option<String>>>,
+    authorization: Mutex<Option<String>>,
+}
+
+/// One query parameter off a request URI.
+///
+/// Read by hand: the workspace takes `axum` without default features, and the
+/// query extractor is not among the few this suite needs enabled.
+fn param(uri: &Uri, name: &str) -> Option<String> {
+    uri.query()?.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == name).then(|| value.replace('+', " "))
+    })
+}
+
+/// Binds a loopback port and serves `app`, returning its base URL.
+async fn serve(app: Router) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
+}
+
+/// A registry whose result set runs to `pages` pages of one row each.
+///
+/// Cursors are the string form of the next page number, which is opaque enough
+/// for the adapter — it never interprets one — and legible in a failure.
+async fn paged_registry(pages: usize) -> (String, Arc<Seen>) {
+    let seen = Arc::new(Seen::default());
+
+    let app = Router::new()
+        .route(
+            "/v0/servers",
+            get(
+                |State(seen): State<Arc<Seen>>, headers: HeaderMap, uri: Uri| async move {
+                    seen.pages.fetch_add(1, Ordering::SeqCst);
+                    *seen.authorization.lock() = headers
+                        .get("authorization")
+                        .and_then(|value| value.to_str().ok())
+                        .map(ToString::to_string);
+
+                    let cursor = param(&uri, "cursor");
+                    seen.cursors.lock().push(cursor.clone());
+
+                    let page: usize = cursor
+                        .as_deref()
+                        .and_then(|cursor| cursor.parse().ok())
+                        .unwrap_or(1);
+
+                    let mut body = json!({
+                        "servers": [envelope(&format!("@acme/server-{page}"))],
+                    });
+                    if page < pages {
+                        body["metadata"] = json!({ "nextCursor": (page + 1).to_string() });
+                    }
+
+                    axum::Json(body)
+                },
+            ),
+        )
+        .route(
+            "/v0/servers/{*rest}",
+            get(|State(seen): State<Arc<Seen>>, uri: Uri| async move {
+                seen.pages.fetch_add(1, Ordering::SeqCst);
+                // The path carries `{name}/versions`; the name is everything
+                // before the trailing segment.
+                let path = uri.path().trim_start_matches("/v0/servers/");
+                let name = path.trim_end_matches("/versions");
+                axum::Json(json!({ "servers": [envelope(name)] }))
+            }),
+        )
+        .with_state(Arc::clone(&seen));
+
+    (serve(app).await, seen)
+}
+
+/// A registry that answers every request with `status` and `body`.
+async fn failing_registry(status: u16, body: &'static str) -> String {
+    let app = Router::new().fallback(get(move || async move {
+        (
+            axum::http::StatusCode::from_u16(status).unwrap(),
+            body.to_string(),
+        )
+    }));
+
+    serve(app).await
+}
+
+/// Credentials naming `base` as the registry.
+fn auth_at(base: &str) -> McpRegistryAuthConfig {
+    McpRegistryAuthConfig {
+        mcp_official_base: Some(base.to_string()),
+        ..McpRegistryAuthConfig::default()
+    }
+}
+
+/// An empty cursor map.
+fn cursors() -> Mutex<HashMap<(String, u32, u32), String>> {
+    Mutex::new(HashMap::new())
+}
+
+/// An empty store to cache into.
+fn store() -> Store {
+    Store::open_in_memory().expect("the store opens")
+}
+
+/// The adapter under test.
+fn adapter() -> McpOfficialRegistry {
+    McpOfficialRegistry::new().expect("the adapter builds")
+}
+
+// ---------------------------------------------------------------------------
+// Searching
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn the_first_page_is_fetched_without_a_cursor() {
+    let (base, seen) = paged_registry(3).await;
+
+    let (servers, _) = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .expect("the search succeeds");
+
+    assert_eq!(servers.len(), 1);
+    assert_eq!(seen.cursors.lock().as_slice(), &[None]);
+}
+
+#[tokio::test]
+async fn a_page_with_more_behind_it_reports_one_page_beyond() {
+    // A bound, not a total: knowing the true count would mean walking the whole
+    // chain, which is the cost this design exists to avoid. One page beyond is
+    // what a caller needs to decide whether to offer a "next" control.
+    let (base, _seen) = paged_registry(3).await;
+
+    let (_, total_pages) = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(total_pages, 2);
+}
+
+#[tokio::test]
+async fn the_last_page_reports_itself_as_the_last() {
+    let (base, _seen) = paged_registry(1).await;
+
+    let (_, total_pages) = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(total_pages, 1);
+}
+
+#[tokio::test]
+async fn a_configured_token_is_sent_as_a_bearer() {
+    let (base, seen) = paged_registry(1).await;
+    let auth = McpRegistryAuthConfig {
+        mcp_official_token: Some("tok-test".into()),
+        ..auth_at(&base)
+    };
+
+    adapter()
+        .search(&store(), &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(seen.authorization.lock().as_deref(), Some("Bearer tok-test"));
+}
+
+#[tokio::test]
+async fn no_token_means_no_authorization_header() {
+    let (base, seen) = paged_registry(1).await;
+
+    adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(*seen.authorization.lock(), None);
+}
+
+// ---------------------------------------------------------------------------
+// Paging over cursors
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_warm_map_reaches_the_next_page_in_one_request() {
+    // The whole point of keeping the map: paging sequentially must not re-walk
+    // the chain each time.
+    let (base, seen) = paged_registry(5).await;
+    let auth = auth_at(&base);
+    let cursors = cursors();
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors, "", 1, 20)
+        .await
+        .unwrap();
+    let before = seen.pages.load(Ordering::SeqCst);
+
+    adapter
+        .search(&store, &auth, &cursors, "", 2, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(seen.pages.load(Ordering::SeqCst) - before, 1);
+}
+
+#[tokio::test]
+async fn a_cold_map_walks_forward_to_reach_a_deep_page() {
+    // A link straight to page four, or the first search after a restart.
+    let (base, seen) = paged_registry(5).await;
+
+    let (servers, _) = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 4, 20)
+        .await
+        .expect("the walk reaches page four");
+
+    assert_eq!(servers[0].qualified_name, "@acme/server-4");
+    // Pages one through three to learn the cursors, then page four itself.
+    assert_eq!(seen.pages.load(Ordering::SeqCst), 4);
+}
+
+#[tokio::test]
+async fn a_walk_fills_the_map_for_the_pages_it_passed() {
+    // Otherwise walking to page four then asking for page three would walk
+    // again, and paging backwards would cost more than paging forwards.
+    let (base, seen) = paged_registry(5).await;
+    let auth = auth_at(&base);
+    let cursors = cursors();
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors, "", 4, 20)
+        .await
+        .unwrap();
+    let before = seen.pages.load(Ordering::SeqCst);
+
+    adapter
+        .search(&store, &auth, &cursors, "", 3, 20)
+        .await
+        .unwrap();
+
+    // Served from the stored page bodies the walk cached.
+    assert_eq!(seen.pages.load(Ordering::SeqCst), before);
+}
+
+#[tokio::test]
+async fn a_walk_reads_the_stored_cache_before_the_network() {
+    // A cold in-memory map after a restart must not mean a cold network: the
+    // page bodies from the previous run are still on disk.
+    let (base, seen) = paged_registry(5).await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 4, 20)
+        .await
+        .unwrap();
+    let before = seen.pages.load(Ordering::SeqCst);
+
+    // A fresh map, as after a restart, against the same store.
+    adapter
+        .search(&store, &auth, &cursors(), "", 4, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(seen.pages.load(Ordering::SeqCst), before);
+}
+
+#[tokio::test]
+async fn a_page_past_the_end_of_the_chain_comes_back_empty() {
+    // Rather than an error: the chain simply ran out, and an empty result
+    // naming this page as the last is what stops a caller paging further.
+    let (base, _seen) = paged_registry(2).await;
+
+    let (servers, total_pages) = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 5, 20)
+        .await
+        .expect("running out of pages is not a failure");
+
+    assert!(servers.is_empty());
+    assert_eq!(total_pages, 5);
+}
+
+#[tokio::test]
+async fn a_page_beyond_the_walk_limit_is_refused() {
+    // A single request would otherwise fan into hundreds upstream, which is a
+    // denial of service aimed at someone else.
+    let (base, seen) = paged_registry(200).await;
+    let target = MAX_CURSOR_WALK_PAGES + 1;
+
+    let error = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", target, 20)
+        .await
+        .expect_err("beyond the walk limit");
+
+    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(error.to_string().contains("page sequentially"), "{error}");
+    assert_eq!(seen.pages.load(Ordering::SeqCst), 0, "nothing was requested");
+}
+
+// ---------------------------------------------------------------------------
+// The response cache
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_repeated_search_is_served_from_the_stored_cache() {
+    let (base, seen) = paged_registry(3).await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    let (servers, total_pages) = adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(seen.pages.load(Ordering::SeqCst), 1);
+    assert_eq!(servers.len(), 1);
+    assert_eq!(total_pages, 2);
+}
+
+#[tokio::test]
+async fn a_cache_hit_still_records_the_cursor_it_carried() {
+    // Otherwise a hit on page one would leave the map cold, and page two would
+    // walk from the start — the cache would make paging slower.
+    let (base, seen) = paged_registry(5).await;
+    let auth = auth_at(&base);
+    let store = store();
+    let cursors = cursors();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    // A fresh map reading the warm store, then straight on to page two.
+    adapter
+        .search(&store, &auth, &cursors, "", 1, 20)
+        .await
+        .unwrap();
+    let before = seen.pages.load(Ordering::SeqCst);
+
+    adapter
+        .search(&store, &auth, &cursors, "", 2, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(seen.pages.load(Ordering::SeqCst) - before, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Detail
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_detail_lookup_takes_the_newest_version() {
+    // The registry has no single-server endpoint, so a lookup reads the version
+    // list, which leads with the newest.
+    let (base, _seen) = paged_registry(1).await;
+
+    let detail = adapter()
+        .get(&store(), &auth_at(&base), "@acme/weather")
+        .await
+        .expect("the lookup succeeds");
+
+    assert_eq!(detail.qualified_name, "@acme/weather");
+}
+
+#[tokio::test]
+async fn a_repeated_detail_lookup_is_served_from_the_cache() {
+    let (base, seen) = paged_registry(1).await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+
+    adapter.get(&store, &auth, "@acme/weather").await.unwrap();
+    let detail = adapter.get(&store, &auth, "@acme/weather").await.unwrap();
+
+    assert_eq!(seen.pages.load(Ordering::SeqCst), 1);
+    assert_eq!(detail.qualified_name, "@acme/weather");
+}
+
+#[tokio::test]
+async fn a_registry_listing_no_versions_reports_an_unknown_server() {
+    let app = Router::new().fallback(get(|| async { axum::Json(json!({ "servers": [] })) }));
+    let base = serve(app).await;
+
+    let error = adapter()
+        .get(&store(), &auth_at(&base), "@acme/nothing")
+        .await
+        .expect_err("no versions");
+
+    match error {
+        Error::UnknownServer { server } => assert_eq!(server, "@acme/nothing"),
+        other => panic!("expected an unknown-server error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_versions_body_that_is_not_json_is_reported_as_malformed() {
+    let base = failing_registry(200, "not json").await;
+
+    let error = adapter()
+        .get(&store(), &auth_at(&base), "@acme/weather")
+        .await
+        .expect_err("unparseable");
+
+    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+}
+
+// ---------------------------------------------------------------------------
+// Failure
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn an_upstream_failure_status_is_reported_with_its_body() {
+    let base = failing_registry(503, "maintenance").await;
+
+    let error = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .expect_err("503");
+
+    match error {
+        Error::Http { status, body, .. } => {
+            assert_eq!(status, 503);
+            assert_eq!(body, "maintenance");
+        }
+        other => panic!("expected an http error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_long_failure_body_is_truncated() {
+    let base = failing_registry(500, concat!(
+        "0123456789012345678901234567890123456789012345678901234567890123456789",
+        "0123456789012345678901234567890123456789012345678901234567890123456789",
+        "0123456789012345678901234567890123456789012345678901234567890123456789",
+        "0123456789012345678901234567890123456789",
+    ))
+    .await;
+
+    let error = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .expect_err("500");
+
+    match error {
+        Error::Http { body, .. } => assert_eq!(body.len(), 200),
+        other => panic!("expected an http error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn an_unreachable_registry_is_reported_as_a_transport_failure() {
+    let error = adapter()
+        .search(&store(), &auth_at("http://127.0.0.1:1"), &cursors(), "", 1, 20)
+        .await
+        .expect_err("unreachable");
+
+    assert!(matches!(error, Error::Transport { .. }), "{error:?}");
+}
+
+#[tokio::test]
+async fn a_list_body_that_does_not_decode_is_reported_as_malformed() {
+    let base = failing_registry(200, "[1, 2, 3]").await;
+
+    let error = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .expect_err("unparseable");
+
+    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+}
