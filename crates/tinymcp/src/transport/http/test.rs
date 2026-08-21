@@ -1199,3 +1199,86 @@ async fn a_configured_header_that_cannot_be_encoded_is_skipped_rather_than_fatal
     assert!(built.headers().get("X-Fine").is_some());
     assert_eq!(built.headers().len(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Reading an SSE body
+// ---------------------------------------------------------------------------
+
+use super::sse::{first_complete_sse_data, parse_sse_message};
+
+#[test]
+fn a_body_with_no_data_frame_is_reported_rather_than_read_as_empty() {
+    // A response made only of keepalive comments carries no reply, and
+    // returning nothing would look like a server that answered with null.
+    let error = parse_sse_message(": keepalive\n\n").expect_err("no data frame");
+
+    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+}
+
+#[test]
+fn a_data_frame_is_read_out_of_a_body_that_also_carries_comments() {
+    let value = parse_sse_message(": keepalive\n\nevent: message\ndata: {\"ok\":true}\n\n")
+        .expect("a data frame");
+
+    assert_eq!(value, json!({ "ok": true }));
+}
+
+#[test]
+fn a_frame_whose_payload_is_not_json_is_reported() {
+    assert!(parse_sse_message("data: not json\n\n").is_err());
+}
+
+#[test]
+fn an_unterminated_buffer_reads_as_nothing_yet_rather_than_as_truncated_json() {
+    // The half-received line is the whole reason this function exists: decoding
+    // it would produce a parse error for a response that is simply still
+    // arriving.
+    assert_eq!(
+        first_complete_sse_data("data: {\"ok\":tr").expect("still arriving"),
+        None
+    );
+}
+
+#[test]
+fn a_terminated_frame_is_read_even_when_more_follows_it() {
+    let value = first_complete_sse_data("data: {\"ok\":true}\n\ndata: {\"part")
+        .expect("a complete frame")
+        .expect("some data");
+
+    assert_eq!(value, json!({ "ok": true }));
+}
+
+#[test]
+fn a_crlf_stream_splits_on_the_same_boundary_as_an_lf_one() {
+    let value = first_complete_sse_data("data: {\"ok\":true}\r\n\r\n")
+        .expect("a complete frame")
+        .expect("some data");
+
+    assert_eq!(value, json!({ "ok": true }));
+}
+
+#[test]
+fn a_terminated_frame_carrying_only_a_comment_means_keep_reading() {
+    // `None` here is "nothing yet", not "give up": a keepalive is exactly what
+    // a server sends while it is still working.
+    assert_eq!(
+        first_complete_sse_data(": keepalive\n\n").expect("a complete frame"),
+        None
+    );
+}
+
+#[test]
+fn a_final_event_with_no_trailing_blank_line_is_still_an_event() {
+    // Servers do send this when they close immediately after replying.
+    let value = parse_sse_message("data: {\"ok\":true}").expect("a data frame");
+
+    assert_eq!(value, json!({ "ok": true }));
+}
+
+#[test]
+fn a_payload_split_over_several_data_lines_is_joined() {
+    // The SSE spec concatenates them with newlines, which JSON tolerates.
+    let value = parse_sse_message("data: {\"ok\":\ndata: true}\n\n").expect("a data frame");
+
+    assert_eq!(value, json!({ "ok": true }));
+}
