@@ -93,7 +93,7 @@ fn migrate(connection: &Connection) -> Result<()> {
 /// into a visible error on a page that is working fine.
 ///
 /// Every other failure still propagates.
-fn add_column(connection: &Connection, statement: &str, column: &str) -> Result<()> {
+pub(super) fn add_column(connection: &Connection, statement: &str, column: &str) -> Result<()> {
     match connection.execute(statement, []) {
         Ok(_) => Ok(()),
         Err(rusqlite::Error::SqliteFailure(_, Some(ref message)))
@@ -110,7 +110,7 @@ fn add_column(connection: &Connection, statement: &str, column: &str) -> Result<
 }
 
 /// The column names on `table`.
-fn columns_of(connection: &Connection, table: &str) -> Result<Vec<String>> {
+pub(super) fn columns_of(connection: &Connection, table: &str) -> Result<Vec<String>> {
     // `PRAGMA table_info` yields (cid, name, type, notnull, dflt_value, pk).
     let mut statement = connection
         .prepare(&format!("PRAGMA table_info({table})"))
@@ -124,8 +124,3 @@ fn columns_of(connection: &Connection, table: &str) -> Result<Vec<String>> {
 
     Ok(names)
 }
-
-#[cfg(test)]
-pub(super) use add_column as add_column_for_test;
-#[cfg(test)]
-pub(super) use columns_of as columns_of_for_test;

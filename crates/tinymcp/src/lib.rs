@@ -97,5 +97,5 @@ pub use tinymcp_bus::{
     McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection,
     RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
     SUPPORTED_PROTOCOL_VERSIONS, ServerStatus, Transport, audit, config, is_compatible, names,
-    registry, sanitize, version,
+    sanitize, version,
 };
