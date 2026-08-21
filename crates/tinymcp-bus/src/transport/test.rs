@@ -143,7 +143,7 @@ fn the_display_title_is_capped_more_tightly_than_the_description() {
 
     let shown = tool.display_title().unwrap();
     assert!(shown.len() <= MAX_TITLE_BYTES, "{} bytes", shown.len());
-    assert!(MAX_TITLE_BYTES < MAX_DESCRIPTION_BYTES);
+    const { assert!(MAX_TITLE_BYTES < MAX_DESCRIPTION_BYTES) }
 }
 
 #[test]

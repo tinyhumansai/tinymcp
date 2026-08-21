@@ -370,7 +370,7 @@ pub struct ProtectedResourceMetadata {
     pub scopes_supported: Vec<String>,
 }
 
-/// Authorization-server metadata, per RFC 8414 and OpenID Discovery.
+/// Authorization-server metadata, per RFC 8414 and `OpenID` Discovery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct AuthorizationServerMetadata {
