@@ -1,15 +1,15 @@
 [package]
-name = "template"
+name = "tinymcp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "A production-ready template for installable TinyBus modules."
+description = "The Model Context Protocol client, transports, and server registry, packaged as an installable TinyBus module."
 documentation = "https://docs.rs/tinymcp"
 readme = "../../README.md"
-keywords = ["tinybus", "module", "plugin", "template"]
-categories = ["development-tools"]
+keywords = ["tinybus", "module", "mcp", "model-context-protocol"]
+categories = ["development-tools", "api-bindings"]
 publish = false
 
 [lib]
