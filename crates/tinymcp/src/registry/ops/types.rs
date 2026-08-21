@@ -550,15 +550,15 @@ impl McpRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownServer`] when the identifier is blank or the
-    /// server is not connected.
+    /// Returns [`Error::UnknownServer`] when the identifier is blank, and
+    /// [`Error::NotConnected`] when the server has no live connection.
     pub async fn list_tools(&self, server_id: &str) -> Result<Vec<McpTool>> {
         let server_id = require_non_empty(server_id, "server_id")?;
 
         self.connections
             .tools_for(server_id)
             .await
-            .ok_or_else(|| Error::UnknownServer {
+            .ok_or_else(|| Error::NotConnected {
                 server: server_id.to_string(),
             })
     }
@@ -570,8 +570,9 @@ impl McpRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownServer`] when either name is blank or the server
-    /// is not connected, plus whatever the transport returns.
+    /// Returns [`Error::UnknownServer`] when either name is blank,
+    /// [`Error::NotConnected`] when the server has no live connection, plus
+    /// whatever the transport returns.
     pub async fn tool_call(
         &self,
         server_id: &str,
