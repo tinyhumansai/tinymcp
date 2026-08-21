@@ -9,6 +9,7 @@
 //! everything that follows from a user's choice outliving the process: a store,
 //! credentials at rest, and a supervisor for what got spawned.
 
+pub mod curation;
 pub mod store;
 
 pub use store::Store;
