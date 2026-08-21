@@ -168,6 +168,19 @@ impl Connections {
                 self.dial_remote(store, oauth, identity, proxy, server, url)
                     .await?
             }
+            // The contract's transport enum is `#[non_exhaustive]`, so a
+            // transport added by a newer contract compiles here rather than
+            // breaking the build. Refusing to dial it is the only honest
+            // option: this build has no code that speaks it, and guessing at
+            // one of the two it does know would connect the user to the wrong
+            // thing.
+            other => {
+                return Err(Error::malformed(format!(
+                    "install `{}` uses the `{}` transport, which this build does not speak",
+                    server.server_id,
+                    other.dispatch_kind()
+                )));
+            }
         };
 
         let tools: Vec<McpTool> = client
