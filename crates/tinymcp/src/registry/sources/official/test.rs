@@ -78,7 +78,7 @@ fn a_row_offering_no_way_to_connect_is_dropped() {
     // A user can only discover such a row is a dead end by trying to install
     // it.
     let response = list_response(
-        json!([{ "server": { "name": "nothing/here", "description": "no way in" } }]),
+        &json!([{ "server": { "name": "nothing/here", "description": "no way in" } }]),
         None,
     );
 
@@ -88,7 +88,7 @@ fn a_row_offering_no_way_to_connect_is_dropped() {
 #[test]
 fn a_row_with_only_a_remote_is_kept() {
     let response = list_response(
-        json!([{
+        &json!([{
             "server": {
                 "name": "remote/only",
                 "remotes": [{ "url": "https://api.test/mcp" }],
@@ -105,7 +105,7 @@ fn a_row_with_only_a_remote_is_kept() {
 #[test]
 fn a_deprecated_row_is_dropped() {
     let response = list_response(
-        json!([{
+        &json!([{
             "server": {
                 "name": "old/server",
                 "packages": [{ "registryType": "npm", "identifier": "old" }],
@@ -130,7 +130,7 @@ fn a_row_with_no_metadata_is_not_treated_as_deprecated() {
 #[test]
 fn a_row_with_an_active_status_is_kept() {
     let response = list_response(
-        json!([{
+        &json!([{
             "server": {
                 "name": "live/server",
                 "packages": [{ "registryType": "npm", "identifier": "live" }],
