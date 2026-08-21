@@ -25,7 +25,7 @@ mod config;
 mod service;
 
 pub use config::ModuleConfig;
-pub use service::McpService;
+pub use service::{McpService, ServerDetail};
 
 use tinybus::{Connection, Result as TinyBusResult};
 use tinymcp_bus::names;

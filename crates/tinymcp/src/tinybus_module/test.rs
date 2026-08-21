@@ -1,87 +1,86 @@
 //! Unit tests for the bus adapter.
 //!
-//! The assertion that earns its place here is the one comparing the declared
-//! manifest against [`tinymcp_bus::names::METHODS`]. A member served but not
-//! declared is invisible to a host; one declared but not served is an
-//! unknown-method failure the first time a user reaches for it. Neither shows
-//! up in a type check, and neither shows up until something is already broken.
+//! The assertion that earns its place here compares the members the service
+//! actually serves against [`tinymcp_bus::names::METHODS`]. A member served but
+//! not named in the contract is invisible to a host; one named but not served
+//! is an unknown-method failure the first time a user reaches for it. Neither
+//! shows up in a type check, and neither shows up until something is broken.
+//!
+//! The served list comes from the interface the macro generated, not from a
+//! list restated here — a restatement would agree with itself no matter what
+//! the code did.
+//!
+//! The *manifest* carries the same names a third time, because the macro needs
+//! literals. Nothing safe can read those bytes back, so they are verified
+//! end-to-end by `examples/verify_module.rs`, which loads the built library
+//! through `TinyBus` and calls it.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use tinybus::service::Interface;
 
 use super::config::ModuleConfig;
 use super::service::McpService;
 use tinymcp_bus::{McpClientConfig, McpServerConfig, names};
 
-/// The members the manifest declares, in declaration order.
-///
-/// Read out of the manifest the macro generated rather than restated, so this
-/// cannot drift from what a host is actually told.
-fn declared_methods() -> Vec<String> {
-    let slice = super::tinybus_module_manifest_v1();
-    // The manifest is JSON in a byte slice the module owns for its lifetime.
-    let bytes = unsafe { std::slice::from_raw_parts(slice.ptr, slice.len) };
-    let manifest: serde_json::Value =
-        serde_json::from_slice(bytes).expect("the manifest is valid json");
-
-    manifest["methods"]
-        .as_array()
-        .expect("the manifest lists methods")
-        .iter()
-        .map(|method| {
-            method
-                .as_str()
-                .expect("every method is a string")
-                .to_string()
-        })
-        .collect()
+/// A service over nothing, for inspecting its interface.
+fn service() -> McpService {
+    McpService::new(ModuleConfig::default()).expect("the service builds")
 }
 
 // ---------------------------------------------------------------------------
-// The manifest against the contract
+// The interface against the contract
 // ---------------------------------------------------------------------------
 
 #[test]
-fn the_manifest_declares_exactly_the_members_the_contract_names() {
+fn the_service_serves_exactly_the_members_the_contract_names() {
     // Order included: the contract lists them in dispatch order, and a member
     // that moved is worth noticing even though nothing depends on position.
-    assert_eq!(declared_methods(), names::METHODS);
+    let served: Vec<String> = service()
+        .members()
+        .into_iter()
+        .map(|member| member.as_str().to_string())
+        .collect();
+
+    assert_eq!(served, names::METHODS);
 }
 
 #[test]
-fn the_manifest_claims_the_interface_the_contract_names() {
-    let slice = super::tinybus_module_manifest_v1();
-    let bytes = unsafe { std::slice::from_raw_parts(slice.ptr, slice.len) };
-    let manifest: serde_json::Value = serde_json::from_slice(bytes).unwrap();
-
-    assert_eq!(
-        manifest["provides"],
-        serde_json::json!([names::INTERFACE])
-    );
+fn the_service_claims_the_interface_the_contract_names() {
+    assert_eq!(service().name().as_str(), names::INTERFACE);
 }
 
 #[test]
-fn the_module_is_not_lazy() {
-    // A host that loaded this wants its servers connected. Deferring the load
-    // defers that until the first call — by which point an agent has already
-    // been told it has no tools.
-    let slice = super::tinybus_module_manifest_v1();
-    let bytes = unsafe { std::slice::from_raw_parts(slice.ptr, slice.len) };
-    let manifest: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+fn every_served_member_is_reachable_by_its_contract_constant() {
+    // Spelled through the constants rather than as strings, so a rename in the
+    // contract fails to compile here rather than failing at a host.
+    let served = service().members();
+    let has = |member: &str| served.iter().any(|found| found.as_str() == member);
 
-    assert_eq!(manifest["lazy"], serde_json::json!(false));
+    for member in [
+        names::methods::REGISTRY_SEARCH,
+        names::methods::INSTALL,
+        names::methods::CONNECT,
+        names::methods::TOOL_CALL,
+        names::methods::OAUTH_BEGIN,
+        names::methods::SETUP_INSTALL_AND_CONNECT,
+        names::methods::STATIC_CALL_TOOL,
+        names::methods::AUDIT_LIST_WRITES,
+    ] {
+        assert!(has(member), "{member} is not served");
+    }
 }
 
 #[test]
-fn the_module_serves_on_more_than_one_thread() {
-    // A tool call on one server must not wait behind a slow call on another;
-    // these are third-party endpoints and one being slow is routine.
-    let slice = super::tinybus_module_manifest_v1();
-    let bytes = unsafe { std::slice::from_raw_parts(slice.ptr, slice.len) };
-    let manifest: serde_json::Value = serde_json::from_slice(bytes).unwrap();
-
+fn the_authorization_member_keeps_its_capitalisation() {
+    // Derived from the method name it would be `OauthBegin`, which is not what
+    // the contract says. It carries an explicit name for that reason, and this
+    // is what notices if that annotation is dropped.
     assert!(
-        manifest["worker_threads"].as_u64().unwrap_or(0) > 1,
-        "{manifest}"
+        service()
+            .members()
+            .iter()
+            .any(|member| member.as_str() == "OAuthBegin")
     );
 }
 
@@ -126,9 +125,7 @@ fn a_configuration_round_trips() {
 
 #[test]
 fn a_service_builds_from_nothing() {
-    let service = McpService::new(ModuleConfig::default()).expect("the service builds");
-
-    assert!(service.static_servers().is_empty());
+    assert!(service().static_servers().is_empty());
 }
 
 #[test]
@@ -136,9 +133,7 @@ fn a_service_with_no_data_directory_persists_nothing() {
     // The right shape for a host that only wants its statically declared
     // servers: there is nothing to persist, and creating files for it would
     // leave state nobody asked for.
-    let service = McpService::new(ModuleConfig::default()).expect("the service builds");
-
-    assert!(service.dynamic().installed_list().unwrap().is_empty());
+    assert!(service().dynamic().installed_list().unwrap().is_empty());
 }
 
 #[test]

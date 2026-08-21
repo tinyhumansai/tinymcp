@@ -79,7 +79,7 @@ pub use config_servers::{
     McpRegistrySource, McpServerDefinition, McpServerRegistry, McpTransportClient,
 };
 pub use error::{Error, Result};
-pub use tinybus_module::{McpService, ModuleConfig};
+pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
 pub use registry::{AuthDetection, Connections, OAuthFlow, Store, Supervisor, SupervisorConfig};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
