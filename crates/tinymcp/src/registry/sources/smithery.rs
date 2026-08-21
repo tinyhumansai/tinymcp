@@ -31,6 +31,13 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 #[derive(Debug)]
 pub struct SmitheryRegistry {
     http: reqwest::Client,
+    /// Where the catalog lives.
+    ///
+    /// A field rather than the constant read inline, so the tests can point an
+    /// adapter at a loopback server. Smithery is one hosted service and there
+    /// is no product reason to override this, so nothing outside this module
+    /// can: [`Self::new`] is the only constructor a caller gets.
+    base: String,
 }
 
 impl SmitheryRegistry {
@@ -40,6 +47,15 @@ impl SmitheryRegistry {
     ///
     /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
     pub fn new() -> Result<Self> {
+        Self::with_base(BASE_URL)
+    }
+
+    /// Builds an adapter against `base`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
+    fn with_base(base: impl Into<String>) -> Result<Self> {
         let http = reqwest::Client::builder()
             .timeout(TIMEOUT)
             .build()
@@ -47,7 +63,10 @@ impl SmitheryRegistry {
                 source: Box::new(source.without_url()),
             })?;
 
-        Ok(Self { http })
+        Ok(Self {
+            http,
+            base: base.into(),
+        })
     }
 
     /// Searches the catalog.
@@ -78,7 +97,7 @@ impl SmitheryRegistry {
             return Ok((tag_source(parsed.servers), total_pages));
         }
 
-        let url = format!("{BASE_URL}/servers");
+        let url = format!("{}/servers", self.base);
         let mut request = self.http.get(&url).header("Accept", "application/json");
         if !query.is_empty() {
             request = request.query(&[("q", query)]);
@@ -125,7 +144,11 @@ impl SmitheryRegistry {
             return Ok(detail);
         }
 
-        let url = format!("{BASE_URL}/servers/{}", encode_path_segment(qualified_name));
+        let url = format!(
+            "{}/servers/{}",
+            self.base,
+            encode_path_segment(qualified_name)
+        );
         let mut request = self.http.get(&url).header("Accept", "application/json");
         if let Some(key) = api_key {
             request = request.bearer_auth(key);
