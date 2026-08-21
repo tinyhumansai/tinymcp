@@ -109,7 +109,10 @@ fn the_setup_members_are_named_as_a_family() {
         methods::SETUP_TEST_CONNECTION,
         methods::SETUP_INSTALL_AND_CONNECT,
     ] {
-        assert!(method.starts_with("Setup"), "{method} is not a Setup member");
+        assert!(
+            method.starts_with("Setup"),
+            "{method} is not a Setup member"
+        );
     }
 }
 
@@ -130,6 +133,9 @@ fn the_static_members_are_named_as_a_family() {
 #[test]
 fn the_audit_members_are_named_as_a_family() {
     for method in [methods::AUDIT_RECORD_WRITE, methods::AUDIT_LIST_WRITES] {
-        assert!(method.starts_with("Audit"), "{method} is not an Audit member");
+        assert!(
+            method.starts_with("Audit"),
+            "{method} is not an Audit member"
+        );
     }
 }
