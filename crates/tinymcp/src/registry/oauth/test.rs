@@ -717,7 +717,10 @@ async fn authority_with_challenge() -> (String, Arc<Authority>) {
     let challenge = format!(
         "Bearer resource_metadata=\"{base}/.well-known/oauth-protected-resource\""
     );
-    let app = Router::new().fallback(get(move || {
+    // A bare handler rather than `get(..)`: the transport POSTs to the MCP
+    // endpoint, and a GET-only fallback would answer 405 instead of the 401
+    // that starts discovery.
+    let app = Router::new().fallback(move || {
         let challenge = challenge.clone();
         async move {
             (
@@ -727,7 +730,7 @@ async fn authority_with_challenge() -> (String, Arc<Authority>) {
             )
                 .into_response()
         }
-    }));
+    });
     let mcp_base = serve(app).await;
 
     (format!("{mcp_base}/mcp"), state)
@@ -913,9 +916,9 @@ async fn an_authorization_server_not_offering_the_authorization_code_grant_is_re
 async fn a_server_that_does_not_want_authorization_is_refused() {
     // Beginning a sign-in against a server that never asked for one would
     // send the user to an authorization page for nothing.
-    let app = Router::new().fallback(get(|| async {
-        axum::Json(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))
-    }));
+    let app = Router::new().fallback(|| async {
+        Json(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))
+    });
     let base = serve(app).await;
     let store = store_with_remote(&base);
 
