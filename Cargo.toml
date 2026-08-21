@@ -95,8 +95,6 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 # Install identifiers.
 uuid = { version = "1", features = ["v4"] }
-# Module integration tests exercise the real asynchronous in-memory TinyBus.
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 # Lints apply to every member that opts in with `[lints] workspace = true`, and
 # to every target of that member. CI runs clippy with `-D warnings`, so anything
