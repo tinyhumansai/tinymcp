@@ -9,9 +9,11 @@
 //! everything that follows from a user's choice outliving the process: a store,
 //! credentials at rest, and a supervisor for what got spawned.
 
+pub mod connections;
 pub mod curation;
 pub mod oauth;
 pub mod store;
 
+pub use connections::Connections;
 pub use oauth::{AuthDetection, OAuthFlow};
 pub use store::Store;
