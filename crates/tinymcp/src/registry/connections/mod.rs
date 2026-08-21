@@ -38,6 +38,8 @@ mod dial;
 mod status;
 mod types;
 
+pub(crate) use dial::build_http_auth as build_http_auth_for_test;
+
 pub use types::Connections;
 
 #[cfg(test)]

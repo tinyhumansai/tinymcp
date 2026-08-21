@@ -1,13 +1,15 @@
 //! The registry facade and its operations.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
 use super::install::{build_install_transport, collect_required_env_keys, pick_connection};
 use crate::error::{Error, Result};
-use crate::registry::{AuthDetection, Connections, OAuthFlow, Registries, SecretVault, Store};
+use crate::registry::{
+    AuthDetection, Connections, OAuthFlow, Registries, SecretRef, SecretVault, Store,
+};
 use tinymcp_bus::{
     ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome, InstalledServer,
     McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool, RegistrySearchPage,
@@ -20,6 +22,12 @@ use tinymcp_bus::{
 /// prefixes the name with its source, so the detail lookup can be routed. The
 /// prefix is addressing, not identity — see [`split_routing_name`].
 const SOURCE_SEPARATOR: &str = "::";
+
+/// How long a connection test waits.
+///
+/// Matched to the timeout a connected server gets, so a server that passes the
+/// test behaves the same once installed.
+const TEST_CONNECTION_TIMEOUT_SECS: u64 = 30;
 
 /// Everything a host can ask the dynamic registry to do.
 #[derive(Debug)]
@@ -142,6 +150,21 @@ impl McpRegistry {
     /// Reports which registry credentials are configured, with no values.
     #[must_use]
     pub fn registry_settings(&self) -> RegistrySettings {
+        self.registries.settings()
+    }
+
+    /// Replaces the registry credentials this process uses.
+    ///
+    /// Returns the resulting settings, with no values. Persisting them is the
+    /// host's — see [`Registries::set_settings`].
+    pub fn set_registry_settings(
+        &self,
+        smithery_api_key: Option<String>,
+        mcp_official_base: Option<String>,
+        mcp_official_token: Option<String>,
+    ) -> RegistrySettings {
+        self.registries
+            .set_settings(smithery_api_key, mcp_official_base, mcp_official_token);
         self.registries.settings()
     }
 
@@ -581,6 +604,167 @@ impl McpRegistry {
         qualified_name: &str,
     ) -> Result<(RegistryServerDetail, Vec<String>)> {
         self.registry_get(qualified_name).await
+    }
+}
+
+impl McpRegistry {
+    // -- the guided setup flow ---------------------------------------------
+
+    /// Mints a handle for a credential the flow needs.
+    ///
+    /// Returns the handle immediately. The host prompts the user, then submits
+    /// the value with [`Self::setup_submit_secret`].
+    ///
+    /// # Why this returns rather than waits
+    ///
+    /// The flow this replaces held the call open until the user answered, up to
+    /// five minutes. Over a bus that is a request occupying a slot for the
+    /// length of a human decision. Returning the handle and letting the host
+    /// own the wait puts that wait where the user interface already is, and
+    /// changes nothing about the property the design exists for: the value
+    /// still never crosses the model-facing surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnknownServer`] when the credential name is blank.
+    pub async fn setup_request_secret(&self, key_name: &str) -> Result<String> {
+        let key_name = require_non_empty(key_name, "key_name")?;
+        let (handle, receiver) = self.vault.request(key_name).await;
+
+        // The receiver is dropped here on purpose: the host owns the wait, and
+        // a submission stores the value whether or not anything is listening.
+        drop(receiver);
+
+        Ok(handle.as_str().to_string())
+    }
+
+    /// Records the value a user supplied against a handle.
+    ///
+    /// Returns whether it was accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedResponse`] when the handle is not one this
+    /// vault could have minted.
+    pub async fn setup_submit_secret(&self, handle: &str, value: String) -> Result<bool> {
+        let handle = SecretRef::parse(handle)
+            .ok_or_else(|| Error::malformed(format!("`{handle}` is not a secret handle")))?;
+
+        Ok(self.vault.submit(&handle, value).await)
+    }
+
+    /// Dials a server with the collected credentials, without installing it.
+    ///
+    /// Nothing is persisted and nothing joins the connection map: this opens a
+    /// throwaway session, asks what it advertises, and closes. That is what
+    /// makes it safe to run repeatedly while a user corrects a value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedResponse`] when a handle is unknown or
+    /// unanswered, or when the server offers no way to connect, plus whatever
+    /// the transport returns.
+    pub async fn setup_test_connection(
+        &self,
+        qualified_name: &str,
+        secrets: &HashMap<String, SecretRef>,
+    ) -> Result<Vec<McpTool>> {
+        let qualified_name = require_non_empty(qualified_name, "qualified_name")?;
+        let (source, canonical) = split_routing_name(qualified_name);
+
+        // Resolved, not consumed: a test may be run several times before the
+        // user commits to installing.
+        let env: BTreeMap<String, String> =
+            self.vault.resolve(secrets).await?.into_iter().collect();
+
+        let detail = self.registries.get(&self.store, source, canonical).await?;
+        let picked = pick_connection(&detail.connections).ok_or_else(|| {
+            Error::malformed(format!(
+                "`{canonical}` offers neither a hosted endpoint nor a package to test"
+            ))
+        })?;
+        let (transport, _, command, args) = build_install_transport(canonical, picked)?;
+
+        let tools = match transport {
+            Transport::HttpRemote { url } => {
+                let auth = crate::registry::connections::build_http_auth_for_test(&env);
+                let client = crate::transport::http::McpHttpClient::builder(url)
+                    .timeout_secs(TEST_CONNECTION_TIMEOUT_SECS)
+                    .auth(auth)
+                    .identity(self.identity.clone())
+                    .proxy(self.proxy.clone())
+                    .build()?;
+                client.initialize().await?;
+                let tools = client.list_tools().await?;
+                // Closed rather than left open: a test must not leave a session
+                // behind that nothing owns.
+                let _ = client.close_session().await;
+                tools
+            }
+            _ => {
+                let client = crate::transport::stdio::McpStdioClient::new(
+                    command,
+                    args,
+                    env.into_iter().collect(),
+                    None,
+                    &self.identity,
+                );
+                client.initialize().await?;
+                let tools = client.list_tools().await?;
+                let _ = client.close_session().await;
+                tools
+            }
+        };
+
+        Ok(tools
+            .into_iter()
+            .map(|tool| McpTool {
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.input_schema,
+            })
+            .collect())
+    }
+
+    /// Installs a server with the collected credentials and connects it.
+    ///
+    /// The handles are **consumed** here: the values are now in the credential
+    /// store, so keeping them in the vault would be a second copy of a secret
+    /// with a longer life than it needs.
+    ///
+    /// A failed connect does not undo the install. The user asked for the
+    /// server to be installed and it is; the connection can be retried without
+    /// re-entering anything.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedResponse`] when a handle is unknown or
+    /// unanswered, plus whatever installing returns.
+    pub async fn setup_install_and_connect(
+        &self,
+        qualified_name: &str,
+        secrets: &HashMap<String, SecretRef>,
+        config: Option<Value>,
+    ) -> Result<ConnectOutcome> {
+        let env: BTreeMap<String, String> =
+            self.vault.consume(secrets).await?.into_iter().collect();
+
+        let installed = self.install(qualified_name, env, config).await?;
+        let server_id = installed.server.server_id.clone();
+
+        match self.connect(&server_id).await {
+            Ok(outcome) => Ok(outcome),
+            Err(error) => {
+                tracing::warn!(
+                    server_id,
+                    "the install succeeded but connecting afterwards did not: {error}"
+                );
+                Ok(ConnectOutcome {
+                    server_id,
+                    tools: Vec::new(),
+                })
+            }
+        }
     }
 }
 
