@@ -566,15 +566,24 @@ fn an_audit_log_that_cannot_be_opened_is_reported_rather_than_panicking() {
 }
 
 #[test]
-fn a_limit_beyond_what_the_column_can_hold_is_refused() {
-    // The other half of the bound test above: the limit as well as the offset.
+fn an_absurd_limit_is_capped_rather_than_refused() {
+    // Unlike the offset, the limit has a ceiling of its own, so a caller asking
+    // for everything gets the largest page instead of an error. That is the
+    // right way round: the ceiling exists to bound the response, and refusing
+    // would turn a clumsy request into a broken one.
     let store = store();
-    let query = McpWriteListQuery {
-        limit: Some(u64::MAX),
-        ..all()
-    };
+    for index in 0..3 {
+        store.record(&write_at(1_000 + index, "claude", "memory_write")).unwrap();
+    }
 
-    assert!(store.list(&query).is_err());
+    let rows = store
+        .list(&McpWriteListQuery {
+            limit: Some(u64::MAX),
+            ..all()
+        })
+        .expect("an absurd limit is capped");
+
+    assert_eq!(rows.len(), 3);
 }
 
 #[test]
