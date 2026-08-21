@@ -18,6 +18,7 @@ use crate::registry::Store;
 use tinymcp_bus::{RegistryListResponse, RegistryServerDetail, RegistryServerSummary};
 
 use super::encode::encode_path_segment;
+use super::shared::{MAX_ERROR_BODY_BYTES, cache, truncate};
 use super::types::SOURCE_SMITHERY;
 
 /// Where Smithery's registry lives.
@@ -162,37 +163,15 @@ async fn read_body(request: reqwest::RequestBuilder, url: &str) -> Result<String
             status: status.as_u16(),
             // Bounded: an upstream failure body can be a whole error page, and
             // this ends up in a log and an error message.
-            body: truncate(&body, 200),
+            body: truncate(&body, MAX_ERROR_BODY_BYTES),
         });
     }
 
     Ok(body)
 }
 
-/// Writes to the cache, treating a failure as unimportant.
-///
-/// A cache that cannot be written costs a round trip next time. Failing the
-/// user's search over it would cost them the search.
-fn cache(store: &Store, cache_key: &str, body: &str) {
-    if let Err(error) = store.cache(cache_key, body) {
-        tracing::debug!(cache_key, "could not cache an upstream response: {error}");
-    }
-}
-
-/// Truncates on a character boundary.
-fn truncate(text: &str, max_bytes: usize) -> String {
-    if text.len() <= max_bytes {
-        return text.to_string();
-    }
-    let mut end = max_bytes;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    text.get(..end).unwrap_or_default().to_string()
-}
-
 /// Stamps the source and clears the trust signals. See the module note.
-fn tag_source(mut servers: Vec<RegistryServerSummary>) -> Vec<RegistryServerSummary> {
+pub(super) fn tag_source(mut servers: Vec<RegistryServerSummary>) -> Vec<RegistryServerSummary> {
     for server in &mut servers {
         if server.source.is_empty() {
             server.source = SOURCE_SMITHERY.to_string();
@@ -204,8 +183,3 @@ fn tag_source(mut servers: Vec<RegistryServerSummary>) -> Vec<RegistryServerSumm
     }
     servers
 }
-
-#[cfg(test)]
-pub(super) use tag_source as tag_source_for_test;
-#[cfg(test)]
-pub(super) use truncate as truncate_for_test;

@@ -37,6 +37,7 @@ use serde_json::Value;
 
 use self::types::{OfficialListResponse, OfficialServer};
 use super::encode::encode_path_segment;
+use super::shared::{MAX_ERROR_BODY_BYTES, cache, truncate};
 use super::types::non_blank_env;
 use crate::error::{Error, Result};
 use crate::registry::Store;
@@ -310,7 +311,7 @@ impl McpOfficialRegistry {
             return Err(Error::Http {
                 endpoint: crate::redact_endpoint(url),
                 status: status.as_u16(),
-                body: super::smithery::truncate_for_test(&body, 200),
+                body: truncate(&body, MAX_ERROR_BODY_BYTES),
             });
         }
 
@@ -355,13 +356,6 @@ fn page_bound(page: u32, has_next: bool) -> u32 {
         page.saturating_add(1)
     } else {
         page
-    }
-}
-
-/// Writes to the cache, treating a failure as unimportant.
-fn cache(store: &Store, cache_key: &str, body: &str) {
-    if let Err(error) = store.cache(cache_key, body) {
-        tracing::debug!(cache_key, "could not cache an upstream response: {error}");
     }
 }
 

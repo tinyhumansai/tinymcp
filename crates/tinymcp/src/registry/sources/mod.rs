@@ -30,6 +30,7 @@
 
 mod encode;
 mod official;
+mod shared;
 mod smithery;
 mod types;
 
