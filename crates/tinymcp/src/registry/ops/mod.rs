@@ -27,8 +27,8 @@
 //! would need to help a user configure a server and stops there. Running the
 //! turn is the host's: it owns the model, the budget, and the conversation.
 
-mod install;
-mod types;
+pub(crate) mod install;
+pub(crate) mod types;
 
 pub use install::{build_install_transport, collect_required_env_keys, pick_connection};
 pub use types::McpRegistry;
