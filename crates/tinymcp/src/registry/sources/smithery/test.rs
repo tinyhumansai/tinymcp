@@ -267,8 +267,11 @@ async fn a_cached_body_in_an_older_shape_is_refetched_rather_than_failing() {
     // them the search.
     let (base, seen) = working_catalog().await;
     let store = store();
+    // An array rather than the envelope object. A foreign *object* would not do
+    // here: every field of the list response defaults, so one decodes happily
+    // into an empty page and would be a cache hit rather than a miss.
     store
-        .cache("smithery:search:weather:1:20", "{\"shape\":\"from an older release\"}")
+        .cache("smithery:search:weather:1:20", "[\"an older shape\"]")
         .unwrap();
 
     let (servers, _) = adapter(&base)
@@ -282,7 +285,7 @@ async fn a_cached_body_in_an_older_shape_is_refetched_rather_than_failing() {
 
 #[tokio::test]
 async fn a_body_that_is_not_a_list_response_is_reported_as_malformed() {
-    let base = failing_catalog(200, "{\"nothing\":\"expected\"}").await;
+    let base = failing_catalog(200, "[1, 2, 3]").await;
 
     let error = adapter(&base)
         .search(&store(), None, "weather", 1, 20)
@@ -295,6 +298,23 @@ async fn a_body_that_is_not_a_list_response_is_reported_as_malformed() {
 // ---------------------------------------------------------------------------
 // Detail
 // ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_foreign_object_decodes_to_an_empty_page_rather_than_failing() {
+    // Every field of the list response defaults, so an upstream that changed
+    // its envelope yields no rows rather than an error. Pinned because it is
+    // surprising: the tolerance is deliberate, and a reader who assumed a
+    // strict decode would draw the wrong conclusion from the code above.
+    let base = failing_catalog(200, "{\"nothing\":\"expected\"}").await;
+
+    let (servers, total_pages) = adapter(&base)
+        .search(&store(), None, "weather", 1, 20)
+        .await
+        .expect("a foreign object still decodes");
+
+    assert!(servers.is_empty());
+    assert_eq!(total_pages, 0);
+}
 
 #[tokio::test]
 async fn a_detail_lookup_returns_the_server() {
