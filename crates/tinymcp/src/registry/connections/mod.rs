@@ -38,7 +38,9 @@ mod dial;
 mod status;
 mod types;
 
-pub(crate) use dial::build_http_auth as build_http_auth_for_test;
+/// Building request credentials from stored values, shared with the setup
+/// flow's connection test so a test dials exactly as a real connect would.
+pub(crate) use dial::build_http_auth;
 
 pub use types::Connections;
 

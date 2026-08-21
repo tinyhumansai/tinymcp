@@ -31,7 +31,7 @@ const MAX_REDIRECTS: usize = 5;
 /// Internal keys are skipped, as are blank values. Nothing usable yields
 /// [`McpAuthConfig::None`], which is the right state for an OAuth-only server
 /// that has not been signed into — its 401 then surfaces the challenge.
-pub(super) fn build_http_auth(env: &BTreeMap<String, String>) -> McpAuthConfig {
+pub(crate) fn build_http_auth(env: &BTreeMap<String, String>) -> McpAuthConfig {
     let headers: Vec<HttpHeader> = env
         .iter()
         .filter(|(name, value)| !name.starts_with(INTERNAL_KEY_PREFIX) && !value.trim().is_empty())

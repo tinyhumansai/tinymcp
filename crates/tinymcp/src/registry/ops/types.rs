@@ -687,7 +687,7 @@ impl McpRegistry {
 
         let tools = match transport {
             Transport::HttpRemote { url } => {
-                let auth = crate::registry::connections::build_http_auth_for_test(&env);
+                let auth = crate::registry::connections::build_http_auth(&env);
                 let client = crate::transport::http::McpHttpClient::builder(url)
                     .timeout_secs(TEST_CONNECTION_TIMEOUT_SECS)
                     .auth(auth)
