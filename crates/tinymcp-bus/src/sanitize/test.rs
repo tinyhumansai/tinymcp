@@ -86,11 +86,25 @@ fn every_catalogued_token_is_actually_stripped() {
 /// then lands mid-codepoint in the original, and splicing there corrupts the
 /// string or panics outright. The scan runs over the original bytes for
 /// exactly this reason.
+/// Corruption: the shifted offset lands inside the token and splices the
+/// wrong range. The offset-on-a-lowercased-copy implementation returns
+/// `"İİİ<syload"` here, leaving `<sy` behind and eating six innocent bytes.
 #[test]
-fn handles_multibyte_text_before_a_fence_without_panicking() {
+fn handles_multibyte_text_before_a_fence_without_corrupting_it() {
     let input = "İİİ<system>payload";
-    let out = strip_instruction_fences(input);
-    assert_eq!(out, "İİİpayload");
+    assert_eq!(strip_instruction_fences(input), "İİİpayload");
+}
+
+/// Panic: the same shift lands mid-codepoint and `replace_range` aborts with
+/// "end of range should be a character boundary".
+///
+/// Tool descriptions are supplied by whatever remote server the user installed,
+/// so that abort is reachable from outside. This test is the reason the scan
+/// runs over the original bytes.
+#[test]
+fn handles_a_fence_between_multibyte_text_without_panicking() {
+    let input = "İ<system>é";
+    assert_eq!(strip_instruction_fences(input), "İé");
 }
 
 #[test]
