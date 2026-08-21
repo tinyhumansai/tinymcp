@@ -238,6 +238,11 @@ mod against_a_fake_server {
     async fn a_server_that_closes_its_output_is_reported_clearly() {
         // The failure mode when a server crashes on startup. "closed its
         // output" is what a user can act on; a hang is not.
+        //
+        // Whether the exit is noticed on the write or on the following read is
+        // a matter of scheduling, so both paths report it the same way. Without
+        // that, this test passes or fails depending on how quickly the child
+        // gets torn down.
         let directory = tempfile::tempdir().unwrap();
         let command = write_script(directory.path(), "exit 0\n");
 

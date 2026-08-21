@@ -345,16 +345,39 @@ impl McpStdioClient {
     }
 
     /// Writes one newline-terminated JSON message and flushes it.
+    ///
+    /// A broken pipe is reported as the server having closed its output, the
+    /// same wording the read path uses. Whether a server that has exited is
+    /// noticed on the write or on the following read is a matter of scheduling,
+    /// and a caller should not have to recognise two messages for one thing —
+    /// especially when one of them says "broken pipe" to a user who wants to
+    /// know their server crashed.
     async fn write_line(&self, session: &mut StdioSession, message: &Value) -> Result<()> {
         let mut line = serde_json::to_vec(message)?;
         line.push(b'\n');
 
-        session.stdin.write_all(&line).await.map_err(|error| {
-            Error::malformed(format!("writing to `{}` failed: {error}", self.command))
-        })?;
-        session.stdin.flush().await.map_err(|error| {
-            Error::malformed(format!("flushing to `{}` failed: {error}", self.command))
-        })
+        session
+            .stdin
+            .write_all(&line)
+            .await
+            .map_err(|error| self.write_failure("writing to", &error))?;
+        session
+            .stdin
+            .flush()
+            .await
+            .map_err(|error| self.write_failure("flushing to", &error))
+    }
+
+    /// Describes a write failure, collapsing a broken pipe onto the
+    /// server-has-gone wording.
+    fn write_failure(&self, what: &str, error: &std::io::Error) -> Error {
+        if error.kind() == std::io::ErrorKind::BrokenPipe {
+            return Error::malformed(format!(
+                "`{}` closed its output before the request could be sent",
+                self.command
+            ));
+        }
+        Error::malformed(format!("{what} `{}` failed: {error}", self.command))
     }
 }
 
