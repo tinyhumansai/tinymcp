@@ -69,12 +69,14 @@
 
 pub mod config_servers;
 mod error;
+pub mod registry;
 pub mod transport;
 
 pub use config_servers::{
     McpRegistrySource, McpServerDefinition, McpServerRegistry, McpTransportClient,
 };
 pub use error::{Error, Result};
+pub use registry::Store;
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
 pub use transport::{redact_endpoint, render_tool_result};

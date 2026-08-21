@@ -141,6 +141,26 @@ pub enum Error {
         #[source]
         source: Box<serde_json::Error>,
     },
+
+    /// The installed-server store could not do what was asked of it.
+    #[error("mcp store failure while {action}: {source}")]
+    Store {
+        /// What was being attempted, in the present participle.
+        action: String,
+        /// What SQLite reported.
+        #[source]
+        source: Box<rusqlite::Error>,
+    },
+
+    /// The store's directory or file could not be reached.
+    #[error("mcp store is unreachable at `{}`: {source}", path.display())]
+    StoreIo {
+        /// The path that could not be reached.
+        path: std::path::PathBuf,
+        /// What the filesystem reported.
+        #[source]
+        source: Box<std::io::Error>,
+    },
 }
 
 impl Error {
@@ -156,6 +176,14 @@ impl Error {
         Self::Transport {
             endpoint: crate::redact_endpoint(endpoint),
             source: Box::new(source.without_url()),
+        }
+    }
+
+    /// Builds a [`Self::Store`] describing what was being attempted.
+    pub(crate) fn store(action: impl Into<String>, source: rusqlite::Error) -> Self {
+        Self::Store {
+            action: action.into(),
+            source: Box::new(source),
         }
     }
 
