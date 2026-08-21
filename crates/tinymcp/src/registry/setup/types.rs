@@ -60,13 +60,18 @@ impl SecretRef {
     /// ```
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
-        let trimmed = raw.strip_prefix(SCHEME).unwrap_or(raw).trim();
+        // Trimmed before the scheme is stripped, not after. A caller that pads
+        // the handle — which is what a model producing it in prose does — would
+        // otherwise fail the prefix match, keep the scheme, and then be
+        // rejected for not being hexadecimal.
+        let trimmed = raw.trim();
+        let hex = trimmed.strip_prefix(SCHEME).unwrap_or(trimmed).trim();
 
-        if trimmed.is_empty() || !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        if hex.is_empty() || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
             return None;
         }
 
-        Some(Self(format!("{SCHEME}{trimmed}")))
+        Some(Self(format!("{SCHEME}{hex}")))
     }
 
     /// Mints a fresh handle.
