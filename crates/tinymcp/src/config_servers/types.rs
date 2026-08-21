@@ -383,6 +383,20 @@ impl McpServerRegistry {
         self.require(server)?.client.discover_authorization().await
     }
 
+    /// Ends a server's session.
+    ///
+    /// Worth calling rather than leaving to a drop: an HTTP server holds a
+    /// session it will keep alive until it times out, and a host shutting down
+    /// cleanly should not leave one behind on every server it declared.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnknownServer`] when `server` is not registered, plus
+    /// whatever the transport returns.
+    pub async fn close_session(&self, server: &str) -> Result<()> {
+        self.require(server)?.client.close_session().await
+    }
+
     /// Looks a server up, or reports that it is not registered.
     fn require(&self, server: &str) -> Result<&McpServerDefinition> {
         self.get(server).ok_or_else(|| Error::UnknownServer {
