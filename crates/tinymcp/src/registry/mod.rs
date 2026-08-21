@@ -12,10 +12,12 @@
 pub mod connections;
 pub mod curation;
 pub mod oauth;
+pub mod sources;
 pub mod store;
 pub mod supervisor;
 
 pub use connections::Connections;
 pub use oauth::{AuthDetection, OAuthFlow};
+pub use sources::{Registries, RegistrySource};
 pub use store::Store;
 pub use supervisor::{Supervisor, SupervisorConfig};
