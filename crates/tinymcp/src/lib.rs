@@ -1,9 +1,9 @@
-//! A production-ready starting point for an installable `TinyBus` module.
+//! A Model Context Protocol client, packaged as an installable `TinyBus`
+//! module.
 //!
-//! This crate is a template. It ships the layout, lint configuration, error
-//! handling, testing, and documentation conventions described in `AGENTS.md`.
-//! The compiled `cdylib` exports `TinyBus` module ABI v1 and serves the example
-//! [`greet`] behavior over the bus.
+//! This crate knows how to *talk to* MCP servers. It dials them over Streamable
+//! HTTP or as a subprocess, browses the upstream registries, keeps track of what
+//! a user installed, supervises what it spawned, and records what got written.
 //!
 //! # Layout
 //!
@@ -11,45 +11,68 @@
 //!
 //! - [`tinymcp_bus`] — the wire contract. Member names, payload types, and the
 //!   contract version, with no transport and no behavior. A host that only
-//!   makes calls depends on that crate alone.
-//! - `template` — this crate. The behavior, the crate-wide error type, and the
-//!   `TinyBus` adapter that serves them, built as both an `rlib` and the
+//!   makes calls depends on that crate alone and compiles neither this crate
+//!   nor `tinybus`.
+//! - `tinymcp` — this crate. The transports, the registry, the audit log, and
+//!   the `TinyBus` adapter that serves them, built as both an `rlib` and the
 //!   `cdylib` the loader consumes.
 //!
-//! Within this crate:
+//! Every public item from the contract is re-exported here, so
+//! `tinymcp::McpRemoteTool` is the *same type* as `tinymcp_bus::McpRemoteTool`
+//! rather than a structural twin, and a caller takes one dependency instead of
+//! two.
 //!
-//! - `src/error/` holds the crate-wide [`Error`] enum and the [`Result`] alias
-//!   returned by every fallible public function.
-//! - Each feature area lives in its own module directory with a `mod.rs`
-//!   module root, an optional `types.rs`, and a `test.rs` holding its unit
-//!   tests.
-//! - Every public item is re-exported from here — including all of
-//!   [`tinymcp_bus`] — so downstream users have a single predictable surface
-//!   and `tinymcp::GreetRequest` is the *same type* as
-//!   `tinymcp_bus::GreetRequest`, not a structural twin.
-//! - `tinybus_module` adapts the public behavior to `TinyBus` and exports the
-//!   module descriptor, embedded manifest, and initialization entrypoint.
+//! # Untrusted input is the design constraint
+//!
+//! Everything this crate talks to was chosen by a user and vetted by nobody: an
+//! arbitrary HTTPS endpoint, or an arbitrary subprocess launched through `npx`
+//! or `uvx`. Three rules follow, and they are worth knowing before reading any
+//! of the code.
+//!
+//! **Remote text is sanitized before it can reach a model.** Tool descriptions
+//! and titles are read through the display accessors on
+//! [`McpRemoteTool`], which apply [`tinymcp_bus::sanitize`].
+//!
+//! **Endpoints are redacted before they are logged.** [`redact_endpoint`]
+//! reduces a URL to scheme and authority and refuses anything carrying
+//! userinfo. MCP endpoints routinely carry an API key in a query parameter.
+//!
+//! **Tool permission is enforced before the transport.** A denied tool never
+//! reaches the network or a subprocess.
+//!
+//! # Errors
+//!
+//! Every fallible public function returns [`Result`], the crate alias over
+//! [`Error`]. One variant is worth singling out: [`Error::Unauthorized`] means
+//! the server is reachable and wants credentials, which is a state a caller
+//! acts on rather than reports. Match on it with [`Error::is_unauthorized`]
+//! rather than reading a message.
 //!
 //! # Example
 //!
 //! ```
-//! use tinymcp::{greet, Error, GreetRequest};
+//! use tinymcp::{redact_endpoint, render_tool_result};
 //!
-//! assert_eq!(greet("Ferris")?, "Hello, Ferris!");
-//! assert_eq!(greet("   ").unwrap_err(), Error::EmptyName);
-//! assert_eq!(GreetRequest::new("Ferris").name, "Ferris");
-//! # Ok::<(), tinymcp::Error>(())
+//! // An endpoint is never logged raw.
+//! assert_eq!(
+//!     redact_endpoint("https://example.test/mcp?api_key=secret"),
+//!     "https://example.test",
+//! );
+//!
+//! // A raw `tools/call` reply renders into the shape a caller consumes.
+//! let rendered = render_tool_result(&serde_json::json!({
+//!     "content": [{ "type": "text", "text": "sunny, 21C" }],
+//! }));
+//! assert!(!rendered.is_error);
+//! assert_eq!(rendered.text(), "sunny, 21C");
 //! ```
-//!
-//! Replace the `greeting` module with the first real feature area, keep the
-//! conventions, and update this documentation to describe the new crate.
 
 mod error;
-mod greeting;
-mod tinybus_module;
+mod transport;
 
 pub use error::{Error, Result};
-pub use greeting::greet;
+pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
+pub use transport::{redact_endpoint, render_tool_result};
 
 // The wire contract, re-exported by module rather than by item so every path
 // through this crate resolves to the same definitions the contract crate
@@ -57,6 +80,15 @@ pub use greeting::greet;
 // types; nothing here redefines them.
 pub use tinymcp_bus;
 pub use tinymcp_bus::{
-    CONTRACT_VERSION, GreetRequest, GreetResponse, INTERFACE, METHODS, OBJECT_PATH, is_compatible,
-    names, version,
+    AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind, ConnStatus,
+    ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields, HttpHeader,
+    INTERFACE, InstalledServer, LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES, MAX_LIST_LIMIT,
+    MAX_TITLE_BYTES, METHODS, McpAuthChallenge, McpAuthConfig, McpAuthHint,
+    McpAuthorizationContext, McpClientConfig, McpClientIdentityConfig, McpClientInfo,
+    McpInitializeResult, McpProxyConfig, McpRegistryAuthConfig, McpRemoteTool, McpServerConfig,
+    McpServerToolResult, McpSseEvent, McpTool, McpToolContent, McpToolResult, McpWriteListQuery,
+    McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata,
+    RegistryConnection, RegistryListResponse, RegistryPagination, RegistryServerDetail,
+    RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS, ServerStatus, Transport, audit, config,
+    is_compatible, names, registry, sanitize, version,
 };
