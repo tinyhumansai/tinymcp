@@ -742,7 +742,7 @@ impl McpHttpClient {
 
     /// Reads an authorization server's metadata.
     ///
-    /// Tries the OpenID Connect discovery document first and falls back to the
+    /// Tries the `OpenID` Connect discovery document first and falls back to the
     /// OAuth authorization-server one. Servers publish one or the other and
     /// rarely say which.
     async fn fetch_authorization_server_metadata(
