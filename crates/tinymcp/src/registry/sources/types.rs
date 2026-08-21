@@ -123,21 +123,20 @@ impl Registries {
             page_size
         };
 
+        // Both values are taken out from under the lock before any await: a
+        // guard held across one is not `Send`, and the whole service future
+        // has to be.
         match source {
             RegistrySource::McpOfficial => {
+                let auth = self.auth.lock().clone();
                 self.official
-                    .search(store, &self.auth.lock().clone(), &self.cursors, query, page, page_size)
+                    .search(store, &auth, &self.cursors, query, page, page_size)
                     .await
             }
             RegistrySource::Smithery => {
+                let key = self.smithery_key();
                 self.smithery
-                    .search(
-                        store,
-                        self.smithery_key().as_deref(),
-                        query,
-                        page,
-                        page_size,
-                    )
+                    .search(store, key.as_deref(), query, page, page_size)
                     .await
             }
         }
@@ -161,16 +160,14 @@ impl Registries {
 
         match source {
             RegistrySource::McpOfficial => {
-                self.official
-                    .get(store, &self.auth.lock().clone(), qualified_name)
-                    .await
+                let auth = self.auth.lock().clone();
+                self.official.get(store, &auth, qualified_name).await
             }
             // Deliberately not gated on the key: an already-installed Smithery
             // server must stay inspectable after the key is removed.
             RegistrySource::Smithery => {
-                self.smithery
-                    .get(store, self.smithery_key().as_deref(), qualified_name)
-                    .await
+                let key = self.smithery_key();
+                self.smithery.get(store, key.as_deref(), qualified_name).await
             }
         }
     }
