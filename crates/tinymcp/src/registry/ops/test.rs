@@ -994,3 +994,235 @@ async fn a_value_that_is_not_a_handle_is_refused() {
 
     assert!(error.to_string().contains("not a secret handle"), "{error}");
 }
+
+// ---------------------------------------------------------------------------
+// The guided setup flow, end to end
+// ---------------------------------------------------------------------------
+
+/// A catalog listing one server whose only connection is `endpoint`.
+///
+/// The setup flow reads a catalog and connects in one step, so both have to
+/// answer for any of it to run.
+async fn catalog_pointing_at(endpoint: &str) -> String {
+    let detail = json!({
+        "server": {
+            "name": "com.vendor/server",
+            "description": "a server",
+            "remotes": [{ "type": "streamable-http", "url": endpoint }],
+        },
+    });
+
+    let app = Router::new()
+        .route(
+            "/v0/servers",
+            get({
+                let detail = detail.clone();
+                move || {
+                    let detail = detail.clone();
+                    async move { axum::Json(json!({ "servers": [detail] })) }
+                }
+            }),
+        )
+        .route(
+            "/v0/servers/{*rest}",
+            get(move || {
+                let detail = detail.clone();
+                async move { axum::Json(json!({ "servers": [detail] })) }
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
+}
+
+/// A facade browsing `catalog`.
+fn registry_browsing(catalog: &str) -> McpRegistry {
+    McpRegistry::new(
+        Store::open_in_memory().expect("a store"),
+        McpRegistryAuthConfig {
+            mcp_official_base: Some(catalog.to_string()),
+            ..McpRegistryAuthConfig::default()
+        },
+        McpClientIdentityConfig::default(),
+        None,
+    )
+    .expect("the facade builds")
+}
+
+#[tokio::test]
+async fn a_connection_test_reaches_the_server_without_installing_it() {
+    // The whole point of the step: a user finds out whether their credential
+    // works before anything is written down.
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let tools = registry
+        .setup_test_connection("com.vendor/server", &HashMap::new())
+        .await
+        .expect("the test connects");
+
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "forecast");
+    assert!(registry.installed_list().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_connection_test_leaves_nothing_in_the_connection_map() {
+    // A test must not leave a session behind that nothing owns.
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    registry
+        .setup_test_connection("com.vendor/server", &HashMap::new())
+        .await
+        .unwrap();
+
+    assert_eq!(registry.connections().connected_count().await, 0);
+}
+
+#[tokio::test]
+async fn a_connection_test_resolves_a_handle_without_consuming_it() {
+    // A user may test more than once before committing, and a handle consumed
+    // by the first test would make the second fail for the wrong reason.
+    let (endpoint, server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let handle = registry.setup_request_secret("Authorization").await.unwrap();
+    registry
+        .setup_submit_secret(&handle, "Bearer from-the-vault".into())
+        .await
+        .unwrap();
+
+    let mut secrets = HashMap::new();
+    secrets.insert(
+        "Authorization".to_string(),
+        SecretRef::parse(&handle).expect("a handle"),
+    );
+
+    registry
+        .setup_test_connection("com.vendor/server", &secrets)
+        .await
+        .expect("the first test");
+    assert_eq!(
+        server.authorization.lock().as_deref(),
+        Some("Bearer from-the-vault")
+    );
+
+    registry
+        .setup_test_connection("com.vendor/server", &secrets)
+        .await
+        .expect("the second test reuses the same handle");
+}
+
+#[tokio::test]
+async fn installing_and_connecting_does_both_in_one_step() {
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let outcome = registry
+        .setup_install_and_connect("com.vendor/server", &HashMap::new(), None)
+        .await
+        .expect("install and connect");
+
+    assert_eq!(outcome.tools.len(), 1);
+    assert_eq!(registry.installed_list().unwrap().len(), 1);
+    assert_eq!(registry.connections().connected_count().await, 1);
+}
+
+#[tokio::test]
+async fn installing_and_connecting_stores_the_resolved_credential() {
+    // Resolved on the way in: the install has to keep the value, because the
+    // handle is a one-time thing and the server needs the credential on every
+    // later reconnect.
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let handle = registry.setup_request_secret("Authorization").await.unwrap();
+    registry
+        .setup_submit_secret(&handle, "Bearer stored".into())
+        .await
+        .unwrap();
+    let mut secrets = HashMap::new();
+    secrets.insert(
+        "Authorization".to_string(),
+        SecretRef::parse(&handle).expect("a handle"),
+    );
+
+    let outcome = registry
+        .setup_install_and_connect("com.vendor/server", &secrets, None)
+        .await
+        .expect("install and connect");
+
+    let env = registry
+        .store()
+        .load_env_values(&outcome.server.server_id)
+        .unwrap();
+    assert_eq!(
+        env.get("Authorization").map(String::as_str),
+        Some("Bearer stored")
+    );
+}
+
+#[tokio::test]
+async fn a_second_install_of_the_same_server_does_not_duplicate_it() {
+    // Idempotent on purpose: a user who runs setup twice ends up with one
+    // server, not two rows that both look installed.
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let first = registry
+        .setup_install_and_connect("com.vendor/server", &HashMap::new(), None)
+        .await
+        .unwrap();
+    let second = registry
+        .setup_install_and_connect("com.vendor/server", &HashMap::new(), None)
+        .await
+        .unwrap();
+
+    assert_eq!(first.server.server_id, second.server.server_id);
+    assert_eq!(registry.installed_list().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_catalog_entry_offering_nothing_to_connect_to_is_refused() {
+    let app = Router::new().fallback(get(|| async {
+        axum::Json(json!({
+            "servers": [{ "server": { "name": "com.vendor/server", "description": "nothing" } }],
+        }))
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let registry = registry_browsing(&format!("http://{addr}"));
+
+    let error = registry
+        .setup_test_connection("com.vendor/server", &HashMap::new())
+        .await
+        .expect_err("nothing to connect to");
+
+    assert!(error.to_string().contains("neither a hosted endpoint"), "{error}");
+}
+
+#[tokio::test]
+async fn a_blank_qualified_name_is_refused_before_anything_is_fetched() {
+    let registry = registry_browsing("http://127.0.0.1:1");
+
+    assert!(
+        registry
+            .setup_test_connection("   ", &HashMap::new())
+            .await
+            .is_err()
+    );
+}
