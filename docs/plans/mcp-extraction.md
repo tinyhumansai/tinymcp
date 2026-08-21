@@ -249,22 +249,53 @@ members.
 
 Step one, the path dependency:
 
-- [ ] Add `vendor/tinymcp` as a git submodule pinned by gitlink.
-- [ ] Depend on `tinymcp` and `tinymcp-bus` by path, with a comment on each
+- [x] Add `vendor/tinymcp` as a git submodule pinned by gitlink.
+- [x] Depend on `tinymcp` and `tinymcp-bus` by path, with a comment on each
       entry saying why, per that repository's dependency rules.
-- [ ] Repoint `src/openhuman/mcp/registry/schemas.rs` and the `mcp_setup`
+- [x] Repoint `src/openhuman/mcp/registry/schemas.rs` and the `mcp_setup`
       controllers at the vendored crate. The RPC surface the frontend sees does
       not change.
-- [ ] Repoint the agent-tool bridge in `src/openhuman/tools/impl/network/mcp.rs`
+- [x] Repoint the agent-tool bridge in `src/openhuman/tools/impl/network/mcp.rs`
       and `mcp_setup.rs`, and the bespoke `gitbooks` tool, at
       `tinymcp::McpHttpClient`.
-- [ ] Keep `scan_tool_definition` at the host edge, applied to the definitions
+- [x] Keep `scan_tool_definition` at the host edge, applied to the definitions
       the module returns.
-- [ ] Repoint `util::sanitize` consumers at `tinymcp_bus::sanitize` and delete
+- [x] Repoint `util::sanitize` consumers at `tinymcp_bus::sanitize` and delete
       the OpenHuman copy.
-- [ ] Delete `src/openhuman/mcp/{http_client,config_servers,registry,audit}`
-      and the now-empty `mcp` Cargo feature. Keep `src/openhuman/mcp/server/`.
-- [ ] Verify an existing `mcp_clients.db` still lists the same servers.
+- [x] Delete `src/openhuman/mcp/{http_client,config_servers,registry,audit}`.
+      Keep `src/openhuman/mcp/server/` and the `mcp` Cargo feature, which still
+      gates the RPC surface and the agent tools that remain.
+- [x] Verify an existing `mcp_clients.db` still lists the same servers —
+      `crates/tinymcp/tests/opens_an_existing_openhuman_database.rs`, built from
+      OpenHuman's original schema rather than this crate's.
+
+### What the host half turned into
+
+The library owns what used to be process globals, so OpenHuman needed somewhere
+to keep one. The first shape was a single `OnceLock<McpHost>` set at boot, and
+it was wrong in a way its own suite caught: every entry point into that domain
+is addressed by configuration, and one process serves more than one workspace
+over its life — the workspace can be switched in place, and each test case runs
+against its own. A service bound to whichever configuration booted first answers
+all of those from the wrong store.
+
+`src/openhuman/mcp/host.rs` keys services by workspace instead. `for_config` is
+what every handler calls; `try_service` remains for the a few paths addressed by
+server id alone, resolving through the workspace `init` opened. Threading a
+`&Config` into the four handlers that lacked one — `disconnect`, `list_tools`,
+`tool_call`, and the two secret-vault handlers — changed no RPC method
+signature, only the internal call.
+
+Three defects surfaced on the way and were fixed in this crate with tests:
+
+- `Error::Unauthorized` had dropped the `(HTTP 401)` from its message, which is
+  what OpenHuman's error classifier anchors on to demote a re-authentication
+  prompt out of its error reporting.
+- A disabled server was refused with `Error::MalformedResponse`, which means the
+  peer misbehaved. It has its own `Error::ServerDisabled` now.
+- A server that was installed but not connected reported `Error::UnknownServer`,
+  sending a user to reinstall something they already had. `Error::NotConnected`
+  is distinct because the two ask different things of a caller.
 
 Step two, the loadable module, after the first `tinymcp` release:
 
@@ -310,4 +341,4 @@ cargo run -p tinymcp --example verify_module
 - [x] Phase 3 — transports
 - [x] Phase 4 — registries
 - [x] Phase 5 — bus adapter
-- [ ] Phase 6 — OpenHuman
+- [ ] Phase 6 — OpenHuman (step one done; step two waits on a release)
