@@ -8,9 +8,9 @@ use super::config::ModuleConfig;
 use crate::audit::AuditStore;
 use crate::config_servers::McpServerRegistry;
 use crate::error::Result;
-use crate::registry::{McpRegistry, SecretRef, Store};
+use crate::registry::{AuthDetection, McpRegistry, SecretRef, Store};
 use tinymcp_bus::{
-    AuthDetection, ConnStatus, ConnectOutcome, InstallOutcome, InstalledServer, McpTool,
+    ConnStatus, ConnectOutcome, InstallOutcome, InstalledServer, McpTool,
     McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord, RegistrySearchPage, RegistryServerDetail,
     RegistrySettings, ToolCallOutcome, UpdateEnvOutcome,
 };
