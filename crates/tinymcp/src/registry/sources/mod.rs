@@ -28,11 +28,11 @@
 //! [`RegistryServerSummary`]: tinymcp_bus::RegistryServerSummary
 //! [`RegistryServerDetail`]: tinymcp_bus::RegistryServerDetail
 
-mod encode;
-mod official;
-mod shared;
-mod smithery;
-mod types;
+pub(crate) mod encode;
+pub(crate) mod official;
+pub(crate) mod shared;
+pub(crate) mod smithery;
+pub(crate) mod types;
 
 pub use encode::encode_path_segment;
 pub use official::McpOfficialRegistry;
