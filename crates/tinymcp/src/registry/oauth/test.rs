@@ -735,7 +735,7 @@ async fn authority_with_challenge() -> (String, Arc<Authority>) {
 
 /// One query parameter off an authorize URL.
 fn authorize_param(url: &str, name: &str) -> Option<String> {
-    url::Url::parse(url)
+    reqwest::Url::parse(url)
         .ok()?
         .query_pairs()
         .find(|(key, _)| key == name)
