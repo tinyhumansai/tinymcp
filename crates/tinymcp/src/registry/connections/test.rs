@@ -784,6 +784,7 @@ async fn disconnecting_everything_empties_the_map() {
 
 #[cfg(unix)]
 mod stdio {
+    use std::fmt::Write as _;
     use std::io::Write;
     use std::path::Path;
 
