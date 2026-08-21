@@ -98,6 +98,6 @@ pub use tinymcp_bus::{
     McpServerToolResult, McpSseEvent, McpTool, McpToolContent, McpToolResult, McpWriteListQuery,
     McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection,
     RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
-    SUPPORTED_PROTOCOL_VERSIONS, ServerStatus, Transport, audit, config, is_compatible, names,
-    sanitize, version,
+    SUPPORTED_PROTOCOL_VERSIONS, ServerStatus, Transport, config, is_compatible, names, sanitize,
+    version,
 };
