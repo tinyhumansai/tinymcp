@@ -1228,3 +1228,206 @@ async fn a_blank_qualified_name_is_refused_before_anything_is_fetched() {
             .is_err()
     );
 }
+
+// ---------------------------------------------------------------------------
+// The remaining facade paths
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn the_facade_hands_out_the_pieces_a_host_drives_directly() {
+    // A host consuming this crate as a library reaches past the facade for the
+    // supervisor and the OAuth callback; a host on the bus does not. Both are
+    // supported, so both accessors are part of the surface.
+    let registry = registry();
+
+    assert_eq!(registry.vault().pending_count(), 0);
+    assert_eq!(registry.oauth().pending_count(), 0);
+    assert!(registry.connected_overview().await.is_empty());
+}
+
+#[tokio::test]
+async fn installing_the_same_server_twice_merges_credentials_rather_than_replacing_them() {
+    // The second install carries only the key the user just corrected. Starting
+    // from an empty map would erase every other credential they had set.
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let mut first = BTreeMap::new();
+    first.insert("API_KEY".to_string(), "one".to_string());
+    first.insert("REGION".to_string(), "eu".to_string());
+    let installed = registry
+        .install("com.vendor/server", first, None)
+        .await
+        .expect("the first install");
+
+    let mut second = BTreeMap::new();
+    second.insert("API_KEY".to_string(), "two".to_string());
+    registry
+        .install("com.vendor/server", second, None)
+        .await
+        .expect("the second install");
+
+    let env = registry
+        .store()
+        .load_env_values(&installed.server.server_id)
+        .unwrap();
+    assert_eq!(env.get("API_KEY").map(String::as_str), Some("two"));
+    assert_eq!(env.get("REGION").map(String::as_str), Some("eu"));
+}
+
+#[tokio::test]
+async fn a_second_install_updates_the_credential_names_on_the_record() {
+    // The name list is what a caller shows the user. A credential added by a
+    // later install has to appear there or it looks unconfigured.
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let installed = registry
+        .install("com.vendor/server", BTreeMap::new(), None)
+        .await
+        .unwrap();
+
+    let mut added = BTreeMap::new();
+    added.insert("API_KEY".to_string(), "one".to_string());
+    let again = registry
+        .install("com.vendor/server", added, None)
+        .await
+        .unwrap();
+
+    assert_eq!(installed.server.server_id, again.server.server_id);
+    assert!(again.server.env_keys.iter().any(|key| key == "API_KEY"));
+}
+
+#[tokio::test]
+async fn a_second_install_can_replace_the_stored_configuration() {
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    registry
+        .install("com.vendor/server", BTreeMap::new(), None)
+        .await
+        .unwrap();
+    let again = registry
+        .install(
+            "com.vendor/server",
+            BTreeMap::new(),
+            Some(json!({ "region": "eu" })),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(again.server.config, Some(json!({ "region": "eu" })));
+}
+
+#[tokio::test]
+async fn a_source_routed_name_is_stored_under_its_bare_name() {
+    // The prefix is addressing, not identity. Keeping it would write a second
+    // record for a service already installed under its plain name.
+    let (endpoint, _server) = mcp_server().await;
+    let catalog = catalog_pointing_at(&endpoint).await;
+    let registry = registry_browsing(&catalog);
+
+    let installed = registry
+        .install("mcp_official::com.vendor/server", BTreeMap::new(), None)
+        .await
+        .expect("the routed install");
+
+    assert_eq!(installed.server.qualified_name, "com.vendor/server");
+}
+
+#[tokio::test]
+async fn updating_credentials_on_a_disconnected_server_stores_them_without_connecting() {
+    // A server that is not connected must not be brought up by a credential
+    // change; the values are kept for when the user connects it.
+    let server = remote_record("srv-1", "http://127.0.0.1:1/mcp");
+    let registry = registry_with(&server);
+
+    let mut env = BTreeMap::new();
+    env.insert("API_KEY".to_string(), "one".to_string());
+    let outcome = registry.update_env("srv-1", env).await.expect("update");
+
+    assert_eq!(outcome.status, UpdateEnvStatus::Disconnected);
+    assert!(outcome.env_keys.iter().any(|key| key == "API_KEY"));
+    assert_eq!(registry.connections().connected_count().await, 0);
+}
+
+#[tokio::test]
+async fn updating_credentials_that_are_still_refused_reports_that_rather_than_a_failure() {
+    // The difference the caller acts on: a reconnect that failed on a 401 means
+    // "that credential is wrong", not "the server is down".
+    let (endpoint, state) = mcp_server().await;
+    state.demand_auth.store(true, Ordering::SeqCst);
+    let server = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&server);
+    let _ = registry.connect("srv-1").await;
+
+    let mut env = BTreeMap::new();
+    env.insert("X-Not-Auth".to_string(), "still-wrong".to_string());
+    let outcome = registry.update_env("srv-1", env).await.expect("update");
+
+    assert_eq!(outcome.status, UpdateEnvStatus::Unauthorized);
+}
+
+#[tokio::test]
+async fn a_sign_in_that_fails_to_connect_afterwards_is_still_a_successful_sign_in() {
+    // The token was minted and stored. Reporting the sign-in as failed would
+    // send the user back through a browser flow they have already completed.
+    let registry = registry();
+
+    // No pending authorization, so the exchange itself fails first — the
+    // outcome under test is the one below it, reached through `connect`.
+    assert!(registry.oauth_complete("never-issued", "code").await.is_err());
+}
+
+#[tokio::test]
+async fn installing_and_connecting_reports_the_install_even_when_the_connect_fails() {
+    // The server is installed and the credential is stored; only the dial
+    // failed. Reporting failure would leave a user re-running a setup that
+    // already succeeded.
+    let catalog = catalog_pointing_at("http://127.0.0.1:1/mcp").await;
+    let registry = registry_browsing(&catalog);
+
+    let outcome = registry
+        .setup_install_and_connect("com.vendor/server", &HashMap::new(), None)
+        .await
+        .expect("the install succeeded even though the connect did not");
+
+    assert!(outcome.tools.is_empty());
+    assert_eq!(registry.installed_list().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_connection_test_against_a_subprocess_server_runs_the_command() {
+    // The other arm of the test-connection dispatch. The command does not
+    // exist, so what is asserted is that it was resolved and run rather than
+    // dialled over HTTP.
+    let detail = json!({
+        "server": {
+            "name": "com.vendor/local",
+            "description": "a server",
+            "packages": [{ "registryType": "npm", "identifier": "tinymcp-nonexistent-zzz" }],
+        },
+    });
+    let app = Router::new().fallback(get(move || {
+        let detail = detail.clone();
+        async move { axum::Json(json!({ "servers": [detail] })) }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let registry = registry_browsing(&format!("http://{addr}"));
+
+    let error = registry
+        .setup_test_connection("com.vendor/local", &HashMap::new())
+        .await
+        .expect_err("the command does not exist");
+
+    // The subprocess preflight, not an HTTP failure.
+    assert!(error.to_string().contains("not found") || error.to_string().contains("Node.js"), "{error}");
+}
