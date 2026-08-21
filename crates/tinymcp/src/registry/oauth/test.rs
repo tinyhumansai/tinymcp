@@ -1127,3 +1127,29 @@ async fn detection_reports_the_grants_the_authorization_server_listed() {
 
     assert!(detection.grant_types.iter().any(|grant| grant == "authorization_code"));
 }
+
+// ---------------------------------------------------------------------------
+// How a kind is spelled on the wire
+// ---------------------------------------------------------------------------
+
+#[test]
+fn every_auth_kind_has_a_stable_spelling() {
+    // A host branches on this string to decide which affordance to offer, so a
+    // rename here is a silent behavior change at every one of them.
+    assert_eq!(AuthKind::None.as_str(), "none");
+    assert_eq!(AuthKind::Token.as_str(), "token");
+    assert_eq!(AuthKind::Oauth.as_str(), "oauth");
+}
+
+#[test]
+fn a_kind_serializes_as_the_same_spelling_it_reports() {
+    // Otherwise the constant above and the wire form could drift apart, and
+    // only one of them would be what a host actually receives.
+    for kind in [AuthKind::None, AuthKind::Token, AuthKind::Oauth] {
+        assert_eq!(
+            serde_json::to_value(kind).unwrap(),
+            json!(kind.as_str()),
+            "{kind:?}"
+        );
+    }
+}
