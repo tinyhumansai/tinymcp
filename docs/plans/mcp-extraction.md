@@ -37,14 +37,13 @@ Phase 4 is the bulk. Phase 6 is the only one that touches OpenHuman.
       `crates/tinymcp-bus`, and update `name`, `description`, `keywords`, and
       `categories` in both manifests plus the root `[workspace.dependencies]`.
 - [x] Point `[workspace.package] repository` at `tinyhumansai/tinymcp`.
-- [ ] Rename the interface, object path, and member constants in
-      `crates/tinymcp-bus/src/names/`, and the matching `provides` / `methods`
-      declarations in `crates/tinymcp/src/tinybus_module/`.
-- [ ] Delete the placeholder `greeting` module from both crates once Phase 2
-      has a real payload family to replace it with.
+- [x] Rename the interface, object path, and member constants in
+      `crates/tinymcp-bus/src/names/`. The matching `provides` / `methods`
+      declarations move with the adapter in Phase 5.
+- [x] Delete the placeholder `greeting` module from both crates.
 - [ ] Rewrite `README.md`, `MODULE.md`, `ROADMAP.md`, and both `src/lib.rs`
       crate docs for this project; delete the example spec and plan.
-- [~] Add the workspace dependencies the port needs (`schemars` done): `reqwest`, `tokio`
+- [x] Add the workspace dependencies the port needs: `reqwest`, `tokio`
       (process + io + sync), `rusqlite`, `parking_lot`, `anyhow`, `base64`,
       `futures-util`, `tracing`, `url`, and `schemars` as an optional feature of
       the contract crate.
@@ -95,19 +94,19 @@ only thing standing between a field rename and a production decode failure.
       `McpToolResult` (the shape `skills::types::ToolResult` supplied).
       `McpRemoteTool`'s sanitized display accessors move with it and call into
       Phase 1.
-- [ ] `crates/tinymcp-bus/src/registry/` — `InstalledServer`, `McpTool`,
+- [x] `crates/tinymcp-bus/src/registry/` — `InstalledServer`, `McpTool`,
       `ConnStatus`, `ServerStatus`, `Transport`, `CommandKind`, and the
       Smithery and official-registry DTOs, from
       `src/openhuman/mcp/registry/types.rs` (706 lines).
-- [ ] `crates/tinymcp-bus/src/audit/` — the record types from
+- [x] `crates/tinymcp-bus/src/audit/` — the record types from
       `src/openhuman/mcp/audit/types.rs`.
 - [ ] `crates/tinymcp-bus/src/method/` — one request and one response type per
       member listed in the specification.
-- [ ] `crates/tinymcp-bus/src/names/` — `INTERFACE =
+- [x] `crates/tinymcp-bus/src/names/` — `INTERFACE =
       "ai.tinyhumans.tinymcp.Mcp"`, `OBJECT_PATH = "/ai/tinyhumans/tinymcp/Mcp"`,
       one constant per member, and `METHODS` in dispatch order.
-- [ ] Reset `CONTRACT_VERSION` to `(1, 0)`.
-- [ ] Re-export the whole surface from `crates/tinymcp-bus/src/lib.rs` and
+- [x] Reset `CONTRACT_VERSION` to `(1, 0)`.
+- [x] Re-export the whole surface from `crates/tinymcp-bus/src/lib.rs` and
       rewrite the crate docs.
 
 **Verify:** `cargo test -p tinymcp-bus`, plus the CI job asserting the crate
@@ -117,11 +116,11 @@ pulls in no transport.
 
 ## Phase 3 — Transports
 
-- [ ] `crates/tinymcp/src/error/mod.rs` — extend the crate-wide `Error` with the
+- [x] `crates/tinymcp/src/error/mod.rs` — extend the crate-wide `Error` with the
       variants the ported code needs, replacing the `anyhow` returns at the
       public surface. Internal `anyhow` use may stay; the public boundary
       returns `Result<T>`.
-- [ ] `crates/tinymcp/src/transport/http/` — `McpHttpClient` from
+- [x] `crates/tinymcp/src/transport/http/` — `McpHttpClient` from
       `http_client/client.rs` (828 lines) and `client_helpers.rs` (160), with
       `client_tests.rs` (670) as `test.rs`. Protocol-version negotiation, SSE
       draining, session lifecycle, `WWW-Authenticate` parsing, the
@@ -177,6 +176,13 @@ ported into `crates/tinymcp/tests/`.
 ---
 
 ## Phase 5 — The bus adapter
+
+`crates/tinymcp/src/tinybus_module/` and the two `verify_*` examples were
+**removed** when the placeholder `greeting` behavior they served was deleted,
+and are rebuilt here against the real interface. Until then the workspace
+builds a `cdylib` that exports nothing, and the manifest-versus-`METHODS`
+assertion has nothing to assert. That is the one gap between the contract and
+the implementation, and it closes in this phase — nothing else is stubbed.
 
 - [ ] `crates/tinymcp/src/tinybus_module/mod.rs` — one `#[tinybus::interface]`
       method per member, each deserializing a contract request type and
@@ -256,8 +262,8 @@ cargo run -p tinymcp --example verify_module
 
 - [x] Phase 0 — de-template (partial: renames and metadata done)
 - [x] Phase 1 — `sanitize`
-- [~] Phase 2 — contract crate (config + transport done; registry, audit, method payloads, names outstanding)
-- [ ] Phase 3 — transports
+- [~] Phase 2 — contract crate (all payload families and names done; per-member request/response types outstanding)
+- [~] Phase 3 — transports (HTTP done; stdio and spawn-env outstanding)
 - [ ] Phase 4 — registries
 - [ ] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
