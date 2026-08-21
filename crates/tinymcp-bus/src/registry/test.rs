@@ -508,7 +508,7 @@ fn a_summary_always_serializes_snake_case() {
         "useCount",
         "isDeployed",
     ] {
-        assert!(encoded.get(key).is_none(), "leaked `camelCase` {key}");
+        assert!(encoded.get(key).is_none(), "leaked camelCase {key}");
     }
 }
 
