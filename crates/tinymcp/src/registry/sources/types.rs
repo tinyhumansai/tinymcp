@@ -8,7 +8,9 @@ use super::official::McpOfficialRegistry;
 use super::smithery::SmitheryRegistry;
 use crate::error::{Error, Result};
 use crate::registry::Store;
-use tinymcp_bus::{McpRegistryAuthConfig, RegistryServerDetail, RegistryServerSummary};
+use tinymcp_bus::{
+    McpRegistryAuthConfig, RegistryServerDetail, RegistryServerSummary, RegistrySettings,
+};
 
 /// The identifier Smithery stamps on its rows.
 pub const SOURCE_SMITHERY: &str = "smithery";
@@ -169,6 +171,37 @@ impl Registries {
                     .await
             }
         }
+    }
+
+    /// Which registry credentials are configured, with no values.
+    ///
+    /// The credential fields are booleans. A getter that echoed a stored secret
+    /// back would put it in whatever a caller does with a settings response —
+    /// a form, a log, a diagnostic bundle.
+    #[must_use]
+    pub fn settings(&self) -> RegistrySettings {
+        RegistrySettings {
+            smithery_api_key_set: self.smithery_key().is_some(),
+            mcp_official_token_set: self.official_token().is_some(),
+            // Not a secret, and a user who cannot see which registry they are
+            // pointed at cannot debug it.
+            mcp_official_base: self
+                .auth
+                .mcp_official_base
+                .clone()
+                .filter(|base| !base.trim().is_empty()),
+        }
+    }
+
+    /// The effective official-registry token: configuration first, then the
+    /// environment.
+    #[must_use]
+    pub fn official_token(&self) -> Option<String> {
+        self.auth
+            .mcp_official_token
+            .clone()
+            .filter(|token| !token.trim().is_empty())
+            .or_else(|| non_blank_env("MCP_OFFICIAL_REGISTRY_TOKEN"))
     }
 
     /// The effective Smithery key: configuration first, then the environment.
