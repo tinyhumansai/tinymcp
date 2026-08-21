@@ -96,6 +96,16 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # Install identifiers.
 uuid = { version = "1", features = ["v4"] }
 
+# Test-only: the transport suites stand up a real HTTP server on a loopback
+# port and dial it, so the client is exercised over an actual socket rather
+# than against a hand-rolled mock of `reqwest`. That is what makes assertions
+# about headers, redirects, session expiry and SSE framing mean anything.
+axum = { version = "0.8", default-features = false, features = [
+    "http1",
+    "json",
+    "tokio",
+] }
+
 # Lints apply to every member that opts in with `[lints] workspace = true`, and
 # to every target of that member. CI runs clippy with `-D warnings`, so anything
 # set to "warn" here fails the build in CI.

@@ -37,9 +37,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
-# The GitHub release verifier passes an explicit empty module configuration.
-serde_json = { workspace = true }
+# `net` stands up the loopback test servers; the rest comes from the ordinary
+# dependency entry above.
+tokio = { workspace = true, features = ["net"] }
+axum = { workspace = true }
 
 [features]
 default = ["rustls-tls"]
