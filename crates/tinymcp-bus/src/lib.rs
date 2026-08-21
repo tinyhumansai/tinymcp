@@ -65,11 +65,16 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
+pub mod config;
 pub mod greeting;
 pub mod names;
 pub mod sanitize;
 pub mod version;
 
+pub use config::{
+    HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpProxyConfig,
+    McpRegistryAuthConfig, McpServerConfig,
+};
 pub use greeting::{GreetRequest, GreetResponse};
 pub use names::{INTERFACE, METHODS, OBJECT_PATH};
 pub use sanitize::{

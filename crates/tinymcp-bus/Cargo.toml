@@ -19,6 +19,15 @@ publish = false
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Optional: lets a host generate a settings schema for a user interface from
+# these definitions rather than a hand-kept copy. Off by default because a
+# host that only makes calls should not pay for it. Pure Rust, no transport.
+schemars = { workspace = true, optional = true }
+
+[features]
+default = []
+# Derive `JsonSchema` on the configuration payloads. See `src/config/mod.rs`.
+schemars = ["dep:schemars"]
 
 [lints]
 workspace = true
