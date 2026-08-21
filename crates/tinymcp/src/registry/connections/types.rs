@@ -130,8 +130,7 @@ impl Connections {
                 // is the cold path; one extra store read costs nothing.
                 let has_credential = store
                     .load_env_values(&server.server_id)
-                    .map(|env| !matches!(build_http_auth(&env), McpAuthConfig::None))
-                    .unwrap_or(false);
+                    .is_ok_and(|env| !matches!(build_http_auth(&env), McpAuthConfig::None));
 
                 let failure = ConnectFailure::new(error, has_credential);
                 tracing::debug!(

@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::extract::{Form, State};
 use axum::http::StatusCode as AxumStatus;
-use axum::response::{IntoResponse, Response as AxumResponse};
+use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{Value, json};

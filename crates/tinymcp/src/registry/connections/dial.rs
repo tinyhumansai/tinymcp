@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use reqwest::Url;
 
-use crate::registry::oauth::OAUTH_BUNDLE_KEY;
 use tinymcp_bus::{HttpHeader, McpAuthConfig};
 
 /// The prefix marking a stored credential as internal bookkeeping.

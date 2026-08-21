@@ -97,7 +97,7 @@ impl OAuthFlow {
     /// collapsed into "open": reporting a server as needing nothing when the
     /// lookup failed would show the user a state that was never checked.
     pub async fn detect(&self, store: &Store, server_id: &str) -> Result<AuthDetection> {
-        let Some(url) = self.remote_url(store, server_id)? else {
+        let Some(url) = Self::remote_url(store, server_id)? else {
             // A subprocess install has no HTTP authorization to discover.
             return Ok(AuthDetection::open());
         };
@@ -150,8 +150,7 @@ impl OAuthFlow {
         server_id: &str,
         redirect_uri: &str,
     ) -> Result<String> {
-        let url = self
-            .remote_url(store, server_id)?
+        let url = Self::remote_url(store, server_id)?
             .ok_or_else(|| Error::malformed("oauth applies only to http-remote servers"))?;
 
         let client = McpHttpClient::builder(url.clone())
@@ -356,7 +355,7 @@ impl OAuthFlow {
     }
 
     /// The endpoint of an HTTP-remote install, or `None` for a subprocess one.
-    fn remote_url(&self, store: &Store, server_id: &str) -> Result<Option<String>> {
+    fn remote_url(store: &Store, server_id: &str) -> Result<Option<String>> {
         let server = store.get_server(server_id)?;
         Ok(match server.transport {
             Transport::HttpRemote { ref url } if !url.is_empty() => Some(url.clone()),
