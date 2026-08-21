@@ -915,7 +915,7 @@ async fn setting_up_serves_the_interface_and_claims_its_name() {
     let directory = tempfile::tempdir().unwrap();
     let connection = in_process_connection().await;
 
-    super::setup_for_test(
+    super::setup(
         connection,
         ModuleConfig {
             data_dir: Some(directory.path().to_path_buf()),
@@ -937,7 +937,7 @@ async fn a_module_that_came_up_answers_a_call_on_its_object_path() {
     let serving = Connection::connect(bus.connect().await.unwrap())
         .await
         .unwrap();
-    super::setup_for_test(
+    super::setup(
         serving,
         ModuleConfig {
             data_dir: Some(directory.path().to_path_buf()),
@@ -953,9 +953,12 @@ async fn a_module_that_came_up_answers_a_call_on_its_object_path() {
 
     let installed: serde_json::Value = caller
         .call(
-            names::INTERFACE,
-            names::OBJECT_PATH,
-            names::methods::INSTALLED_LIST,
+            names::INTERFACE.try_into().expect("a bus name"),
+            names::OBJECT_PATH.try_into().expect("an object path"),
+            names::INTERFACE.try_into().expect("an interface name"),
+            names::methods::INSTALLED_LIST
+                .try_into()
+                .expect("a member name"),
             serde_json::json!([]),
         )
         .await
@@ -974,7 +977,7 @@ async fn a_module_that_cannot_open_its_store_fails_to_come_up() {
 
     let connection = in_process_connection().await;
 
-    let error = super::setup_for_test(
+    let error = super::setup(
         connection,
         ModuleConfig {
             data_dir: Some(directory.path().to_path_buf()),

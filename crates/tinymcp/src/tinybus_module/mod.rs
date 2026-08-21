@@ -37,7 +37,7 @@ use tinymcp_bus::names;
 /// without its store or without a working HTTP client would answer every call
 /// with the same error, and failing at load says so once rather than on every
 /// request afterwards.
-async fn setup(connection: Connection, config: ModuleConfig) -> TinyBusResult<()> {
+pub(super) async fn setup(connection: Connection, config: ModuleConfig) -> TinyBusResult<()> {
     let service = McpService::new(&config)
         .map_err(|error| tinybus::Error::failed(format!("tinymcp could not start: {error}")))?;
 
@@ -98,6 +98,3 @@ tinybus_module::module_export! {
 
 #[cfg(test)]
 mod test;
-
-#[cfg(test)]
-pub(crate) use setup as setup_for_test;
