@@ -404,7 +404,10 @@ async fn connecting_a_server_that_is_turned_off_is_refused() {
 
     let error = registry.connect("srv-1").await.expect_err("turned off");
 
-    assert!(error.to_string().contains("turned off"), "{error}");
+    // Being off is a setting the user chose, so it has its own variant rather
+    // than riding on one that means the server misbehaved.
+    assert!(matches!(error, Error::ServerDisabled { .. }), "{error:?}");
+    assert!(error.to_string().contains("disabled"), "{error}");
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +521,7 @@ async fn listing_tools_on_a_server_that_is_not_connected_says_so() {
         .await
         .expect_err("not connected");
 
-    assert!(matches!(error, Error::UnknownServer { .. }), "{error:?}");
+    assert!(matches!(error, Error::NotConnected { .. }), "{error:?}");
 }
 
 #[tokio::test]
@@ -528,7 +531,7 @@ async fn calling_a_tool_on_a_server_that_is_not_connected_says_so() {
         .await
         .expect_err("not connected");
 
-    assert!(matches!(error, Error::UnknownServer { .. }), "{error:?}");
+    assert!(matches!(error, Error::NotConnected { .. }), "{error:?}");
 }
 
 // ---------------------------------------------------------------------------

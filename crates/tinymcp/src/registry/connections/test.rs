@@ -499,7 +499,9 @@ async fn calling_a_tool_on_a_server_that_is_not_connected_says_so() {
         .await
         .expect_err("not connected");
 
-    assert!(matches!(error, Error::UnknownServer { .. }), "{error:?}");
+    // Not `UnknownServer`: the two ask different things of a caller, and a user
+    // sent to reinstall a server they already have will not find it.
+    assert!(matches!(error, Error::NotConnected { .. }), "{error:?}");
 }
 
 #[tokio::test]
