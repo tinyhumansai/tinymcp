@@ -49,7 +49,7 @@ impl McpService {
     /// Returns [`crate::Error::StoreIo`] or [`crate::Error::Store`] when the
     /// stores cannot be opened, and [`crate::Error::ClientBuild`] when an HTTP
     /// client cannot be built.
-    pub fn new(config: ModuleConfig) -> Result<Self> {
+    pub fn new(config: &ModuleConfig) -> Result<Self> {
         // No data directory means nothing to persist, which is the right shape
         // for a host that only wants its statically declared servers.
         let (store, audit) = match config.data_dir.as_deref() {
@@ -96,7 +96,7 @@ impl McpService {
     /// The message is the error's own, which is already redacted: every variant
     /// carrying an endpoint holds the output of [`crate::redact_endpoint`], and
     /// the causes have had their URLs stripped.
-    fn failed(error: crate::Error) -> tinybus::Error {
+    fn failed(error: &crate::Error) -> tinybus::Error {
         tinybus::Error::failed(error.to_string())
     }
 
@@ -114,6 +114,11 @@ impl McpService {
     }
 }
 
+// Every member is `async fn` because the interface macro requires it: a
+// blocking one would stall the connection's dispatch task for every other
+// caller. A handful of them have nothing to await, and that is fine — the
+// uniformity is what the macro is buying.
+#[allow(clippy::unused_async)]
 #[tinybus::interface(name = "ai.tinyhumans.tinymcp.Mcp")]
 impl McpService {
     // -- browsing -----------------------------------------------------------
@@ -128,7 +133,7 @@ impl McpService {
         self.dynamic
             .registry_search(query.as_deref(), page.unwrap_or(1), page_size.unwrap_or(20))
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(qualified_name)`
@@ -137,7 +142,7 @@ impl McpService {
             .dynamic
             .registry_get(&qualified_name)
             .await
-            .map_err(Self::failed)?;
+            .map_err(|error| Self::failed(&error))?;
 
         Ok(ServerDetail {
             server,
@@ -171,7 +176,9 @@ impl McpService {
 
     /// `()`
     async fn installed_list(&self) -> tinybus::Result<Vec<InstalledServer>> {
-        self.dynamic.installed_list().map_err(Self::failed)
+        self.dynamic
+            .installed_list()
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(qualified_name, env, config)`
@@ -184,7 +191,7 @@ impl McpService {
         self.dynamic
             .install(&qualified_name, env, config)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(server_id)`
@@ -192,7 +199,7 @@ impl McpService {
         self.dynamic
             .uninstall(&server_id)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(server_id, enabled)`
@@ -200,7 +207,7 @@ impl McpService {
         self.dynamic
             .set_enabled(&server_id, enabled)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(server_id, env)`
@@ -212,14 +219,17 @@ impl McpService {
         self.dynamic
             .update_env(&server_id, env)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     // -- connections --------------------------------------------------------
 
     /// `(server_id)`
     async fn connect(&self, server_id: String) -> tinybus::Result<ConnectOutcome> {
-        self.dynamic.connect(&server_id).await.map_err(Self::failed)
+        self.dynamic
+            .connect(&server_id)
+            .await
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(server_id)`
@@ -227,12 +237,15 @@ impl McpService {
         self.dynamic
             .disconnect(&server_id)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `()`
     async fn status(&self) -> tinybus::Result<Vec<ConnStatus>> {
-        self.dynamic.status().await.map_err(Self::failed)
+        self.dynamic
+            .status()
+            .await
+            .map_err(|error| Self::failed(&error))
     }
 
     // -- authorization ------------------------------------------------------
@@ -242,7 +255,7 @@ impl McpService {
         self.dynamic
             .detect_auth(&server_id)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(server_id, redirect_uri)`
@@ -258,7 +271,7 @@ impl McpService {
         self.dynamic
             .oauth_begin(&server_id, &redirect_uri)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     // -- tools --------------------------------------------------------------
@@ -268,7 +281,7 @@ impl McpService {
         self.dynamic
             .list_tools(&server_id)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(server_id, tool_name, arguments)`
@@ -281,7 +294,7 @@ impl McpService {
         self.dynamic
             .tool_call(&server_id, &tool_name, arguments)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(qualified_name)`
@@ -293,7 +306,7 @@ impl McpService {
             .dynamic
             .config_assist(&qualified_name)
             .await
-            .map_err(Self::failed)?;
+            .map_err(|error| Self::failed(&error))?;
 
         Ok(ServerDetail {
             server,
@@ -313,7 +326,7 @@ impl McpService {
         self.dynamic
             .registry_search(query.as_deref(), page.unwrap_or(1), page_size.unwrap_or(20))
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(qualified_name)`
@@ -322,7 +335,7 @@ impl McpService {
             .dynamic
             .registry_get(&qualified_name)
             .await
-            .map_err(Self::failed)?;
+            .map_err(|error| Self::failed(&error))?;
 
         Ok(ServerDetail {
             server,
@@ -335,7 +348,7 @@ impl McpService {
         self.dynamic
             .setup_request_secret(&key_name)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(handle, value)`
@@ -343,7 +356,7 @@ impl McpService {
         self.dynamic
             .setup_submit_secret(&handle, value)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(qualified_name, secrets)`
@@ -355,12 +368,12 @@ impl McpService {
         qualified_name: String,
         secrets: HashMap<String, String>,
     ) -> tinybus::Result<Vec<McpTool>> {
-        let handles = Self::parse_handles(&secrets).map_err(Self::failed)?;
+        let handles = Self::parse_handles(&secrets).map_err(|error| Self::failed(&error))?;
 
         self.dynamic
             .setup_test_connection(&qualified_name, &handles)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(qualified_name, secrets, config)`
@@ -370,12 +383,12 @@ impl McpService {
         secrets: HashMap<String, String>,
         config: Option<Value>,
     ) -> tinybus::Result<ConnectOutcome> {
-        let handles = Self::parse_handles(&secrets).map_err(Self::failed)?;
+        let handles = Self::parse_handles(&secrets).map_err(|error| Self::failed(&error))?;
 
         self.dynamic
             .setup_install_and_connect(&qualified_name, &handles, config)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     // -- the statically declared servers -------------------------------------
@@ -398,7 +411,7 @@ impl McpService {
         self.static_servers
             .list_tools(&server)
             .await
-            .map_err(Self::failed)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(server, tool, arguments)`
@@ -412,7 +425,7 @@ impl McpService {
             .static_servers
             .call_tool(&server, &tool, arguments)
             .await
-            .map_err(Self::failed)?;
+            .map_err(|error| Self::failed(&error))?;
 
         Ok(ToolCallOutcome {
             is_error: result.rendered.is_error,
@@ -424,7 +437,9 @@ impl McpService {
 
     /// `(record)` — returns the row identifier.
     async fn audit_record_write(&self, record: NewMcpWriteRecord) -> tinybus::Result<i64> {
-        self.audit.record(&record).map_err(Self::failed)
+        self.audit
+            .record(&record)
+            .map_err(|error| Self::failed(&error))
     }
 
     /// `(query)`
@@ -432,6 +447,8 @@ impl McpService {
         &self,
         query: McpWriteListQuery,
     ) -> tinybus::Result<Vec<McpWriteRecord>> {
-        self.audit.list(&query).map_err(Self::failed)
+        self.audit
+            .list(&query)
+            .map_err(|error| Self::failed(&error))
     }
 }

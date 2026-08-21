@@ -37,7 +37,7 @@ use tinymcp_bus::names;
 /// with the same error, and failing at load says so once rather than on every
 /// request afterwards.
 async fn setup(connection: Connection, config: ModuleConfig) -> TinyBusResult<()> {
-    let service = McpService::new(config)
+    let service = McpService::new(&config)
         .map_err(|error| tinybus::Error::failed(format!("tinymcp could not start: {error}")))?;
 
     connection

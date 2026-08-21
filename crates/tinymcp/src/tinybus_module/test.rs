@@ -25,7 +25,7 @@ use tinymcp_bus::{McpClientConfig, McpServerConfig, names};
 
 /// A service over nothing, for inspecting its interface.
 fn service() -> McpService {
-    McpService::new(ModuleConfig::default()).expect("the service builds")
+    McpService::new(&ModuleConfig::default()).expect("the service builds")
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ fn a_service_with_no_data_directory_persists_nothing() {
 fn a_service_with_a_data_directory_creates_its_stores() {
     let directory = tempfile::tempdir().unwrap();
 
-    let _service = McpService::new(ModuleConfig {
+    let _service = McpService::new(&ModuleConfig {
         data_dir: Some(directory.path().to_path_buf()),
         client: McpClientConfig::default(),
     })
@@ -152,7 +152,7 @@ fn a_service_with_a_data_directory_creates_its_stores() {
 
 #[test]
 fn a_service_registers_the_statically_declared_servers() {
-    let service = McpService::new(ModuleConfig {
+    let service = McpService::new(&ModuleConfig {
         data_dir: None,
         client: McpClientConfig {
             servers: vec![McpServerConfig {
@@ -173,7 +173,7 @@ fn a_service_registers_the_statically_declared_servers() {
 fn a_service_reopens_an_existing_store() {
     let directory = tempfile::tempdir().unwrap();
 
-    let first = McpService::new(ModuleConfig {
+    let first = McpService::new(&ModuleConfig {
         data_dir: Some(directory.path().to_path_buf()),
         client: McpClientConfig::default(),
     })
@@ -192,7 +192,7 @@ fn a_service_reopens_an_existing_store() {
         .unwrap();
     drop(first);
 
-    let second = McpService::new(ModuleConfig {
+    let second = McpService::new(&ModuleConfig {
         data_dir: Some(directory.path().to_path_buf()),
         client: McpClientConfig::default(),
     })

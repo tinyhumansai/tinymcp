@@ -686,35 +686,32 @@ impl McpRegistry {
         })?;
         let (transport, _, command, args) = build_install_transport(canonical, picked)?;
 
-        let tools = match transport {
-            Transport::HttpRemote { url } => {
-                let auth = crate::registry::connections::build_http_auth(&env);
-                let client = crate::transport::http::McpHttpClient::builder(url)
-                    .timeout_secs(TEST_CONNECTION_TIMEOUT_SECS)
-                    .auth(auth)
-                    .identity(self.identity.clone())
-                    .proxy(self.proxy.clone())
-                    .build()?;
-                client.initialize().await?;
-                let tools = client.list_tools().await?;
-                // Closed rather than left open: a test must not leave a session
-                // behind that nothing owns.
-                let _ = client.close_session().await;
-                tools
-            }
-            _ => {
-                let client = crate::transport::stdio::McpStdioClient::new(
-                    command,
-                    args,
-                    env.into_iter().collect(),
-                    None,
-                    &self.identity,
-                );
-                client.initialize().await?;
-                let tools = client.list_tools().await?;
-                let _ = client.close_session().await;
-                tools
-            }
+        let tools = if let Transport::HttpRemote { url } = transport {
+            let auth = crate::registry::connections::build_http_auth(&env);
+            let client = crate::transport::http::McpHttpClient::builder(url)
+                .timeout_secs(TEST_CONNECTION_TIMEOUT_SECS)
+                .auth(auth)
+                .identity(self.identity.clone())
+                .proxy(self.proxy.clone())
+                .build()?;
+            client.initialize().await?;
+            let tools = client.list_tools().await?;
+            // Closed rather than left open: a test must not leave a session
+            // behind that nothing owns.
+            let _ = client.close_session().await;
+            tools
+        } else {
+            let client = crate::transport::stdio::McpStdioClient::new(
+                command,
+                args,
+                env.into_iter().collect(),
+                None,
+                &self.identity,
+            );
+            client.initialize().await?;
+            let tools = client.list_tools().await?;
+            let _ = client.close_session().await;
+            tools
         };
 
         Ok(tools
