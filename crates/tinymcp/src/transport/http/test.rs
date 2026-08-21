@@ -1204,7 +1204,7 @@ async fn a_configured_header_that_cannot_be_encoded_is_skipped_rather_than_fatal
 // Reading an SSE body
 // ---------------------------------------------------------------------------
 
-use super::sse::{first_complete_sse_data, parse_sse_message};
+use super::sse::parse_sse_message;
 
 #[test]
 fn a_body_with_no_data_frame_is_reported_rather_than_read_as_empty() {
