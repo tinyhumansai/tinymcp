@@ -1429,6 +1429,13 @@ async fn a_connection_test_against_a_subprocess_server_runs_the_command() {
         .await
         .expect_err("the command does not exist");
 
-    // The subprocess preflight, not an HTTP failure.
-    assert!(error.to_string().contains("not found") || error.to_string().contains("Node.js"), "{error}");
+    // The subprocess arm, not the HTTP one. What `npx` does here depends on
+    // whether this machine has Node, so the assertion is on which transport was
+    // chosen: every failure from that arm names the command, and none of them
+    // is a transport or HTTP error against an endpoint.
+    assert!(error.to_string().contains("npx"), "{error}");
+    assert!(
+        !matches!(error, Error::Transport { .. } | Error::Http { .. }),
+        "{error:?}"
+    );
 }
