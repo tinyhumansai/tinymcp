@@ -399,3 +399,9 @@ fn prune_expired(pending: &mut HashMap<String, PendingAuthorization>) {
     let cutoff = super::tokens::now_unix().saturating_sub(PENDING_TTL.as_secs());
     pending.retain(|_, authorization| authorization.started_at >= cutoff);
 }
+
+/// Exposes [`generate_pkce`] to the module's tests.
+#[cfg(test)]
+pub(super) fn generate_pkce_for_test() -> (String, String) {
+    generate_pkce()
+}

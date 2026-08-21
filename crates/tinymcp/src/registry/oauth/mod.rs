@@ -40,9 +40,9 @@
 //! two underscores, which is the marker meaning "never send this as a request
 //! header and never show it in a credential list".
 
-mod flow;
-mod tokens;
-mod types;
+pub(crate) mod flow;
+pub(crate) mod tokens;
+pub(crate) mod types;
 
 pub use flow::OAuthFlow;
 pub use tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
