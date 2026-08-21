@@ -1000,7 +1000,6 @@ fn a_response_with_no_challenge_yields_none() {
 
 use super::headers::{
     apply_auth, header_to_string, mcp_param_headers_from_schema, parse_auth_attribute_list,
-    parse_www_authenticate_challenge,
 };
 use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderValue as ReqwestHeaderValue};
 
