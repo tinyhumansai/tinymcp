@@ -68,7 +68,9 @@ fn reopening_finds_what_was_written() {
     let directory = tempfile::tempdir().unwrap();
 
     let first = AuditStore::open(directory.path()).unwrap();
-    first.record(&write_at(1_000, "claude", "memory_write")).unwrap();
+    first
+        .record(&write_at(1_000, "claude", "memory_write"))
+        .unwrap();
     drop(first);
 
     let second = AuditStore::open(directory.path()).unwrap();
@@ -373,8 +375,12 @@ fn a_blank_filter_matches_everything_rather_than_nothing() {
 #[test]
 fn a_tool_filter_matches_exactly() {
     let store = store();
-    store.record(&write_at(1_000, "claude", "memory_write")).unwrap();
-    store.record(&write_at(2_000, "claude", "memory_read")).unwrap();
+    store
+        .record(&write_at(1_000, "claude", "memory_write"))
+        .unwrap();
+    store
+        .record(&write_at(2_000, "claude", "memory_read"))
+        .unwrap();
 
     let query = McpWriteListQuery {
         tool_filter: Some("memory_write".into()),
@@ -428,9 +434,15 @@ fn asking_for_failures_too_is_the_same_as_not_filtering() {
 #[test]
 fn filters_combine() {
     let store = store();
-    store.record(&write_at(1_000, "claude", "memory_write")).unwrap();
-    store.record(&write_at(2_000, "claude", "memory_read")).unwrap();
-    store.record(&write_at(3_000, "other", "memory_write")).unwrap();
+    store
+        .record(&write_at(1_000, "claude", "memory_write"))
+        .unwrap();
+    store
+        .record(&write_at(2_000, "claude", "memory_read"))
+        .unwrap();
+    store
+        .record(&write_at(3_000, "other", "memory_write"))
+        .unwrap();
 
     let query = McpWriteListQuery {
         client_filter: Some("claude".into()),
@@ -452,5 +464,8 @@ fn a_bound_too_large_for_the_column_is_reported_rather_than_wrapping() {
 
     let error = store.list(&query).expect_err("an out-of-range bound");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }

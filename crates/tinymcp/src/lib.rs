@@ -67,11 +67,13 @@
 //! assert_eq!(rendered.text(), "sunny, 21C");
 //! ```
 
+pub mod audit;
 pub mod config_servers;
 mod error;
 pub mod registry;
 pub mod transport;
 
+pub use audit::AuditStore;
 pub use config_servers::{
     McpRegistrySource, McpServerDefinition, McpServerRegistry, McpTransportClient,
 };

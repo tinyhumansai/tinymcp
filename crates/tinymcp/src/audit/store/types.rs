@@ -167,7 +167,10 @@ impl AuditStore {
         // The identifier breaks ties so two writes in the same millisecond do
         // not swap places between two reads of the same page.
         sql.push_str(" ORDER BY timestamp_ms DESC, id DESC LIMIT ? OFFSET ?");
-        bound.push(Box::new(to_sqlite_integer(query.resolved_limit(), "limit")?));
+        bound.push(Box::new(to_sqlite_integer(
+            query.resolved_limit(),
+            "limit",
+        )?));
         bound.push(Box::new(to_sqlite_integer(
             query.resolved_offset(),
             "offset",
@@ -212,8 +215,9 @@ fn to_sqlite_integer(value: u64, field: &str) -> Result<i64> {
 /// Reads one `mcp_writes` row.
 fn map_record(row: &Row<'_>) -> rusqlite::Result<McpWriteRecord> {
     let args_summary = match row.get::<_, Option<String>>(4)? {
-        Some(raw) => serde_json::from_str(&raw)
-            .map_err(|error| rusqlite::Error::FromSqlConversionFailure(4, Type::Text, Box::new(error)))?,
+        Some(raw) => serde_json::from_str(&raw).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(4, Type::Text, Box::new(error))
+        })?,
         None => Value::Null,
     };
     let success: i64 = row.get(6)?;
