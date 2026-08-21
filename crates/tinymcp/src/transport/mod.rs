@@ -1,8 +1,8 @@
 //! Talking to a remote MCP server.
 //!
 //! Two transports, one protocol. [`http::McpHttpClient`] speaks Streamable HTTP
-//! with OAuth discovery and server-sent events; a subprocess transport speaking
-//! newline-delimited JSON-RPC joins it in the same directory. Both negotiate
+//! with OAuth discovery and server-sent events; [`stdio::McpStdioClient`] spawns
+//! a server and speaks newline-delimited JSON-RPC to it. Both negotiate
 //! from [`tinymcp_bus::SUPPORTED_PROTOCOL_VERSIONS`], and both render results
 //! through [`render_tool_result`], so a caller sees one vocabulary regardless of
 //! how the server was reached.
@@ -16,7 +16,8 @@
 //! query parameter and occasionally credentials in userinfo, and errors reach
 //! logs, telemetry, and user interfaces alike.
 
-pub(crate) mod http;
+pub mod http;
+pub mod stdio;
 
 use serde_json::Value;
 use tinymcp_bus::{McpToolResult, SUPPORTED_PROTOCOL_VERSIONS};

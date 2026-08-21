@@ -279,7 +279,7 @@ fn merge_path_strings<'a>(sources: impl IntoIterator<Item = &'a str>) -> String 
 /// # Examples
 ///
 /// ```
-/// # use tinymcp::transport::spawn_env::locate_command;
+/// # use tinymcp::transport::stdio::spawn_env::locate_command;
 /// // An empty command resolves to nothing rather than to the current
 /// // directory.
 /// assert!(locate_command("", "/usr/bin", None).is_none());
@@ -376,7 +376,7 @@ fn executable_candidates(base: PathBuf) -> Vec<PathBuf> {
 /// # Examples
 ///
 /// ```
-/// # use tinymcp::transport::spawn_env::missing_command_error;
+/// # use tinymcp::transport::stdio::spawn_env::missing_command_error;
 /// assert!(missing_command_error("npx").contains("Node.js"));
 /// assert!(missing_command_error("uvx").contains("uv"));
 /// ```

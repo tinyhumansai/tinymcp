@@ -68,10 +68,11 @@
 //! ```
 
 mod error;
-mod transport;
+pub mod transport;
 
 pub use error::{Error, Result};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
+pub use transport::stdio::McpStdioClient;
 pub use transport::{redact_endpoint, render_tool_result};
 
 // The wire contract, re-exported by module rather than by item so every path
