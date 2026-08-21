@@ -49,8 +49,8 @@ use headers::{
 use sse::{first_complete_sse_data, parse_sse_events, parse_sse_message};
 use tinymcp_bus::{
     AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthConfig, McpAuthorizationContext,
-    McpClientIdentityConfig, McpClientInfo, McpInitializeResult, McpProxyConfig,
-    McpRemoteTool, McpServerToolResult, McpSseEvent, ProtectedResourceMetadata,
+    McpClientIdentityConfig, McpClientInfo, McpInitializeResult, McpProxyConfig, McpRemoteTool,
+    McpServerToolResult, McpSseEvent, ProtectedResourceMetadata,
 };
 
 /// The `MCP-Protocol-Version` request header.
@@ -180,9 +180,9 @@ impl McpHttpClientBuilder {
             builder = apply_proxy(builder, proxy);
         }
 
-        let http = builder
-            .build()
-            .map_err(|source| Error::ClientBuild { source: Box::new(source) })?;
+        let http = builder.build().map_err(|source| Error::ClientBuild {
+            source: Box::new(source),
+        })?;
 
         Ok(McpHttpClient {
             endpoint: self.endpoint,
@@ -228,10 +228,7 @@ fn apply_proxy(
                 builder = builder.proxy(configured.no_proxy(no_proxy.clone()));
             }
             Err(error) => {
-                tracing::warn!(
-                    kind,
-                    "ignoring an unusable {kind}_proxy url: {error}"
-                );
+                tracing::warn!(kind, "ignoring an unusable {kind}_proxy url: {error}");
             }
         }
     }
@@ -734,8 +731,9 @@ impl McpHttpClient {
             });
         }
 
-        serde_json::from_str(&text)
-            .map_err(|error| Error::malformed(format!("json from {}: {error}", redact_endpoint(url))))
+        serde_json::from_str(&text).map_err(|error| {
+            Error::malformed(format!("json from {}: {error}", redact_endpoint(url)))
+        })
     }
 
     /// Reads an authorization server's metadata.

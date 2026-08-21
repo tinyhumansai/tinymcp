@@ -26,9 +26,7 @@ use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
 use super::{HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient};
 use crate::Error;
-use tinymcp_bus::{
-    HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig, McpClientIdentityConfig,
-};
+use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig, McpClientIdentityConfig};
 
 // ---------------------------------------------------------------------------
 // Test server
@@ -89,7 +87,10 @@ async fn mcp_handler(
         return (AxumStatus::NOT_ACCEPTABLE, "missing the mcp accept header").into_response();
     }
 
-    let rpc_method = body.get("method").and_then(Value::as_str).unwrap_or_default();
+    let rpc_method = body
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
 
     if method == Method::POST && rpc_method == "initialize" {
         state.init_count.fetch_add(1, AtomicOrdering::SeqCst);
@@ -151,7 +152,10 @@ async fn mcp_handler(
                 .and_then(|value| value.to_str().ok())
                 != Some("acme")
             {
-                return (AxumStatus::BAD_REQUEST, "missing the mirrored tenant header")
+                return (
+                    AxumStatus::BAD_REQUEST,
+                    "missing the mirrored tenant header",
+                )
                     .into_response();
             }
             Json(json!({
@@ -214,7 +218,10 @@ async fn retrying_mcp_handler(
         return (AxumStatus::NOT_ACCEPTABLE, "missing the mcp accept header").into_response();
     }
 
-    let rpc_method = body.get("method").and_then(Value::as_str).unwrap_or_default();
+    let rpc_method = body
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     match rpc_method {
         "initialize" => {
             state.init_count.fetch_add(1, AtomicOrdering::SeqCst);
@@ -371,7 +378,10 @@ async fn initialize_and_list_tools_negotiate_one_session() {
     assert_eq!(tools.len(), 1);
     assert_eq!(state.inits(), 1, "the handshake ran more than once");
     assert_eq!(
-        client.initialize_snapshot().expect("a snapshot").protocol_version,
+        client
+            .initialize_snapshot()
+            .expect("a snapshot")
+            .protocol_version,
         LATEST_PROTOCOL_VERSION
     );
 }
@@ -736,7 +746,10 @@ async fn a_reply_with_no_result_member_is_malformed() {
 
     let error = client.initialize().await.expect_err("no result");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 #[tokio::test]
@@ -746,7 +759,10 @@ async fn a_non_json_body_is_malformed_rather_than_a_transport_failure() {
 
     let error = client.initialize().await.expect_err("not json");
 
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 #[tokio::test]
@@ -775,7 +791,10 @@ async fn a_tool_reporting_failure_is_a_result_not_an_error() {
     let app = Router::new().route(
         "/",
         post(|Json(body): Json<Value>| async move {
-            let rpc_method = body.get("method").and_then(Value::as_str).unwrap_or_default();
+            let rpc_method = body
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let result = if rpc_method == "initialize" {
                 json!({
                     "protocolVersion": LATEST_PROTOCOL_VERSION,
@@ -917,7 +936,10 @@ fn a_multi_line_data_frame_is_joined_with_newlines() {
 #[test]
 fn a_frame_carrying_invalid_json_is_an_error() {
     let error = parse_sse_events("data: {not json}\n\n").expect_err("invalid json");
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
 }
 
 #[test]

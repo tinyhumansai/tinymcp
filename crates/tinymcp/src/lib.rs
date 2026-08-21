@@ -87,8 +87,8 @@ pub use tinymcp_bus::{
     McpAuthorizationContext, McpClientConfig, McpClientIdentityConfig, McpClientInfo,
     McpInitializeResult, McpProxyConfig, McpRegistryAuthConfig, McpRemoteTool, McpServerConfig,
     McpServerToolResult, McpSseEvent, McpTool, McpToolContent, McpToolResult, McpWriteListQuery,
-    McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata,
-    RegistryConnection, RegistryListResponse, RegistryPagination, RegistryServerDetail,
-    RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS, ServerStatus, Transport, audit, config,
-    is_compatible, names, registry, sanitize, version,
+    McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection,
+    RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
+    SUPPORTED_PROTOCOL_VERSIONS, ServerStatus, Transport, audit, config, is_compatible, names,
+    registry, sanitize, version,
 };

@@ -83,7 +83,11 @@ pub(super) fn mcp_param_headers_from_schema(
     let Some(arguments) = arguments.as_object() else {
         return Ok(headers);
     };
-    let Some(properties) = tool.input_schema.get("properties").and_then(Value::as_object) else {
+    let Some(properties) = tool
+        .input_schema
+        .get("properties")
+        .and_then(Value::as_object)
+    else {
         return Ok(headers);
     };
 
@@ -136,11 +140,9 @@ pub(super) fn apply_auth(request: RequestBuilder, auth: &McpAuthConfig) -> Reque
             request.header(AUTHORIZATION, format!("Basic {encoded}"))
         }
         McpAuthConfig::Header { name, value } => apply_one_header(request, name, value),
-        McpAuthConfig::Headers { headers } => headers
-            .iter()
-            .fold(request, |request, header| {
-                apply_one_header(request, &header.name, &header.value)
-            }),
+        McpAuthConfig::Headers { headers } => headers.iter().fold(request, |request, header| {
+            apply_one_header(request, &header.name, &header.value)
+        }),
         McpAuthConfig::QueryParam { name, value } => {
             request.query(&[(name.as_str(), value.as_str())])
         }

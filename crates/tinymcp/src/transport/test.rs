@@ -23,7 +23,10 @@ fn redaction_keeps_the_scheme_and_authority() {
         redact_endpoint("https://example.test"),
         "https://example.test"
     );
-    assert_eq!(redact_endpoint("http://example.test"), "http://example.test");
+    assert_eq!(
+        redact_endpoint("http://example.test"),
+        "http://example.test"
+    );
 }
 
 #[test]
