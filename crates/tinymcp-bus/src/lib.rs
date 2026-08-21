@@ -68,6 +68,7 @@
 pub mod config;
 pub mod greeting;
 pub mod names;
+pub mod registry;
 pub mod sanitize;
 pub mod transport;
 pub mod version;
@@ -78,6 +79,11 @@ pub use config::{
 };
 pub use greeting::{GreetRequest, GreetResponse};
 pub use names::{INTERFACE, METHODS, OBJECT_PATH};
+pub use registry::{
+    ChatTurn, CommandKind, ConnStatus, ConnectedServerOverview, ExtraFields, InstalledServer,
+    McpAuthHint, McpTool, RegistryConnection, RegistryListResponse, RegistryPagination,
+    RegistryServerDetail, RegistryServerSummary, ServerStatus, Transport,
+};
 pub use sanitize::{
     MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, sanitize_for_llm, strip_control_chars,
     strip_instruction_fences, truncate_utf8_safe,

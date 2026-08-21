@@ -16,8 +16,8 @@
 
 use super::{
     ChatTurn, CommandKind, ConnStatus, ConnectedServerOverview, InstalledServer, McpAuthHint,
-    McpTool, RegistryConnection, RegistryListResponse, RegistryServerDetail,
-    RegistryServerSummary, ServerStatus, Transport,
+    McpTool, RegistryConnection, RegistryListResponse, RegistryServerDetail, RegistryServerSummary,
+    ServerStatus, Transport,
 };
 use serde_json::json;
 
@@ -441,7 +441,10 @@ fn a_summary_decodes_from_smitherys_camel_case() {
 
     assert_eq!(summary.qualified_name, "@test/server");
     assert_eq!(summary.display_name, "Test Server");
-    assert_eq!(summary.icon_url.as_deref(), Some("https://example.test/i.png"));
+    assert_eq!(
+        summary.icon_url.as_deref(),
+        Some("https://example.test/i.png")
+    );
     assert_eq!(summary.use_count, 42);
     assert!(summary.is_deployed);
 }
@@ -498,7 +501,13 @@ fn a_summary_always_serializes_snake_case() {
     ] {
         assert!(encoded.get(key).is_some(), "missing {key}");
     }
-    for key in ["qualifiedName", "displayName", "iconUrl", "useCount", "isDeployed"] {
+    for key in [
+        "qualifiedName",
+        "displayName",
+        "iconUrl",
+        "useCount",
+        "isDeployed",
+    ] {
         assert!(encoded.get(key).is_none(), "leaked camelCase {key}");
     }
 }
@@ -561,8 +570,7 @@ fn a_list_response_parses_its_pagination_from_camel_case() {
 
 #[test]
 fn a_list_response_with_no_pagination_reads_as_zeroes() {
-    let response: RegistryListResponse =
-        serde_json::from_value(json!({ "servers": [] })).unwrap();
+    let response: RegistryListResponse = serde_json::from_value(json!({ "servers": [] })).unwrap();
     assert_eq!(response.pagination.total_count, 0);
 }
 
