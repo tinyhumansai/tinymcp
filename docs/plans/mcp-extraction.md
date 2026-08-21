@@ -151,20 +151,20 @@ Two defects found while porting, each fixed with a regression test:
 
 ## Phase 4 — The registries
 
-- [ ] `crates/tinymcp/src/config_servers/` — `McpServerRegistry`,
+- [x] `crates/tinymcp/src/config_servers/` — `McpServerRegistry`,
       `McpServerDefinition`, `McpTransportClient`, `McpRegistrySource` from
       `config_servers/registry.rs` (592 lines). Built from the contract
       `McpClientConfig` rather than OpenHuman's `Config`. Allow/deny
       enforcement stays fail-closed and pre-transport; its tests come with it.
-- [ ] `crates/tinymcp/src/registry/store/` — the SQLite store (965 lines).
+- [x] `crates/tinymcp/src/registry/store/` — the SQLite store (965 lines).
       Schema unchanged. The data directory arrives from module configuration.
 - [ ] `crates/tinymcp/src/registry/sources/` — `smithery.rs` (268) and
       `mcp_official.rs` (1438), plus the 10-minute cache in `registry.rs` (498).
 - [ ] `crates/tinymcp/src/registry/connections/` — the live connection map
       (979 lines), and `supervisor/` (223).
 - [ ] `crates/tinymcp/src/registry/oauth/` — OAuth discovery and callback (618).
-- [ ] `crates/tinymcp/src/registry/curation/` (174) and `boot/` (110), with
-      `boot_tests.rs` as `boot/test.rs`.
+- [~] `crates/tinymcp/src/registry/curation/` (174) done; `boot/` (110)
+      outstanding, with `boot_tests.rs` as `boot/test.rs`.
 - [ ] `crates/tinymcp/src/registry/setup/` — `setup.rs` (327) and the
       `setup_ops.rs` operations (690), minus the OpenHuman agent invocation:
       `mcp_setup_config_assist` reaches `agent::turn_origin` to run an
@@ -177,7 +177,11 @@ Two defects found while porting, each fixed with a regression test:
       wiring and is replaced by the bus adapter in Phase 5.
 - [ ] Drop `registry/bus.rs`. It was pure `tracing` logging over `DomainEvent`
       with no side effects; the module logs directly and emits signals instead.
-- [ ] `crates/tinymcp/src/audit/` — store, schemas, and types from `audit/`.
+- [x] `crates/tinymcp/src/audit/` — the store. It gets **its own SQLite file**
+      rather than sharing the host's memory-tree database, which is what made
+      it unmovable. Existing audit rows stay in the host's old database; that
+      is history, not operational state, and migrating it is a separate
+      decision for the host to make.
 
 **Verify:** `cargo test -p tinymcp`, and the four OpenHuman integration suites
 ported into `crates/tinymcp/tests/`.
@@ -273,6 +277,7 @@ cargo run -p tinymcp --example verify_module
 - [x] Phase 1 — `sanitize`
 - [~] Phase 2 — contract crate (all payload families and names done; per-member request/response types outstanding)
 - [x] Phase 3 — transports
-- [ ] Phase 4 — registries
+- [~] Phase 4 — registries (static set, store, curation, audit store done;
+      sources, connections, supervisor, OAuth, boot, setup, ops outstanding)
 - [ ] Phase 5 — bus adapter
 - [ ] Phase 6 — OpenHuman
