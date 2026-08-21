@@ -67,9 +67,13 @@
 //! assert_eq!(rendered.text(), "sunny, 21C");
 //! ```
 
+pub mod config_servers;
 mod error;
 pub mod transport;
 
+pub use config_servers::{
+    McpRegistrySource, McpServerDefinition, McpServerRegistry, McpTransportClient,
+};
 pub use error::{Error, Result};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
