@@ -10,9 +10,9 @@ use crate::config_servers::McpServerRegistry;
 use crate::error::Result;
 use crate::registry::{AuthDetection, McpRegistry, SecretRef, Store};
 use tinymcp_bus::{
-    ConnStatus, ConnectOutcome, InstallOutcome, InstalledServer, McpTool,
-    McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord, RegistrySearchPage, RegistryServerDetail,
-    RegistrySettings, ToolCallOutcome, UpdateEnvOutcome,
+    ConnStatus, ConnectOutcome, InstallOutcome, InstalledServer, McpTool, McpWriteListQuery,
+    McpWriteRecord, NewMcpWriteRecord, RegistrySearchPage, RegistryServerDetail, RegistrySettings,
+    ToolCallOutcome, UpdateEnvOutcome,
 };
 
 /// One server's detail plus the credentials installing it would need.

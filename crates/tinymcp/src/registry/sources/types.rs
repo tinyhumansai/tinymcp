@@ -167,7 +167,9 @@ impl Registries {
             // server must stay inspectable after the key is removed.
             RegistrySource::Smithery => {
                 let key = self.smithery_key();
-                self.smithery.get(store, key.as_deref(), qualified_name).await
+                self.smithery
+                    .get(store, key.as_deref(), qualified_name)
+                    .await
             }
         }
     }
