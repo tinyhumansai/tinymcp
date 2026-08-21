@@ -1166,7 +1166,7 @@ async fn installing_and_connecting_stores_the_resolved_credential() {
 
     let env = registry
         .store()
-        .load_env_values(&outcome.server.server_id)
+        .load_env_values(&outcome.server_id)
         .unwrap();
     assert_eq!(
         env.get("Authorization").map(String::as_str),
@@ -1191,7 +1191,7 @@ async fn a_second_install_of_the_same_server_does_not_duplicate_it() {
         .await
         .unwrap();
 
-    assert_eq!(first.server.server_id, second.server.server_id);
+    assert_eq!(first.server_id, second.server_id);
     assert_eq!(registry.installed_list().unwrap().len(), 1);
 }
 
