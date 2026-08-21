@@ -156,7 +156,6 @@ const fn default_enabled() -> bool {
 /// RPC, and rendered in user interfaces — and a credential that is never in the
 /// struct cannot leak from any of them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct InstalledServer {
     /// A stable identifier generated at install time.
     pub server_id: String,
@@ -214,7 +213,6 @@ pub struct InstalledServer {
 
 /// A tool exposed by a connected server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpTool {
     /// The tool's programmatic name.
     pub name: String,
@@ -246,7 +244,6 @@ impl McpTool {
 /// This is what a host needs to describe its available servers — in an
 /// orchestrator prompt, say — without reading the store or the configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ConnectedServerOverview {
     /// The install's identifier.
     pub server_id: String,
@@ -375,7 +372,6 @@ impl McpAuthHint {
 
 /// A per-server status summary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ConnStatus {
     /// The install's identifier.
     pub server_id: String,
@@ -411,7 +407,6 @@ pub struct ConnStatus {
 /// always produces snake_case, which is what a host's own consumers expect.
 /// Both directions are pinned by test.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct RegistryServerSummary {
     /// The registry's qualified name.
     #[serde(alias = "qualifiedName")]
@@ -465,7 +460,6 @@ pub struct RegistryServerSummary {
 
 /// A server detail record from an upstream registry.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct RegistryServerDetail {
     /// The registry's qualified name.
     #[serde(alias = "qualifiedName")]
@@ -492,7 +486,6 @@ pub struct RegistryServerDetail {
 
 /// One connection type listed on a server detail.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct RegistryConnection {
     /// The connection type: `stdio` or `http`.
     pub r#type: String,
@@ -515,7 +508,6 @@ pub struct RegistryConnection {
 
 /// The pagination block on a registry list response.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct RegistryPagination {
     /// The page this response covers, one-based.
     #[serde(default, alias = "currentPage")]
@@ -533,7 +525,6 @@ pub struct RegistryPagination {
 
 /// A registry list response.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct RegistryListResponse {
     /// The rows on this page.
     #[serde(default)]
@@ -549,7 +540,6 @@ pub struct RegistryListResponse {
 
 /// One turn of the setup conversation a host runs to help configure a server.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ChatTurn {
     /// Who spoke: conventionally `user` or `assistant`.
     pub role: String,

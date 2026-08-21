@@ -26,7 +26,6 @@ const fn default_timeout_secs() -> u64 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(default)]
-#[non_exhaustive]
 pub struct McpClientConfig {
     /// When `true`, the statically declared servers below are exposed.
     ///
@@ -73,7 +72,6 @@ impl Default for McpClientConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(default)]
-#[non_exhaustive]
 pub struct McpServerConfig {
     /// Stable slug identifying this server to callers.
     #[serde(default)]
@@ -148,7 +146,6 @@ impl Default for McpServerConfig {
 /// One HTTP header, for the multi-header [`McpAuthConfig::Headers`] variant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[non_exhaustive]
 pub struct HttpHeader {
     /// The header name.
     pub name: String,
@@ -231,7 +228,6 @@ pub enum McpAuthConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(default)]
-#[non_exhaustive]
 pub struct McpClientIdentityConfig {
     /// Sent as `initialize.clientInfo.name`.
     #[serde(default = "default_client_name")]
@@ -286,7 +282,6 @@ impl Default for McpClientIdentityConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(default)]
-#[non_exhaustive]
 pub struct McpRegistryAuthConfig {
     /// Smithery API key. Falls back to `SMITHERY_API_KEY`.
     #[serde(default)]
@@ -351,7 +346,6 @@ impl McpRegistryAuthConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(default)]
-#[non_exhaustive]
 pub struct McpProxyConfig {
     /// Proxy URL for `http://` requests.
     #[serde(default)]

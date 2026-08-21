@@ -39,7 +39,6 @@ pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
 /// the transports; the boundary that matters is where the value is *consumed*,
 /// not where it is *stored*.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpRemoteTool {
     /// The tool's programmatic name, as the server spells it.
     pub name: String,
@@ -115,7 +114,6 @@ impl McpRemoteTool {
 
 /// Who the client says it is, as sent in `initialize.clientInfo`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpClientInfo {
     /// The client's programmatic name.
     pub name: String,
@@ -154,7 +152,6 @@ impl From<&crate::McpClientIdentityConfig> for McpClientInfo {
 /// they are open-ended in the protocol, servers put vendor-specific keys in
 /// them, and modelling them would mean a contract bump every time one did.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpInitializeResult {
     /// The protocol version the server settled on.
     #[serde(rename = "protocolVersion")]
@@ -195,7 +192,6 @@ pub enum McpToolContent {
 /// server's raw `tools/call` reply so that a host does not have to know the
 /// protocol's content-block encoding.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpToolResult {
     /// The content blocks the tool returned.
     pub content: Vec<McpToolContent>,
@@ -337,7 +333,6 @@ impl McpToolResult {
 /// form is what a caller shows or feeds to a model, and the raw form is what a
 /// caller inspects when the rendering lost something it needed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpServerToolResult {
     /// The reply exactly as the server sent it.
     pub raw_result: Value,
@@ -358,7 +353,6 @@ impl McpServerToolResult {
 
 /// OAuth protected-resource metadata, per RFC 9728.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ProtectedResourceMetadata {
     /// The resource identifier.
     pub resource: String,
@@ -372,7 +366,6 @@ pub struct ProtectedResourceMetadata {
 
 /// Authorization-server metadata, per RFC 8414 and `OpenID` Discovery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct AuthorizationServerMetadata {
     /// The issuer identifier.
     pub issuer: String,
@@ -398,7 +391,6 @@ pub struct AuthorizationServerMetadata {
 
 /// A parsed `WWW-Authenticate` challenge from a 401.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpAuthChallenge {
     /// The authentication scheme, for example `Bearer`.
     pub scheme: String,
@@ -416,7 +408,6 @@ pub struct McpAuthChallenge {
 /// resource may name several authorization servers and a client has to choose;
 /// it is empty when discovery found none rather than being absent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpAuthorizationContext {
     /// The challenge that started discovery.
     pub challenge: McpAuthChallenge,
@@ -430,7 +421,6 @@ pub struct McpAuthorizationContext {
 
 /// One event from a `text/event-stream` response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct McpSseEvent {
     /// The `event:` field, when the frame carried one.
     #[serde(default)]
