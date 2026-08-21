@@ -593,6 +593,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serde_json::Value;
 
+use crate::registry::oauth::AuthKind;
 use tinymcp_bus::LATEST_PROTOCOL_VERSION;
 
 /// What the loopback server saw.
@@ -767,7 +768,7 @@ async fn status_reports_a_connected_server_as_connected() {
     let statuses = registry.status().await.expect("status");
 
     assert_eq!(statuses.len(), 1);
-    assert_eq!(statuses[0].status, "connected");
+    assert_eq!(statuses[0].status, tinymcp_bus::ServerStatus::Connected);
 }
 
 #[tokio::test]
@@ -925,7 +926,9 @@ async fn detecting_auth_on_a_server_that_demands_it_says_so() {
 
     let detection = registry.detect_auth("srv-1").await.expect("detect");
 
-    assert!(detection.requires_auth);
+    // OAuth rather than a token: the challenge advertised resource metadata,
+    // and that is what decides between a browser sign-in and a token field.
+    assert_eq!(detection.kind, AuthKind::Oauth);
 }
 
 #[tokio::test]
@@ -936,7 +939,8 @@ async fn detecting_auth_on_a_server_that_does_not_demand_it_says_so() {
 
     let detection = registry.detect_auth("srv-1").await.expect("detect");
 
-    assert!(!detection.requires_auth);
+    assert_eq!(detection.kind, AuthKind::None);
+    assert_eq!(detection.authorization_endpoint, None);
 }
 
 // ---------------------------------------------------------------------------
