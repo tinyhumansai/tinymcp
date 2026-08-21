@@ -71,7 +71,7 @@ impl CommandKind {
 /// `transport` column, so the two strings it returns are a storage format, not
 /// a display detail. They are pinned by test for that reason.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "`snake_case`")]
 #[non_exhaustive]
 pub enum Transport {
     /// A local subprocess speaking JSON-RPC over stdin and stdout.
@@ -316,7 +316,7 @@ impl ServerStatus {
 /// checking the two agreed. The wire form is unchanged: each variant
 /// serializes to exactly the code it replaced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "`snake_case`")]
 #[non_exhaustive]
 pub enum McpAuthHint {
     /// The server advertised OAuth. A pasted static token will not work; the
@@ -402,9 +402,9 @@ pub struct ConnStatus {
 ///
 /// # Two spellings in, one spelling out
 ///
-/// Smithery sends camelCase and the official-registry adapter builds
-/// snake_case, so deserialization accepts both through aliases. Serialization
-/// always produces snake_case, which is what a host's own consumers expect.
+/// Smithery sends `camelCase` and the official-registry adapter builds
+/// `snake_case`, so deserialization accepts both through aliases. Serialization
+/// always produces `snake_case`, which is what a host's own consumers expect.
 /// Both directions are pinned by test.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegistryServerSummary {

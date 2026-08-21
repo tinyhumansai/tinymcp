@@ -9,8 +9,8 @@
 //! 2. **The trust signals.** `website_url` and `auth_kind` decide whether a
 //!    server passes curation, and `skip_deserializing` is the only thing
 //!    stopping an upstream from setting them itself.
-//! 3. **The wire form**, in both directions: camelCase in from the registries,
-//!    snake_case out to a host's own consumers.
+//! 3. **The wire form**, in both directions: `camelCase` in from the registries,
+//!    `snake_case` out to a host's own consumers.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -508,7 +508,7 @@ fn a_summary_always_serializes_snake_case() {
         "useCount",
         "isDeployed",
     ] {
-        assert!(encoded.get(key).is_none(), "leaked camelCase {key}");
+        assert!(encoded.get(key).is_none(), "leaked `camelCase` {key}");
     }
 }
 
