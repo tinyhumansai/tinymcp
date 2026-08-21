@@ -377,8 +377,8 @@ impl Connections {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownServer`] when the server is not connected, plus
-    /// whatever the transport returns.
+    /// Returns [`Error::NotConnected`] when the server has no live connection,
+    /// plus whatever the transport returns.
     pub async fn call_tool(
         &self,
         server_id: &str,
@@ -388,7 +388,7 @@ impl Connections {
         let connection = self
             .get(server_id)
             .await
-            .ok_or_else(|| Error::UnknownServer {
+            .ok_or_else(|| Error::NotConnected {
                 server: server_id.to_string(),
             })?;
 

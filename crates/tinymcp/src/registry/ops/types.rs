@@ -433,16 +433,16 @@ impl McpRegistry {
     /// # Errors
     ///
     /// Returns [`Error::UnknownServer`] when the identifier is blank or names
-    /// no install, [`Error::MalformedResponse`] when it is turned off, plus
+    /// no install, [`Error::ServerDisabled`] when it is turned off, plus
     /// whatever the transport returns.
     pub async fn connect(&self, server_id: &str) -> Result<ConnectOutcome> {
         let server_id = require_non_empty(server_id, "server_id")?;
         let server = self.store.get_server(server_id)?;
 
         if !server.enabled {
-            return Err(Error::malformed(format!(
-                "`{server_id}` is turned off; turn it on before connecting"
-            )));
+            return Err(Error::ServerDisabled {
+                server: server_id.to_string(),
+            });
         }
 
         let tools = self

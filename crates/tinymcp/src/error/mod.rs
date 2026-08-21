@@ -125,6 +125,29 @@ pub enum Error {
         tool: String,
     },
 
+    /// A server is installed but has no live connection.
+    ///
+    /// Distinct from [`Error::UnknownServer`] because the two ask different
+    /// things of a caller: one has to install the server, the other has to
+    /// connect the one they already have. Collapsing them sends a user looking
+    /// for something they already installed.
+    #[error("mcp server `{server}` is not connected; connect it first")]
+    NotConnected {
+        /// The identifier of the server with no live connection.
+        server: String,
+    },
+
+    /// A server is installed but turned off.
+    ///
+    /// Being off is a setting the user chose, not a failure, so it is neither a
+    /// transport error nor a malformed reply. A caller offers to turn it back
+    /// on rather than reporting that something broke.
+    #[error("mcp server `{server}` is disabled; turn it on before connecting")]
+    ServerDisabled {
+        /// The identifier of the server that is turned off.
+        server: String,
+    },
+
     /// A named server is not configured or not installed.
     #[error("unknown mcp server `{server}`")]
     UnknownServer {
