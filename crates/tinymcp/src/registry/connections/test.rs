@@ -785,27 +785,8 @@ async fn disconnecting_everything_empties_the_map() {
 #[cfg(unix)]
 mod stdio {
     use std::fmt::Write as _;
-    use std::io::Write;
-    use std::path::Path;
 
     use super::*;
-
-    /// Writes an executable shell script and returns its path.
-    fn write_script(directory: &Path, body: &str) -> String {
-        use std::os::unix::fs::PermissionsExt;
-
-        let path = directory.join("fake-mcp-server");
-        let mut file = std::fs::File::create(&path).unwrap();
-        writeln!(file, "#!/bin/sh").unwrap();
-        write!(file, "{body}").unwrap();
-        drop(file);
-
-        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&path, permissions).unwrap();
-
-        path.to_string_lossy().into_owned()
-    }
 
     /// A server answering the handshake, a tool listing, and one call.
     ///
@@ -836,10 +817,17 @@ mod stdio {
         body
     }
 
-    /// An install that runs `script` as a subprocess server.
-    fn stdio_install(script: &str) -> InstalledServer {
+    /// An install that runs `body` through `/bin/sh`.
+    ///
+    /// The script is an *argument* rather than a file the test wrote and then
+    /// executes. Writing one and exec'ing it races: between another test's fork
+    /// and its exec, this test's still-open descriptor makes the kernel refuse
+    /// the exec with `ETXTBSY`, and the suite runs its cases in parallel. The
+    /// interpreter is never written by the test, so there is nothing to race.
+    fn stdio_install(body: &str) -> InstalledServer {
         InstalledServer {
-            command: script.to_string(),
+            command: "/bin/sh".to_string(),
+            args: vec!["-c".to_string(), body.to_string()],
             command_kind: CommandKind::Binary,
             ..install("srv-1", Transport::Stdio)
         }
@@ -847,8 +835,7 @@ mod stdio {
 
     #[tokio::test]
     async fn a_subprocess_server_connects_and_reports_its_tools() {
-        let directory = tempfile::tempdir().unwrap();
-        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let server = stdio_install(&responder());
         let store = store_with(&server);
         let connections = Connections::new();
 
@@ -869,8 +856,7 @@ mod stdio {
 
     #[tokio::test]
     async fn a_connected_subprocess_server_answers_a_tool_call() {
-        let directory = tempfile::tempdir().unwrap();
-        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let server = stdio_install(&responder());
         let store = store_with(&server);
         let connections = Connections::new();
         connections
@@ -912,8 +898,7 @@ mod stdio {
         }
         body.push_str("cat > /dev/null\n");
 
-        let directory = tempfile::tempdir().unwrap();
-        let server = stdio_install(&write_script(directory.path(), &body));
+        let server = stdio_install(&body);
         let store = store_with(&server);
         let connections = Connections::new();
         connections
@@ -936,8 +921,7 @@ mod stdio {
 
     #[tokio::test]
     async fn disconnecting_every_server_ends_each_session() {
-        let directory = tempfile::tempdir().unwrap();
-        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let server = stdio_install(&responder());
         let store = store_with(&server);
         let connections = Connections::new();
         connections
@@ -961,8 +945,7 @@ mod stdio {
         // The OAuth bundle is this crate's own record, not a credential the
         // server asked for. Handing it to a subprocess would put a refresh
         // token in its environment for no reason.
-        let directory = tempfile::tempdir().unwrap();
-        let server = stdio_install(&write_script(directory.path(), &responder()));
+        let server = stdio_install(&responder());
         let store = store_with(&server);
 
         let mut env = BTreeMap::new();
