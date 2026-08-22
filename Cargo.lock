@@ -1671,7 +1671,7 @@ dependencies = [
 
 [[package]]
 name = "tinymcp"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1696,7 +1696,7 @@ dependencies = [
 
 [[package]]
 name = "tinymcp-bus"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "schemars",
  "serde",
