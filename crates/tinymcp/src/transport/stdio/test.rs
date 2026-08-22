@@ -95,26 +95,7 @@ async fn closing_a_session_that_was_never_opened_does_nothing() {
 mod against_a_fake_server {
     use super::{Error, LATEST_PROTOCOL_VERSION, McpStdioClient};
     use std::fmt::Write as _;
-    use std::io::Write as _;
-    use std::path::Path;
     use tinymcp_bus::McpClientIdentityConfig;
-
-    /// Writes an executable shell script and returns its path.
-    fn write_script(directory: &Path, body: &str) -> String {
-        use std::os::unix::fs::PermissionsExt;
-
-        let path = directory.join("fake-mcp-server");
-        let mut file = std::fs::File::create(&path).unwrap();
-        writeln!(file, "#!/bin/sh").unwrap();
-        write!(file, "{body}").unwrap();
-        drop(file);
-
-        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&path, permissions).unwrap();
-
-        path.to_string_lossy().into_owned()
-    }
 
     /// A server that answers each request in order, one JSON line per reply.
     ///
@@ -131,10 +112,17 @@ mod against_a_fake_server {
         body
     }
 
-    fn client_for(command: String) -> McpStdioClient {
+    /// A client running `body` through `/bin/sh`.
+    ///
+    /// The script is an *argument* rather than a file the test wrote and then
+    /// executes. Writing one and exec'ing it races: between another test's fork
+    /// and its exec, this test's still-open descriptor makes the kernel refuse
+    /// the exec with `ETXTBSY`, and the suite runs its cases in parallel. The
+    /// interpreter is never written by the test, so there is nothing to race.
+    fn client_for(body: String) -> McpStdioClient {
         McpStdioClient::new(
-            command,
-            Vec::new(),
+            "/bin/sh",
+            vec!["-c".to_string(), body],
             Vec::new(),
             None,
             &McpClientIdentityConfig::default(),
@@ -150,7 +138,7 @@ mod against_a_fake_server {
     #[tokio::test]
     async fn a_handshake_completes_and_is_cached() {
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(directory.path(), &responder(&[&initialize_reply()]));
+        let command = &responder(&[&initialize_reply()]).to_string();
         let client = client_for(command);
 
         let first = client.initialize().await.expect("the handshake");
@@ -169,7 +157,7 @@ mod against_a_fake_server {
         // A local child is no more trustworthy than a remote endpoint.
         let reply = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1999-01-01","capabilities":{},"serverInfo":{}}}"#;
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(directory.path(), &responder(&[reply]));
+        let command = &responder(&[reply]).to_string();
 
         let error = client_for(command)
             .initialize()
@@ -186,10 +174,8 @@ mod against_a_fake_server {
     async fn tools_are_listed_after_the_handshake() {
         let tools = r#"{"jsonrpc":"2.0","id":3,"result":{"tools":[{"name":"forecast","description":"weather"}]}}"#;
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(
-            directory.path(),
-            &responder(&[&initialize_reply(), "", tools]),
-        );
+        let command = &responder(&[&initialize_reply(), "", tools]),
+        .to_string();
 
         let listed = client_for(command).list_tools().await.expect("tools/list");
 
@@ -209,7 +195,7 @@ mod against_a_fake_server {
         body.push_str("cat > /dev/null\n");
 
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(directory.path(), &body);
+        let command = &body.to_string();
 
         let initialized = client_for(command)
             .initialize()
@@ -223,7 +209,7 @@ mod against_a_fake_server {
     async fn a_json_rpc_error_reply_becomes_an_rpc_error() {
         let reply = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"internal"}}"#;
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(directory.path(), &responder(&[reply]));
+        let command = &responder(&[reply]).to_string();
 
         let error = client_for(command)
             .initialize()
@@ -244,7 +230,7 @@ mod against_a_fake_server {
         // that, this test passes or fails depending on how quickly the child
         // gets torn down.
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(directory.path(), "exit 0\n");
+        let command = "exit 0\n".to_string();
 
         let error = client_for(command)
             .initialize()
@@ -258,7 +244,7 @@ mod against_a_fake_server {
     async fn a_reply_with_no_result_member_is_malformed() {
         let reply = r#"{"jsonrpc":"2.0","id":1}"#;
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(directory.path(), &responder(&[reply]));
+        let command = &responder(&[reply]).to_string();
 
         let error = client_for(command)
             .initialize()
@@ -274,7 +260,7 @@ mod against_a_fake_server {
     #[tokio::test]
     async fn closing_a_session_terminates_the_child_and_forgets_it() {
         let directory = tempfile::tempdir().unwrap();
-        let command = write_script(directory.path(), &responder(&[&initialize_reply()]));
+        let command = &responder(&[&initialize_reply()]).to_string();
         let client = client_for(command);
 
         client.initialize().await.expect("the handshake");
