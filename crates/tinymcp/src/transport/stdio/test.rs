@@ -366,7 +366,7 @@ mod more {
         let body = "read -r _line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\
                     \"error\":{\"code\":-32601,\"message\":\"method not found\"}}'\n\
                     cat > /dev/null\n";
-        let client = shell_client(&body, Vec::new(), None);
+        let client = shell_client(body, Vec::new(), None);
 
         let error = client.initialize().await.expect_err("an rpc error");
 
