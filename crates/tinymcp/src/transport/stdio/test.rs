@@ -251,7 +251,6 @@ mod against_a_fake_server {
 
     #[tokio::test]
     async fn closing_a_session_terminates_the_child_and_forgets_it() {
-        let directory = tempfile::tempdir().unwrap();
         let command = responder(&[&initialize_reply()]);
         let client = client_for(command);
 
