@@ -1029,8 +1029,8 @@ fn a_null_configuration_decodes_to_a_working_default() {
     // not the empty object. A module that refused it would fail to load for
     // exactly the host that asked nothing of it — and the failure surfaces as
     // "module initialization failed", which names nothing useful.
-    let config: ModuleConfig = serde_json::from_value(serde_json::Value::Null)
-        .expect("null decodes");
+    let config: ModuleConfig =
+        serde_json::from_value(serde_json::Value::Null).expect("null decodes");
 
     assert_eq!(config.data_dir, None);
     assert!(config.client.servers.is_empty());
