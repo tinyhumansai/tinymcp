@@ -304,7 +304,11 @@ mod more {
     /// and its exec, this test's still-open descriptor makes the kernel refuse
     /// the exec with `ETXTBSY`, and the suite runs its cases in parallel. The
     /// interpreter is never written by the test, so there is nothing to race.
-    fn shell_client(body: &str, env: Vec<(String, String)>, cwd: Option<std::path::PathBuf>) -> McpStdioClient {
+    fn shell_client(
+        body: &str,
+        env: Vec<(String, String)>,
+        cwd: Option<std::path::PathBuf>,
+    ) -> McpStdioClient {
         McpStdioClient::new(
             "/bin/sh",
             vec!["-c".to_string(), body.to_string()],
@@ -346,7 +350,11 @@ mod more {
             "test \"$API_KEY\" = \"sekrit\" || exit 3\n{}",
             handshake_only()
         );
-        let client = shell_client(&body, vec![("API_KEY".to_string(), "sekrit".to_string())], None);
+        let client = shell_client(
+            &body,
+            vec![("API_KEY".to_string(), "sekrit".to_string())],
+            None,
+        );
 
         assert!(client.initialize().await.is_ok());
     }
@@ -384,7 +392,11 @@ mod more {
         // Unlike a banner, this cannot be skipped: it is where a reply should
         // be, and the offending text is what makes it diagnosable.
         let directory = tempfile::tempdir().unwrap();
-        let client = shell_client("read -r _line\nprintf '%s\\n' '{ not json'\ncat > /dev/null\n", Vec::new(), None);
+        let client = shell_client(
+            "read -r _line\nprintf '%s\\n' '{ not json'\ncat > /dev/null\n",
+            Vec::new(),
+            None,
+        );
 
         let error = client.initialize().await.expect_err("not json");
 
@@ -395,18 +407,11 @@ mod more {
     #[tokio::test]
     async fn a_reply_carrying_neither_a_result_nor_an_error_is_reported() {
         let directory = tempfile::tempdir().unwrap();
-        let path = script(
-            directory.path(),
+        let client = shell_client(
             "read -r _line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1}'\n\
              cat > /dev/null\n",
-        );
-
-        let client = McpStdioClient::new(
-            path,
-            Vec::new(),
             Vec::new(),
             None,
-            &McpClientIdentityConfig::default(),
         );
 
         let error = client.initialize().await.expect_err("no result");
