@@ -295,26 +295,23 @@ mod against_a_fake_server {
 
 #[cfg(unix)]
 mod more {
-    use std::io::Write;
-    use std::path::Path;
-
     use super::*;
 
-    /// Writes an executable shell script and returns its path.
-    fn script(directory: &Path, body: &str) -> String {
-        use std::os::unix::fs::PermissionsExt;
-
-        let path = directory.join("server");
-        let mut file = std::fs::File::create(&path).unwrap();
-        writeln!(file, "#!/bin/sh").unwrap();
-        write!(file, "{body}").unwrap();
-        drop(file);
-
-        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&path, permissions).unwrap();
-
-        path.to_string_lossy().into_owned()
+    /// A client running `body` through `/bin/sh`.
+    ///
+    /// The script is an *argument* rather than a file the test wrote and then
+    /// executes. Writing one and exec'ing it races: between another test's fork
+    /// and its exec, this test's still-open descriptor makes the kernel refuse
+    /// the exec with `ETXTBSY`, and the suite runs its cases in parallel. The
+    /// interpreter is never written by the test, so there is nothing to race.
+    fn shell_client(body: &str, env: Vec<(String, String)>, cwd: Option<std::path::PathBuf>) -> McpStdioClient {
+        McpStdioClient::new(
+            "/bin/sh",
+            vec!["-c".to_string(), body.to_string()],
+            env,
+            cwd,
+            &McpClientIdentityConfig::default(),
+        )
     }
 
     /// One handshake reply, then wait.
@@ -337,15 +334,7 @@ mod more {
 
         // Fails the handshake unless `marker` is in the process's cwd.
         let body = format!("test -f marker || exit 3\n{}", handshake_only());
-        let path = script(directory.path(), &body);
-
-        let client = McpStdioClient::new(
-            path,
-            Vec::new(),
-            Vec::new(),
-            Some(directory.path().to_path_buf()),
-            &McpClientIdentityConfig::default(),
-        );
+        let client = shell_client(&body, Vec::new(), Some(directory.path().to_path_buf()));
 
         assert!(client.initialize().await.is_ok());
     }
@@ -357,15 +346,7 @@ mod more {
             "test \"$API_KEY\" = \"sekrit\" || exit 3\n{}",
             handshake_only()
         );
-        let path = script(directory.path(), &body);
-
-        let client = McpStdioClient::new(
-            path,
-            Vec::new(),
-            vec![("API_KEY".to_string(), "sekrit".to_string())],
-            None,
-            &McpClientIdentityConfig::default(),
-        );
+        let client = shell_client(&body, vec![("API_KEY".to_string(), "sekrit".to_string())], None);
 
         assert!(client.initialize().await.is_ok());
     }
@@ -379,15 +360,7 @@ mod more {
         let body = "read -r _line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\
                     \"error\":{\"code\":-32601,\"message\":\"method not found\"}}'\n\
                     cat > /dev/null\n";
-        let path = script(directory.path(), body);
-
-        let client = McpStdioClient::new(
-            path,
-            Vec::new(),
-            Vec::new(),
-            None,
-            &McpClientIdentityConfig::default(),
-        );
+        let client = shell_client(&body, Vec::new(), None);
 
         let error = client.initialize().await.expect_err("an rpc error");
 
@@ -401,15 +374,7 @@ mod more {
         // and it must not break the handshake of an otherwise working one.
         let directory = tempfile::tempdir().unwrap();
         let body = format!("printf '%s\\n' 'Server v1 starting'\n{}", handshake_only());
-        let path = script(directory.path(), &body);
-
-        let client = McpStdioClient::new(
-            path,
-            Vec::new(),
-            Vec::new(),
-            None,
-            &McpClientIdentityConfig::default(),
-        );
+        let client = shell_client(&body, Vec::new(), None);
 
         assert!(client.initialize().await.is_ok());
     }
@@ -419,18 +384,7 @@ mod more {
         // Unlike a banner, this cannot be skipped: it is where a reply should
         // be, and the offending text is what makes it diagnosable.
         let directory = tempfile::tempdir().unwrap();
-        let path = script(
-            directory.path(),
-            "read -r _line\nprintf '%s\\n' '{ not json'\ncat > /dev/null\n",
-        );
-
-        let client = McpStdioClient::new(
-            path,
-            Vec::new(),
-            Vec::new(),
-            None,
-            &McpClientIdentityConfig::default(),
-        );
+        let client = shell_client("read -r _line\nprintf '%s\\n' '{ not json'\ncat > /dev/null\n", Vec::new(), None);
 
         let error = client.initialize().await.expect_err("not json");
 
@@ -466,15 +420,7 @@ mod more {
         // paths have to end at the same wording; a bare "broken pipe" tells a
         // user nothing they can act on.
         let directory = tempfile::tempdir().unwrap();
-        let path = script(directory.path(), "exit 0\n");
-
-        let client = McpStdioClient::new(
-            path,
-            Vec::new(),
-            Vec::new(),
-            None,
-            &McpClientIdentityConfig::default(),
-        );
+        let client = shell_client("exit 0\n", Vec::new(), None);
 
         let error = client.initialize().await.expect_err("the server exited");
         let message = error.to_string();
