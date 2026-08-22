@@ -170,7 +170,7 @@ fn version_manager_dirs() -> Vec<PathBuf> {
         push_if_dir(&mut dirs, home.join(".volta").join("bin"));
         push_if_dir(&mut dirs, home.join(".bun").join("bin"));
         push_if_dir(&mut dirs, home.join(".cargo").join("bin"));
-        dirs.extend(nvm_latest_bin_dir(&home));
+        dirs.extend(nvm_latest_bin_dir(&nvm_dir(&home)));
     }
 
     for fixed in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/local/sbin"] {
@@ -180,9 +180,18 @@ fn version_manager_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Where `nvm` keeps its installs: the environment's answer, or the default.
+///
+/// Split from the lookup below so the version comparison can be tested against
+/// a directory a test built, rather than against whatever this machine happens
+/// to have installed. Coverage that depends on the developer's `~/.nvm` is
+/// coverage that differs between a laptop and a CI runner.
+fn nvm_dir(home: &Path) -> PathBuf {
+    std::env::var_os("NVM_DIR").map_or_else(|| home.join(".nvm"), PathBuf::from)
+}
+
 /// The `bin` directory of the highest `nvm`-installed Node version, if any.
-fn nvm_latest_bin_dir(home: &Path) -> Option<PathBuf> {
-    let nvm_dir = std::env::var_os("NVM_DIR").map_or_else(|| home.join(".nvm"), PathBuf::from);
+fn nvm_latest_bin_dir(nvm_dir: &Path) -> Option<PathBuf> {
     let versions = nvm_dir.join("versions").join("node");
 
     let mut latest: Option<(Vec<u32>, PathBuf)> = None;

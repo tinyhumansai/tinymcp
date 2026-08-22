@@ -357,3 +357,104 @@ async fn the_spawn_path_has_no_duplicate_entries() {
         "the resolved path repeats an entry: {path}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Finding the newest `nvm` Node
+// ---------------------------------------------------------------------------
+//
+// Driven against a directory the test builds rather than the machine's own
+// `~/.nvm`: whether this passes must not depend on whether the developer
+// happens to use `nvm`, and CI runners do not.
+
+/// Builds an `nvm` layout holding `versions`, each with a `bin` directory.
+fn nvm_layout(versions: &[&str]) -> tempfile::TempDir {
+    let directory = tempfile::tempdir().expect("tempdir");
+    for version in versions {
+        std::fs::create_dir_all(
+            directory
+                .path()
+                .join("versions")
+                .join("node")
+                .join(version)
+                .join("bin"),
+        )
+        .expect("create the version directory");
+    }
+    directory
+}
+
+#[test]
+fn the_highest_installed_version_wins() {
+    // Lexical order would pick `v9` over `v20`, which is the whole reason the
+    // version is parsed rather than compared as a string.
+    let layout = nvm_layout(&["v9.11.2", "v20.11.0", "v18.19.0"]);
+
+    let bin = super::nvm_latest_bin_dir(layout.path()).expect("a bin directory");
+
+    assert!(bin.ends_with("v20.11.0/bin"), "{}", bin.display());
+}
+
+#[test]
+fn a_higher_patch_of_the_same_minor_wins() {
+    let layout = nvm_layout(&["v20.11.0", "v20.11.9"]);
+
+    let bin = super::nvm_latest_bin_dir(layout.path()).expect("a bin directory");
+
+    assert!(bin.ends_with("v20.11.9/bin"), "{}", bin.display());
+}
+
+#[test]
+fn a_directory_that_is_not_a_version_is_skipped() {
+    // `nvm` keeps aliases and caches beside the versions.
+    let layout = nvm_layout(&["v20.11.0"]);
+    std::fs::create_dir_all(layout.path().join("versions").join("node").join("alias"))
+        .expect("create the alias directory");
+
+    let bin = super::nvm_latest_bin_dir(layout.path()).expect("a bin directory");
+
+    assert!(bin.ends_with("v20.11.0/bin"), "{}", bin.display());
+}
+
+#[test]
+fn a_version_with_no_bin_directory_is_skipped() {
+    // A half-removed install has the version directory and nothing in it.
+    let layout = nvm_layout(&["v18.19.0"]);
+    std::fs::create_dir_all(layout.path().join("versions").join("node").join("v20.11.0"))
+        .expect("create the empty version directory");
+
+    let bin = super::nvm_latest_bin_dir(layout.path()).expect("a bin directory");
+
+    assert!(bin.ends_with("v18.19.0/bin"), "{}", bin.display());
+}
+
+#[test]
+fn a_layout_with_no_versions_finds_nothing() {
+    let layout = nvm_layout(&[]);
+
+    assert_eq!(super::nvm_latest_bin_dir(layout.path()), None);
+}
+
+#[test]
+fn a_directory_that_does_not_exist_finds_nothing() {
+    // The ordinary case on a machine without `nvm`, and it must not fail.
+    let directory = tempfile::tempdir().expect("tempdir");
+
+    assert_eq!(
+        super::nvm_latest_bin_dir(&directory.path().join("absent")),
+        None
+    );
+}
+
+#[test]
+fn the_environment_overrides_where_nvm_is_looked_for() {
+    // `NVM_DIR` is how a user relocates it, and the default is only the
+    // fallback.
+    let home = std::path::Path::new("/home/somebody");
+
+    let resolved = super::nvm_dir(home);
+
+    match std::env::var_os("NVM_DIR") {
+        Some(configured) => assert_eq!(resolved, std::path::PathBuf::from(configured)),
+        None => assert_eq!(resolved, home.join(".nvm")),
+    }
+}
