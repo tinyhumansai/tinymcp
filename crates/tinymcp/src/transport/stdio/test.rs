@@ -345,7 +345,6 @@ mod more {
 
     #[tokio::test]
     async fn a_configured_variable_reaches_the_server() {
-        let directory = tempfile::tempdir().unwrap();
         let body = format!(
             "test \"$API_KEY\" = \"sekrit\" || exit 3\n{}",
             handshake_only()
@@ -364,7 +363,6 @@ mod more {
         // Distinct from a transport failure: the server answered, and it said
         // no. Telling the user their network is broken would send them looking
         // in the wrong place.
-        let directory = tempfile::tempdir().unwrap();
         let body = "read -r _line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\
                     \"error\":{\"code\":-32601,\"message\":\"method not found\"}}'\n\
                     cat > /dev/null\n";
@@ -380,7 +378,6 @@ mod more {
     async fn a_banner_line_on_the_output_is_skipped_rather_than_read_as_a_reply() {
         // Printing a startup banner to stdout is a common mistake in a server,
         // and it must not break the handshake of an otherwise working one.
-        let directory = tempfile::tempdir().unwrap();
         let body = format!("printf '%s\\n' 'Server v1 starting'\n{}", handshake_only());
         let client = shell_client(&body, Vec::new(), None);
 
@@ -391,7 +388,6 @@ mod more {
     async fn a_line_that_looks_like_json_but_is_not_is_reported_with_what_was_read() {
         // Unlike a banner, this cannot be skipped: it is where a reply should
         // be, and the offending text is what makes it diagnosable.
-        let directory = tempfile::tempdir().unwrap();
         let client = shell_client(
             "read -r _line\nprintf '%s\\n' '{ not json'\ncat > /dev/null\n",
             Vec::new(),
@@ -406,7 +402,6 @@ mod more {
 
     #[tokio::test]
     async fn a_reply_carrying_neither_a_result_nor_an_error_is_reported() {
-        let directory = tempfile::tempdir().unwrap();
         let client = shell_client(
             "read -r _line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1}'\n\
              cat > /dev/null\n",
@@ -424,7 +419,6 @@ mod more {
         // Noticed on the write or on the read depending on scheduling, so both
         // paths have to end at the same wording; a bare "broken pipe" tells a
         // user nothing they can act on.
-        let directory = tempfile::tempdir().unwrap();
         let client = shell_client("exit 0\n", Vec::new(), None);
 
         let error = client.initialize().await.expect_err("the server exited");
