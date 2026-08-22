@@ -1021,3 +1021,48 @@ async fn a_module_that_cannot_open_its_store_fails_to_come_up() {
         "{error}"
     );
 }
+
+#[test]
+fn a_null_configuration_decodes_to_a_working_default() {
+    // What a host that configures nothing actually sends: the loader's
+    // configuration slot is a `serde_json::Value`, and its default is `null`,
+    // not the empty object. A module that refused it would fail to load for
+    // exactly the host that asked nothing of it — and the failure surfaces as
+    // "module initialization failed", which names nothing useful.
+    let config: ModuleConfig = serde_json::from_value(serde_json::Value::Null)
+        .expect("null decodes");
+
+    assert_eq!(config.data_dir, None);
+    assert!(config.client.servers.is_empty());
+    assert!(config.client.enabled);
+}
+
+#[test]
+fn a_service_builds_from_a_null_configuration() {
+    // The whole path the loader takes, not just the decode.
+    let config: ModuleConfig = serde_json::from_value(serde_json::Value::Null).unwrap();
+
+    let service = McpService::new(&config).expect("the service builds");
+
+    assert!(service.static_servers().is_empty());
+}
+
+#[tokio::test]
+async fn a_module_loaded_with_no_configuration_comes_up() {
+    // The release verifier loads the published artifact with an explicit empty
+    // configuration and calls it. This is that, minus the download.
+    let bus = MemoryBus::new();
+    Broker::new().spawn(bus.clone());
+
+    let serving = Connection::connect(bus.connect().await.unwrap())
+        .await
+        .unwrap();
+    let _serving = serving.clone();
+
+    super::setup(
+        serving,
+        serde_json::from_value(serde_json::Value::Null).expect("null decodes"),
+    )
+    .await
+    .expect("the module comes up with nothing configured");
+}
