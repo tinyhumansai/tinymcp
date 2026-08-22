@@ -216,23 +216,47 @@ impl McpHttpClientBuilder {
 /// refused downgrade surfaces as a redirect error rather than a silent leak.
 fn redirect_policy() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
-        // The first URL in the chain is the one the host configured (and, for
-        // a credentialed non-loopback endpoint, the one `credentialed_endpoint_transport_allowed`
-        // already required to be HTTPS). A later hop dropping to `http` is the
-        // downgrade this refuses.
-        let origin_was_https = attempt
-            .previous()
-            .first()
-            .map(|origin| origin.scheme() == "https")
-            .unwrap_or(false);
-        if origin_was_https && attempt.url().scheme() == "http" {
-            return attempt.error("refusing an https→http redirect that would expose credentials in cleartext");
+        // `previous[0]` is the initial URL (reqwest counts it, not a redirect),
+        // so it is the scheme the host configured — and, for a credentialed
+        // non-loopback endpoint, the one already required to be HTTPS.
+        let origin_scheme = attempt.previous().first().map(|origin| origin.scheme());
+        match redirect_decision(origin_scheme, attempt.url().scheme(), attempt.previous().len()) {
+            RedirectDecision::Follow => attempt.follow(),
+            RedirectDecision::Error(msg) => attempt.error(msg),
         }
-        if attempt.previous().len() >= MAX_REDIRECTS {
-            return attempt.error("too many redirects");
-        }
-        attempt.follow()
     })
+}
+
+/// What [`redirect_policy`] decides for one hop, as a pure function of its
+/// inputs so the rule is unit-testable without standing up a redirect server.
+///
+/// `hops` is `previous.len()`, matching reqwest's `Limit` accounting: the
+/// initial URL is counted, so a chain that has followed `MAX_REDIRECTS`
+/// redirects reports `MAX_REDIRECTS + 1`.
+#[derive(Debug, PartialEq, Eq)]
+enum RedirectDecision {
+    Follow,
+    Error(&'static str),
+}
+
+/// The byte-for-byte messages a refused redirect surfaces, so a test can assert
+/// against them without duplicating the strings.
+mod redirect_message {
+    /// An HTTPS→HTTP downgrade would expose any attached credential in cleartext.
+    pub const DOWNGRADE: &str =
+        "refusing an https→http redirect that would expose credentials in cleartext";
+    /// The redirect chain exceeded [`MAX_REDIRECTS`].
+    pub const TOO_MANY: &str = "too many redirects";
+}
+
+fn redirect_decision(origin_scheme: Option<&str>, target_scheme: &str, hops: usize) -> RedirectDecision {
+    if origin_scheme == Some("https") && target_scheme == "http" {
+        return RedirectDecision::Error(redirect_message::DOWNGRADE);
+    }
+    if hops > MAX_REDIRECTS {
+        return RedirectDecision::Error(redirect_message::TOO_MANY);
+    }
+    RedirectDecision::Follow
 }
 
 /// Applies a resolved proxy to a client builder.
