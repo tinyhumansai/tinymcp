@@ -137,8 +137,7 @@ mod against_a_fake_server {
 
     #[tokio::test]
     async fn a_handshake_completes_and_is_cached() {
-        let directory = tempfile::tempdir().unwrap();
-        let command = &responder(&[&initialize_reply()]).to_string();
+        let command = responder(&[&initialize_reply()]);
         let client = client_for(command);
 
         let first = client.initialize().await.expect("the handshake");
@@ -156,8 +155,7 @@ mod against_a_fake_server {
         // The HTTP transport always checked this; the subprocess one did not.
         // A local child is no more trustworthy than a remote endpoint.
         let reply = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1999-01-01","capabilities":{},"serverInfo":{}}}"#;
-        let directory = tempfile::tempdir().unwrap();
-        let command = &responder(&[reply]).to_string();
+        let command = responder(&[reply]);
 
         let error = client_for(command)
             .initialize()
@@ -173,9 +171,7 @@ mod against_a_fake_server {
     #[tokio::test]
     async fn tools_are_listed_after_the_handshake() {
         let tools = r#"{"jsonrpc":"2.0","id":3,"result":{"tools":[{"name":"forecast","description":"weather"}]}}"#;
-        let directory = tempfile::tempdir().unwrap();
-        let command = &responder(&[&initialize_reply(), "", tools]),
-        .to_string();
+        let command = responder(&[&initialize_reply(), "", tools]);
 
         let listed = client_for(command).list_tools().await.expect("tools/list");
 
@@ -194,8 +190,7 @@ mod against_a_fake_server {
         let _ = writeln!(body, "printf '%s\\n' '{}'", initialize_reply());
         body.push_str("cat > /dev/null\n");
 
-        let directory = tempfile::tempdir().unwrap();
-        let command = &body.to_string();
+        let command = body;
 
         let initialized = client_for(command)
             .initialize()
@@ -208,8 +203,7 @@ mod against_a_fake_server {
     #[tokio::test]
     async fn a_json_rpc_error_reply_becomes_an_rpc_error() {
         let reply = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"internal"}}"#;
-        let directory = tempfile::tempdir().unwrap();
-        let command = &responder(&[reply]).to_string();
+        let command = responder(&[reply]);
 
         let error = client_for(command)
             .initialize()
@@ -229,7 +223,6 @@ mod against_a_fake_server {
         // a matter of scheduling, so both paths report it the same way. Without
         // that, this test passes or fails depending on how quickly the child
         // gets torn down.
-        let directory = tempfile::tempdir().unwrap();
         let command = "exit 0\n".to_string();
 
         let error = client_for(command)
@@ -243,8 +236,7 @@ mod against_a_fake_server {
     #[tokio::test]
     async fn a_reply_with_no_result_member_is_malformed() {
         let reply = r#"{"jsonrpc":"2.0","id":1}"#;
-        let directory = tempfile::tempdir().unwrap();
-        let command = &responder(&[reply]).to_string();
+        let command = responder(&[reply]);
 
         let error = client_for(command)
             .initialize()
@@ -260,7 +252,7 @@ mod against_a_fake_server {
     #[tokio::test]
     async fn closing_a_session_terminates_the_child_and_forgets_it() {
         let directory = tempfile::tempdir().unwrap();
-        let command = &responder(&[&initialize_reply()]).to_string();
+        let command = responder(&[&initialize_reply()]);
         let client = client_for(command);
 
         client.initialize().await.expect("the handshake");
