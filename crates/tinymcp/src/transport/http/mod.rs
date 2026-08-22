@@ -219,7 +219,7 @@ fn redirect_policy() -> reqwest::redirect::Policy {
         // `previous[0]` is the initial URL (reqwest counts it, not a redirect),
         // so it is the scheme the host configured — and, for a credentialed
         // non-loopback endpoint, the one already required to be HTTPS.
-        let origin_scheme = attempt.previous().first().map(|origin| origin.scheme());
+        let origin_scheme = attempt.previous().first().map(reqwest::Url::scheme);
         match redirect_decision(
             origin_scheme,
             attempt.url().scheme(),
