@@ -171,10 +171,14 @@ impl McpHttpClientBuilder {
             .connect_timeout(CONNECT_TIMEOUT)
             // Servers are commonly published behind a vanity URL that redirects
             // to the real endpoint; refusing to follow it surfaces as a bare
-            // "MCP HTTP 301". `reqwest` strips `Authorization` and `Cookie` on
-            // a cross-origin redirect, so a bearer token does not follow the
-            // request to another host.
-            .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS));
+            // "MCP HTTP 301". A custom policy follows up to `MAX_REDIRECTS`
+            // hops but refuses an HTTPS→HTTP downgrade, which would carry any
+            // attached credential over plaintext. `reqwest` strips
+            // `Authorization` and `Cookie` on a cross-origin redirect, so a
+            // bearer token does not follow the request to another host, but
+            // custom headers, query-param credentials and same-origin
+            // downgrades are not stripped — the policy closes that gap.
+            .redirect(redirect_policy());
 
         if let Some(proxy) = self.proxy.as_ref() {
             builder = apply_proxy(builder, proxy);
