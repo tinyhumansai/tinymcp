@@ -220,7 +220,11 @@ fn redirect_policy() -> reqwest::redirect::Policy {
         // so it is the scheme the host configured — and, for a credentialed
         // non-loopback endpoint, the one already required to be HTTPS.
         let origin_scheme = attempt.previous().first().map(|origin| origin.scheme());
-        match redirect_decision(origin_scheme, attempt.url().scheme(), attempt.previous().len()) {
+        match redirect_decision(
+            origin_scheme,
+            attempt.url().scheme(),
+            attempt.previous().len(),
+        ) {
             RedirectDecision::Follow => attempt.follow(),
             RedirectDecision::Error(msg) => attempt.error(msg),
         }
@@ -239,7 +243,11 @@ enum RedirectDecision {
     Error(&'static str),
 }
 
-fn redirect_decision(origin_scheme: Option<&str>, target_scheme: &str, hops: usize) -> RedirectDecision {
+fn redirect_decision(
+    origin_scheme: Option<&str>,
+    target_scheme: &str,
+    hops: usize,
+) -> RedirectDecision {
     if origin_scheme == Some("https") && target_scheme == "http" {
         return RedirectDecision::Error(
             "refusing an https→http redirect that would expose credentials in cleartext",
