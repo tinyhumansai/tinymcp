@@ -12,10 +12,13 @@
 //! retried, so a server that answers 404 for some other reason costs one extra
 //! round trip rather than an unbounded loop.
 //!
-//! **Redirects are followed, up to five.** Servers are commonly published
-//! behind a vanity URL that redirects to the real endpoint. `reqwest` strips
-//! `Authorization` and `Cookie` on a cross-origin redirect, so a bearer token
-//! does not follow the request to another host.
+//! **Redirects are followed, up to five, but an HTTPS→HTTP downgrade is
+//! refused.** Servers are commonly published behind a vanity URL that redirects
+//! to the real endpoint. `reqwest` strips `Authorization` and `Cookie` on a
+//! cross-origin redirect, so a bearer token does not follow the request to
+//! another host — but a same-origin downgrade, and any custom header or
+//! query-param credential on any hop, are not stripped, so the policy itself
+//! refuses a hop that would move the request from HTTPS to plaintext.
 //!
 //! **The SSE body is read incrementally.** See the `sse` module for why that is
 //! load-bearing rather than an optimization.
