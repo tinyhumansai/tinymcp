@@ -239,22 +239,14 @@ enum RedirectDecision {
     Error(&'static str),
 }
 
-/// The byte-for-byte messages a refused redirect surfaces, so a test can assert
-/// against them without duplicating the strings.
-mod redirect_message {
-    /// An HTTPS→HTTP downgrade would expose any attached credential in cleartext.
-    pub const DOWNGRADE: &str =
-        "refusing an https→http redirect that would expose credentials in cleartext";
-    /// The redirect chain exceeded [`MAX_REDIRECTS`].
-    pub const TOO_MANY: &str = "too many redirects";
-}
-
 fn redirect_decision(origin_scheme: Option<&str>, target_scheme: &str, hops: usize) -> RedirectDecision {
     if origin_scheme == Some("https") && target_scheme == "http" {
-        return RedirectDecision::Error(redirect_message::DOWNGRADE);
+        return RedirectDecision::Error(
+            "refusing an https→http redirect that would expose credentials in cleartext",
+        );
     }
     if hops > MAX_REDIRECTS {
-        return RedirectDecision::Error(redirect_message::TOO_MANY);
+        return RedirectDecision::Error("too many redirects");
     }
     RedirectDecision::Follow
 }
