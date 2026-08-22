@@ -573,7 +573,6 @@ async fn a_fresh_flow_has_nothing_parked() {
 // client registration, the authorize URL that gets built, and the code
 // exchange that ends it. None of that exists without something answering.
 
-use axum::response::Response;
 use axum::routing::get;
 
 /// How the loopback authorization server should behave.

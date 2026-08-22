@@ -618,76 +618,76 @@ async fn serve(app: Router) -> String {
     format!("http://{addr}/mcp")
 }
 
-/// An MCP server answering the handshake and one tool.
-async fn mcp_server() -> (String, Arc<Server>) {
-    let state = Arc::new(Server::default());
+async fn handle(
+    State(state): State<Arc<Server>>,
+    headers: AxumHeaderMap,
+    axum::Json(body): axum::Json<Value>,
+) -> Response {
+    *state.authorization.lock() = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
 
-    async fn handle(
-        State(state): State<Arc<Server>>,
-        headers: AxumHeaderMap,
-        axum::Json(body): axum::Json<Value>,
-    ) -> Response {
-        *state.authorization.lock() = headers
-            .get("authorization")
-            .and_then(|value| value.to_str().ok())
-            .map(ToString::to_string);
+    if state.demand_auth.load(Ordering::SeqCst) && state.authorization.lock().is_none() {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(
+                "WWW-Authenticate",
+                "Bearer resource_metadata=\"https://example.test/.well-known/oauth-protected-resource\"",
+            )],
+            "unauthorized",
+        )
+            .into_response();
+    }
 
-        if state.demand_auth.load(Ordering::SeqCst) && state.authorization.lock().is_none() {
-            return (
-                StatusCode::UNAUTHORIZED,
-                [(
-                    "WWW-Authenticate",
-                    "Bearer resource_metadata=\"https://example.test/.well-known/oauth-protected-resource\"",
-                )],
-                "unauthorized",
-            )
-                .into_response();
-        }
-
-        let id = body["id"].clone();
-        match body
-            .get("method")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-        {
-            "initialize" => (
-                [("Mcp-Session-Id", "session-1")],
-                axum::Json(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "protocolVersion": LATEST_PROTOCOL_VERSION,
-                        "capabilities": { "tools": {} },
-                        "serverInfo": { "name": "loopback", "version": "1.0.0" },
-                    },
-                })),
-            )
-                .into_response(),
-            "notifications/initialized" => StatusCode::NO_CONTENT.into_response(),
-            "tools/list" => axum::Json(json!({
+    let id = body["id"].clone();
+    match body
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+    {
+        "initialize" => (
+            [("Mcp-Session-Id", "session-1")],
+            axum::Json(json!({
                 "jsonrpc": "2.0",
                 "id": id,
                 "result": {
-                    "tools": [{
-                        "name": "forecast",
-                        "description": "tomorrow's weather",
-                        "inputSchema": { "type": "object" },
-                    }],
+                    "protocolVersion": LATEST_PROTOCOL_VERSION,
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": "loopback", "version": "1.0.0" },
                 },
-            }))
+            })),
+        )
             .into_response(),
-            "tools/call" => {
-                state.calls.fetch_add(1, Ordering::SeqCst);
-                axum::Json(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "content": [{ "type": "text", "text": "sunny" }] },
-                }))
-                .into_response()
-            }
-            other => (StatusCode::BAD_REQUEST, format!("unexpected {other}")).into_response(),
+        "notifications/initialized" => StatusCode::NO_CONTENT.into_response(),
+        "tools/list" => axum::Json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "tools": [{
+                    "name": "forecast",
+                    "description": "tomorrow's weather",
+                    "inputSchema": { "type": "object" },
+                }],
+            },
+        }))
+        .into_response(),
+        "tools/call" => {
+            state.calls.fetch_add(1, Ordering::SeqCst);
+            axum::Json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "sunny" }] },
+            }))
+            .into_response()
         }
+        other => (StatusCode::BAD_REQUEST, format!("unexpected {other}")).into_response(),
     }
+}
+
+/// An MCP server answering the handshake and one tool.
+async fn mcp_server() -> (String, Arc<Server>) {
+    let state = Arc::new(Server::default());
 
     let app = Router::new()
         .route(

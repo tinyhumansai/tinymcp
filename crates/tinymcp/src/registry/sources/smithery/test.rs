@@ -45,7 +45,7 @@ fn summary(name: &str) -> Value {
 }
 
 /// A list response holding `servers`, reporting `total_pages`.
-fn list_body(servers: Vec<Value>, total_pages: u32) -> Value {
+fn list_body(servers: &[Value], total_pages: u32) -> Value {
     json!({
         "servers": servers,
         "pagination": {
@@ -112,7 +112,7 @@ async fn working_catalog() -> (String, Arc<Seen>) {
                         .map(ToString::to_string);
                     *seen.query.lock() = query_param(&uri, "q");
 
-                    axum::Json(list_body(vec![summary("@acme/weather")], 3))
+                    axum::Json(list_body(&[summary("@acme/weather")], 3))
                 },
             ),
         )
