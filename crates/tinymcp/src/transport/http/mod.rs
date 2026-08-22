@@ -201,6 +201,37 @@ impl McpHttpClientBuilder {
     }
 }
 
+/// The redirect policy every HTTP client uses.
+///
+/// Follows vanity-URL redirects (servers are commonly published behind one)
+/// but caps the chain at [`MAX_REDIRECTS`] and refuses an HTTPS→HTTP downgrade:
+/// a redirect that moves the request to plaintext after it has been over TLS
+/// would carry any attached credential in the clear. The same-origin case is
+/// the gap `reqwest` leaves open — it strips `Authorization` and `Cookie` only
+/// on a cross-origin hop, so a bearer on a same-host downgrade and any custom
+/// header or query-param credential on any hop would otherwise follow. A
+/// refused downgrade surfaces as a redirect error rather than a silent leak.
+fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        // The first URL in the chain is the one the host configured (and, for
+        // a credentialed non-loopback endpoint, the one `credentialed_endpoint_transport_allowed`
+        // already required to be HTTPS). A later hop dropping to `http` is the
+        // downgrade this refuses.
+        let origin_was_https = attempt
+            .previous()
+            .first()
+            .map(|origin| origin.scheme() == "https")
+            .unwrap_or(false);
+        if origin_was_https && attempt.url().scheme() == "http" {
+            return attempt.error("refusing an https→http redirect that would expose credentials in cleartext");
+        }
+        if attempt.previous().len() >= MAX_REDIRECTS {
+            return attempt.error("too many redirects");
+        }
+        attempt.follow()
+    })
+}
+
 /// Applies a resolved proxy to a client builder.
 ///
 /// An unusable proxy URL is logged and skipped rather than failing the build:
