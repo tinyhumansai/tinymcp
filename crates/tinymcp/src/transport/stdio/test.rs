@@ -485,3 +485,45 @@ mod more {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// How a write failure reads
+// ---------------------------------------------------------------------------
+//
+// Driven directly rather than through a server that exits: whether the failure
+// lands on the write or on the read depends on scheduling, so a test that races
+// for it covers one branch on one machine and the other branch elsewhere.
+
+#[test]
+fn a_broken_pipe_is_reported_as_the_server_having_gone() {
+    // The wording matters more than the classification: "broken pipe" tells a
+    // user nothing they can act on, and this is the common case of a server
+    // that exits during startup.
+    let client = client_for("weather-mcp", Vec::new());
+
+    let error = client.write_failure(
+        "writing to",
+        &std::io::Error::from(std::io::ErrorKind::BrokenPipe),
+    );
+
+    assert!(error.to_string().contains("closed its output"), "{error}");
+    assert!(error.to_string().contains("weather-mcp"), "{error}");
+}
+
+#[test]
+fn any_other_write_failure_says_what_was_being_attempted() {
+    // A permission or resource failure is not the server having gone, and
+    // collapsing it onto that wording would send the user looking in the wrong
+    // place.
+    let client = client_for("weather-mcp", Vec::new());
+
+    let error = client.write_failure(
+        "flushing to",
+        &std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+    );
+
+    let message = error.to_string();
+    assert!(message.contains("flushing to"), "{message}");
+    assert!(message.contains("weather-mcp"), "{message}");
+    assert!(!message.contains("closed its output"), "{message}");
+}
