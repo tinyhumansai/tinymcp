@@ -53,28 +53,35 @@ jobs:
       - name: Test default features
         run: cargo test
 
-      # `cargo build --all-targets` only *compiles* an example. `AGENTS.md`
-      # promises `cargo run -p template --example basic` works, and a compiled
-      # example can still fail on its first line.
-      - name: Run the bundled example
-        run: cargo run -p template --example basic
+      # `cargo build --all-targets` only *compiles* the cdylib, and a module
+      # that compiles can still fail to load: a missing ABI export, a member
+      # list that drifted from the contract, a panic on the first call into it.
+      # The release workflow runs this same example against every artifact it
+      # ships; running it here means a break is found on the pull request that
+      # caused it rather than during a release.
+      - name: Verify the module loads and serves its interface
+        run: |
+          set -euo pipefail
+          cargo build --all-features --package tinymcp --lib
+          cargo run --package tinymcp --example verify_module -- \
+            target/debug/libtinymcp.so
 
-      # `crates/template-bus` exists so a host can name the payload types
+      # `crates/tinymcp-bus` exists so a host can name the payload types
       # without compiling the module. That promise is invisible in a diff,
       # because a forbidden dependency arrives transitively through a feature
       # someone enabled one crate away — so it is asserted rather than
       # documented.
       #
-      # The FORWARD form is required. `cargo tree -i <crate> -p template-bus`
+      # The FORWARD form is required. `cargo tree -i <crate> -p tinymcp-bus`
       # discards the `-p` scope, prints the whole-workspace inverse tree, and
       # exits 0 looking clean even when this crate is the one at fault.
       - name: Assert the contract crate stays transport-free
         run: |
           set -euo pipefail
-          forbidden="$(cargo tree -p template-bus -e normal,build --prefix none \
+          forbidden="$(cargo tree -p tinymcp-bus -e normal,build --prefix none \
             | grep -Ei 'tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2' || true)"
           if [ -n "$forbidden" ]; then
-            echo "template-bus pulled in a dependency its manifest forbids:" >&2
+            echo "tinymcp-bus pulled in a dependency its manifest forbids:" >&2
             echo "$forbidden" >&2
             echo >&2
             echo "The contract is what a host compiles against. It must stay free" >&2
@@ -128,7 +135,7 @@ jobs:
         run: |
           set -euo pipefail
           msrv="$(cargo metadata --format-version 1 --no-deps \
-            | jq -r '.packages[] | select(.name == "template") | .rust_version')"
+            | jq -r '.packages[] | select(.name == "tinymcp") | .rust_version')"
           if [[ -z "$msrv" || "$msrv" == "null" ]]; then
             echo "workspace.package.rust-version is not set in Cargo.toml" >&2
             exit 1

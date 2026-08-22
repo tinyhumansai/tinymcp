@@ -5,9 +5,9 @@ ships the workspace layout, TinyBus ABI adapter, error handling, testing,
 documentation, CI, and multi-platform release workflow that every new
 integration in this organization starts from.
 
-It is a two-crate cargo workspace. `crates/template-bus` is the wire contract —
+It is a two-crate cargo workspace. `crates/tinymcp-bus` is the wire contract —
 member names, payload types, and the contract version, with no transport and no
-behavior — and `crates/template` is the implementation, built as both an `rlib`
+behavior — and `crates/tinymcp` is the implementation, built as both an `rlib`
 and the `cdylib` TinyBus loads. A host that only makes calls depends on the
 contract crate alone and compiles neither the module nor `tinybus` itself.
 
@@ -16,20 +16,20 @@ contract crate alone and compiles neither the module nor `tinybus` itself.
 Choose **Use this template** on GitHub, create a repository, then work through
 the checklist at the top of [`AGENTS.md`](AGENTS.md):
 
-- rename the `crates/template` and `crates/template-bus` directories and the
+- rename the `crates/tinymcp` and `crates/tinymcp-bus` directories and the
   `name` fields in their manifests, and set the shared `description`,
   `repository`, `keywords`, and `categories`;
-- update this README and the crate documentation in `crates/template/src/lib.rs`;
+- update this README and the crate documentation in `crates/tinymcp/src/lib.rs`;
 - replace the placeholder `greeting` module with the first real feature area, in
   both crates: the payload types in the contract, the behavior in the module;
 - rename the TinyBus interface, object path, and member constants in
-  `crates/template-bus/src/names/`, and the matching `provides` / `methods`
-  declarations in `crates/template/src/tinybus_module/`;
+  `crates/tinymcp-bus/src/names/`, and the matching `provides` / `methods`
+  declarations in `crates/tinymcp/src/tinybus_module/`;
 - update the security contact and repository links in the community files;
 - replace `ROADMAP.md` with the real plan, or delete it;
 - change the license if GPL-3.0-only is not appropriate.
 
-Search for `template` and `template_bus` to find every remaining
+Search for `template` and `tinymcp_bus` to find every remaining
 template-specific value.
 
 ## What You Get
@@ -49,7 +49,7 @@ template-specific value.
 ```text
 Cargo.toml              # virtual workspace: members, shared metadata, lints
 crates/
-├── template-bus/       # the wire contract — what crosses the bus
+├── tinymcp-bus/       # the wire contract — what crosses the bus
 │   ├── README.md       # why the contract is its own crate
 │   └── src/
 │       ├── lib.rs      # crate docs + the entire public re-export surface
@@ -82,11 +82,11 @@ docs/
 
 The split is the point. A payload type describes what a frame carries; the
 behavior that answers it is a different obligation. `template` depends on
-`template-bus` and re-exports all of it, so `template::GreetRequest` and
-`template_bus::GreetRequest` are the *same* type rather than structural twins,
+`tinymcp-bus` and re-exports all of it, so `tinymcp::GreetRequest` and
+`tinymcp_bus::GreetRequest` are the *same* type rather than structural twins,
 and a host is never forced to choose between linking the whole module and
 redefining the vocabulary. See
-[`crates/template-bus/README.md`](crates/template-bus/README.md).
+[`crates/tinymcp-bus/README.md`](crates/tinymcp-bus/README.md).
 
 Within each crate, feature areas use directory modules: implementation and
 exports live in `mod.rs`, substantial types move to `types.rs`, and unit tests
@@ -107,8 +107,8 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --all-targets --all-features
 cargo test --all-features
-cargo run -p template --example basic
-cargo build -p template --release --lib   # produces the installable cdylib
+cargo run -p tinymcp --example basic
+cargo build -p tinymcp --release --lib   # produces the installable cdylib
 ```
 
 Those four checks are exactly what CI runs. Optional extras:
@@ -126,7 +126,7 @@ Run the **Release** workflow from the Actions tab with a `patch`, `minor`, or
 `major` bump. Use `current` only to resume an interrupted release whose version
 commit and tag already exist. The workflow revalidates the workspace, versions
 and tags it — one `[workspace.package]` version that every member inherits —
-builds `crates/template` as a TinyBus `cdylib`, and creates a GitHub release.
+builds `crates/tinymcp` as a TinyBus `cdylib`, and creates a GitHub release.
 Assets follow `template-<version>-<platform>.<tar.gz|zip>` and contain the
 native module, its SHA-256 `modules.toml`, license, and
 [`MODULE.md`](MODULE.md). Every release also publishes `checksum.toml`, which

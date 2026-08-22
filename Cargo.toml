@@ -2,7 +2,7 @@
 resolver = "3"
 # Every crate in this repository lives under `crates/`, one directory per
 # package, each directory named for the package it holds. There is no root
-# package: the crate a host loads is `crates/template`, the same as any other
+# package: the crate a host loads is `crates/tinymcp`, the same as any other
 # member. Keeping the root virtual is what makes that uniform — a root package
 # would make one crate structurally different from the rest for no reason other
 # than history, and it is the arrangement this template moved away from.
@@ -22,15 +22,15 @@ version = "0.2.1"
 edition = "2024"
 rust-version = "1.88"
 license = "GPL-3.0-only"
-repository = "https://github.com/tinyhumansai/rust-template"
+repository = "https://github.com/tinyhumansai/tinymcp"
 
 [workspace.dependencies]
-# The wire contract. `crates/template` depends on it and re-exports it, so a
+# The wire contract. `crates/tinymcp` depends on it and re-exports it, so a
 # host that only makes calls takes this crate alone.
 # No `version` requirement on purpose: the workspace version moves on every
 # release, and a pinned requirement here would stop resolving the moment it did.
 # Nothing in this workspace is published, so the path is the whole address.
-template-bus = { path = "crates/template-bus" }
+tinymcp-bus = { path = "crates/tinymcp-bus" }
 # TinyBus defines the message types, interface macro, and frozen module ABI
 # used by the generated integration. Socket and CLI features are unnecessary
 # here.
@@ -41,7 +41,7 @@ tinybus = { path = "vendor/tinybus/crates/tinybus", version = "0.1.0", default-f
 # The module-side SDK owns the isolated runtime and exports the ABI entrypoints
 # required by TinyBus's dynamic loader.
 tinybus-module = { path = "vendor/tinybus/crates/tinybus-module", version = "0.1.0" }
-# Derive macros for the crate-wide error type in `crates/template/src/error/`.
+# Derive macros for the crate-wide error type in `crates/tinymcp/src/error/`.
 # Every dependency entry should carry a comment like this one saying why it is
 # here.
 thiserror = "2"
@@ -49,8 +49,73 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 # Positional argument arrays and the module configuration blob.
 serde_json = "1"
-# Module integration tests exercise the real asynchronous in-memory TinyBus.
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+# Optional JSON Schema derivation for the contract crate's configuration
+# payloads, so a host can generate a settings user interface from the same
+# definitions the module reads. Enabled through `tinymcp-bus`'s `schemars`
+# feature; nothing in this workspace turns it on by default.
+schemars = { version = "1", default-features = false, features = ["derive"] }
+# The Streamable HTTP transport. `rustls-tls` by default so a build needs no
+# system OpenSSL; `stream` is load-bearing rather than convenience — the SSE
+# reader consumes the response body incrementally so a server that holds its
+# stream open after replying does not stall every call until the timeout.
+# A host that must honor an operating-system certificate store enables
+# `tinymcp/native-tls` instead.
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "http2",
+    "socks",
+] }
+# `process` spawns and supervises stdio servers; `io-util` frames newline-
+# delimited JSON-RPC over their pipes; `sync` guards the single cached session.
+tokio = { version = "1", features = [
+    "macros",
+    "rt-multi-thread",
+    "time",
+    "process",
+    "io-util",
+    "sync",
+] }
+# The HTTP client's session state is read on every request and written rarely,
+# and none of those touches await. A synchronous mutex is the right shape;
+# holding an async one across a request would serialize the transport.
+parking_lot = "0.12"
+# Internal error propagation with context inside the transports and the
+# registry. The crate's public boundary returns `Error` from `src/error/`.
+anyhow = "1"
+# HTTP basic authentication encodes its credentials.
+base64 = "0.22"
+# `StreamExt::next` over the SSE response body. See the `reqwest` note.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# Structured diagnostics. Endpoints are always passed through `redact_endpoint`
+# before they reach a log line.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+# The installed-server store. `bundled` so a build does not depend on a system
+# SQLite, which is what makes the module loadable on a host that has none.
+rusqlite = { version = "0.40", features = ["bundled"] }
+# Locating a user's home directory, to find the version-manager shim
+# directories a desktop launch's stripped PATH leaves out.
+dirs = "5"
+# PKCE code challenges. The authorization-code flow hashes its verifier with
+# SHA-256 and nothing else in the tree needs a digest.
+sha2 = "0.10"
+# Install identifiers.
+uuid = { version = "1", features = ["v4"] }
+
+# Test-only: the transport suites stand up a real HTTP server on a loopback
+# port and dial it, so the client is exercised over an actual socket rather
+# than against a hand-rolled mock of `reqwest`. That is what makes assertions
+# about headers, redirects, session expiry and SSE framing mean anything.
+axum = { version = "0.8", default-features = false, features = [
+    "http1",
+    "json",
+    "form",
+    "tokio",
+] }
+
+# Test-only: temporary directories for the spawn-environment suite, which
+# creates executable and non-executable files and resolves against them.
+tempfile = "3"
 
 # Lints apply to every member that opts in with `[lints] workspace = true`, and
 # to every target of that member. CI runs clippy with `-D warnings`, so anything

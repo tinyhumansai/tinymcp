@@ -1,0 +1,70 @@
+[package]
+name = "tinymcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The Model Context Protocol client, transports, and server registry, packaged as an installable TinyBus module."
+documentation = "https://docs.rs/tinymcp"
+readme = "../../README.md"
+keywords = ["tinybus", "module", "mcp", "model-context-protocol"]
+categories = ["development-tools", "api-bindings"]
+publish = false
+
+[lib]
+# Keep the ordinary Rust library for tests and downstream reuse while also
+# producing the native module artifact that TinyBus loads at runtime.
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# The wire contract: member names, payload types, and the contract version.
+# Re-exported wholesale from `src/lib.rs` so a consumer takes one dependency
+# rather than two, and so `tinymcp::GreetRequest` and
+# `tinymcp_bus::GreetRequest` are the same type.
+tinymcp-bus = { workspace = true }
+# Only the `TinyBus` adapter needs these, and only a `cdylib` build needs the
+# adapter. A host taking this crate as an ordinary library calls the API
+# directly and should not link a bus to do it — see the `module` feature.
+tinybus = { workspace = true, optional = true }
+tinybus-module = { workspace = true, optional = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+parking_lot = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+futures-util = { workspace = true }
+tracing = { workspace = true }
+dirs = { workspace = true }
+rusqlite = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# `net` stands up the loopback test servers; `test-util` pauses the clock so a
+# five-minute timeout is testable without waiting five minutes. The rest comes
+# from the ordinary dependency entry above.
+tokio = { workspace = true, features = ["net", "test-util"] }
+axum = { workspace = true }
+# Temporary directories for the command-resolution tests.
+tempfile = { workspace = true }
+
+[features]
+default = ["module", "rustls-tls"]
+# Build the `TinyBus` adapter and the ABI exports. On by default because the
+# released artifact is a loadable module; a host consuming this crate as a path
+# dependency turns it off and links neither `tinybus` nor its module SDK.
+module = ["dep:tinybus", "dep:tinybus-module"]
+# Bundle a TLS stack, so a build needs no system OpenSSL. The default.
+rustls-tls = ["reqwest/rustls-tls"]
+# Use the operating system's TLS stack and certificate store instead. A host
+# whose users sit behind a corporate certificate authority installed in the
+# system trust store needs this; `rustls-tls` would reject those certificates.
+# Enable exactly one.
+native-tls = ["reqwest/native-tls"]
+
+[lints]
+workspace = true
