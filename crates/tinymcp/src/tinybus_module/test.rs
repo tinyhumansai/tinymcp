@@ -240,27 +240,27 @@ async fn serve(app: Router) -> String {
     format!("http://{addr}")
 }
 
+/// One server envelope, in the shape the official registry sends.
+fn envelope() -> Value {
+    json!({
+        "server": {
+            "name": "@acme/weather",
+            "description": "forecasts",
+            "packages": [{
+                "registryType": "npm",
+                "identifier": "@acme/weather",
+                "environmentVariables": [{ "name": "API_KEY", "isSecret": true }],
+            }],
+        },
+    })
+}
+
 /// A registry listing one installable server.
 ///
 /// The members that browse a catalog would otherwise reach the real registry,
 /// which no test may do. This stands in for it.
 async fn catalog() -> (String, Arc<AtomicUsize>) {
     let hits = Arc::new(AtomicUsize::new(0));
-
-    /// One server envelope, in the shape the official registry sends.
-    fn envelope() -> Value {
-        json!({
-            "server": {
-                "name": "@acme/weather",
-                "description": "forecasts",
-                "packages": [{
-                    "registryType": "npm",
-                    "identifier": "@acme/weather",
-                    "environmentVariables": [{ "name": "API_KEY", "isSecret": true }],
-                }],
-            },
-        })
-    }
 
     let app = Router::new()
         .route(

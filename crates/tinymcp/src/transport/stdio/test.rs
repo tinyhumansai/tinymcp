@@ -321,9 +321,8 @@ mod more {
     fn handshake_only() -> String {
         format!(
             "read -r _line\nprintf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\
-             {{\"protocolVersion\":\"{}\",\"capabilities\":{{}},\"serverInfo\":\
-             {{\"name\":\"fake\",\"version\":\"1\"}}}}}}'\ncat > /dev/null\n",
-            LATEST_PROTOCOL_VERSION
+             {{\"protocolVersion\":\"{LATEST_PROTOCOL_VERSION}\",\"capabilities\":{{}},\"serverInfo\":\
+             {{\"name\":\"fake\",\"version\":\"1\"}}}}}}'\ncat > /dev/null\n"
         )
     }
 
