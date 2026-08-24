@@ -349,10 +349,13 @@ async fn a_tick_over_an_empty_store_does_nothing() {
 }
 
 #[test]
-fn the_default_pacing_is_a_minute_with_an_eight_second_probe() {
+fn the_default_probe_window_is_the_budget_a_real_call_gets() {
     let config = SupervisorConfig::default();
     assert_eq!(config.tick_interval, Duration::from_secs(60));
-    assert_eq!(config.probe_timeout, Duration::from_secs(8));
+    // Not an independent number: judging liveness on a shorter deadline than a
+    // real request is held to is how a usable server gets disconnected for
+    // being slow.
+    assert_eq!(config.probe_timeout, crate::REMOTE_REQUEST_TIMEOUT);
 }
 
 // ---------------------------------------------------------------------------
@@ -535,4 +538,305 @@ async fn a_server_that_cannot_be_reconnected_earns_a_growing_backoff() {
     // dialled and the failure is not compounded.
     supervisor.tick(&store, &connections, &oauth, now).await;
     assert_eq!(connections.connected_count().await, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Probe outcomes
+//
+// The supervisor used to collapse every failed probe into one bool and then
+// report it as "the transport dropped". A server that is up but answers a
+// `tools/list` more slowly than the probe window was therefore disconnected by
+// the supervisor itself, and the reconnect that followed was repairing damage
+// the supervisor had caused. These cover the three outcomes separately.
+//
+// Each test makes the teardown *observable* by refusing the reconnect: with
+// `initialize` failing, a session that is torn down cannot come back, so the
+// connected count distinguishes "left alone" from "dropped and rebuilt" —
+// which a count alone cannot do while reconnects succeed.
+// ---------------------------------------------------------------------------
+
+/// How a [`serve_adjustable_server`] answers.
+#[derive(Debug)]
+struct ServerDials {
+    /// How long `tools/list` takes before answering.
+    list_delay: std::sync::atomic::AtomicU64,
+    /// Whether `tools/list` answers with a JSON-RPC error instead of tools.
+    list_errors: std::sync::atomic::AtomicBool,
+    /// Whether `initialize` succeeds, i.e. whether a reconnect can work.
+    initialize_ok: std::sync::atomic::AtomicBool,
+}
+
+impl ServerDials {
+    fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            list_delay: std::sync::atomic::AtomicU64::new(0),
+            list_errors: std::sync::atomic::AtomicBool::new(false),
+            initialize_ok: std::sync::atomic::AtomicBool::new(true),
+        })
+    }
+
+    fn set_list_delay(&self, delay: Duration) {
+        self.list_delay.store(
+            u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+    }
+
+    fn set_list_errors(&self, errors: bool) {
+        self.list_errors
+            .store(errors, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Stop answering `initialize`, so a torn-down session cannot be rebuilt.
+    fn refuse_reconnects(&self) {
+        self.initialize_ok
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Binds a loopback port and serves an MCP server that can be made slow,
+/// broken, or unreconnectable while the test runs.
+///
+/// `initialize` is separate from `tools/list` on purpose: a connect has to be
+/// able to succeed before the probe behaviour under test matters.
+async fn serve_adjustable_server(dials: &std::sync::Arc<ServerDials>) -> String {
+    let dials = std::sync::Arc::clone(dials);
+    let app = Router::new().route(
+        "/",
+        post(move |Json(body): Json<Value>| {
+            let dials = std::sync::Arc::clone(&dials);
+            async move {
+                let method = body
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let id = body["id"].clone();
+
+                if method == "initialize" {
+                    if !dials
+                        .initialize_ok
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                    {
+                        return Json(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": { "code": -32000, "message": "not accepting sessions" },
+                        }));
+                    }
+                    return Json(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "protocolVersion": tinymcp_bus::LATEST_PROTOCOL_VERSION,
+                            "capabilities": {},
+                            "serverInfo": { "name": "adjustable", "version": "1" },
+                        },
+                    }));
+                }
+
+                let delay = dials.list_delay.load(std::sync::atomic::Ordering::SeqCst);
+                if delay > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                }
+
+                if dials.list_errors.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Json(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32001, "message": "the session is gone" },
+                    }));
+                }
+
+                Json(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "tools": [{ "name": "forecast" }] },
+                }))
+            }
+        }),
+    );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}/")
+}
+
+/// A probe window short enough to exceed on purpose.
+const TEST_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Comfortably past [`TEST_PROBE_TIMEOUT`], and still quick to schedule.
+const SLOWER_THAN_THE_PROBE: Duration = Duration::from_millis(1_500);
+
+fn probing_supervisor() -> Supervisor {
+    Supervisor::new(
+        SupervisorConfig {
+            tick_interval: Duration::from_millis(10),
+            probe_timeout: TEST_PROBE_TIMEOUT,
+        },
+        McpClientIdentityConfig::default(),
+        None,
+    )
+}
+
+/// Connects `server` and hands back everything a tick needs.
+async fn connected_to(url: String) -> (Store, Connections, OAuthFlow, InstalledServer) {
+    let server = install("srv-1", Transport::HttpRemote { url }, true);
+    let store = Store::open_in_memory().unwrap();
+    store.insert_server(&server).unwrap();
+
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    connections
+        .connect(
+            &store,
+            &oauth,
+            &McpClientIdentityConfig::default(),
+            None,
+            &server,
+        )
+        .await
+        .expect("the first connect");
+
+    (store, connections, oauth, server)
+}
+
+#[tokio::test]
+async fn one_slow_probe_leaves_a_working_session_alone() {
+    // The regression this whole change is about. A single probe that runs out
+    // of window is evidence of slowness, not of a drop, and acting on it makes
+    // the supervisor the cause of the outage it goes on to report.
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, _server) = connected_to(url).await;
+
+    dials.set_list_delay(SLOWER_THAN_THE_PROBE);
+    dials.refuse_reconnects();
+
+    let mut supervisor = probing_supervisor();
+    supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+
+    assert_eq!(
+        connections.connected_count().await,
+        1,
+        "a single slow probe must not end the session"
+    );
+    assert_eq!(
+        supervisor.consecutive_timeouts("srv-1"),
+        1,
+        "the timeout should be counted rather than acted on"
+    );
+    assert_eq!(
+        supervisor.backed_off_count(),
+        0,
+        "nothing was reconnected, so nothing should carry a reconnect penalty"
+    );
+}
+
+#[tokio::test]
+async fn a_run_of_slow_probes_does_eventually_end_the_session() {
+    // The other half of the trade-off: a server that never answers has to be
+    // recovered, or "do not act on one timeout" becomes "never act at all".
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, _server) = connected_to(url).await;
+
+    dials.set_list_delay(SLOWER_THAN_THE_PROBE);
+    dials.refuse_reconnects();
+
+    let mut supervisor = probing_supervisor();
+
+    for tick in 1..=2 {
+        supervisor
+            .tick(&store, &connections, &oauth, Instant::now())
+            .await;
+        assert_eq!(
+            connections.connected_count().await,
+            1,
+            "the session should survive timeout {tick} of 3"
+        );
+    }
+
+    supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+
+    assert_eq!(
+        connections.connected_count().await,
+        0,
+        "the third consecutive timeout should end the session"
+    );
+    assert_eq!(
+        supervisor.consecutive_timeouts("srv-1"),
+        0,
+        "the streak is spent once it has been acted on"
+    );
+    assert_eq!(
+        supervisor.backed_off_count(),
+        1,
+        "the refused reconnect should earn a backoff penalty"
+    );
+}
+
+#[tokio::test]
+async fn an_answered_probe_clears_the_timeout_streak() {
+    // Otherwise timeouts accumulate across hours of healthy operation and a
+    // server is eventually torn down for three slow answers that were nowhere
+    // near each other.
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, _server) = connected_to(url).await;
+
+    let mut supervisor = probing_supervisor();
+
+    dials.set_list_delay(SLOWER_THAN_THE_PROBE);
+    supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+    assert_eq!(supervisor.consecutive_timeouts("srv-1"), 1);
+
+    dials.set_list_delay(Duration::ZERO);
+    supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+    assert_eq!(
+        supervisor.consecutive_timeouts("srv-1"),
+        0,
+        "one answer should reset the run"
+    );
+    assert_eq!(connections.connected_count().await, 1);
+}
+
+#[tokio::test]
+async fn a_transport_that_answers_with_an_error_is_torn_down_at_once() {
+    // No regression to the case the supervisor was built for: a transport that
+    // was *observed* to fail has nothing left to wait for, so it is not put
+    // behind the consecutive-timeout threshold.
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, _server) = connected_to(url).await;
+
+    dials.set_list_errors(true);
+    dials.refuse_reconnects();
+
+    let mut supervisor = probing_supervisor();
+    supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+
+    assert_eq!(
+        connections.connected_count().await,
+        0,
+        "a broken transport should be dropped on the first sighting"
+    );
+    assert_eq!(
+        supervisor.consecutive_timeouts("srv-1"),
+        0,
+        "a transport error is not a timeout and must not fill the streak"
+    );
+    assert_eq!(supervisor.backed_off_count(), 1);
 }
