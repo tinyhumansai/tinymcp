@@ -1,6 +1,6 @@
 //! The supervisor and its cycle.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use super::backoff::BackoffState;
@@ -38,6 +38,17 @@ pub struct Supervisor {
     identity: McpClientIdentityConfig,
     proxy: Option<McpProxyConfig>,
     backoff: HashMap<String, BackoffState>,
+    /// Servers whose last attempt failed in a way retrying cannot fix.
+    ///
+    /// Today that is exactly [`Error::MissingRuntime`](crate::Error::MissingRuntime):
+    /// the launcher is not installed, so the process never started and the next
+    /// attempt will not start it either. These are skipped entirely rather than
+    /// given a backoff, because a backoff is a promise that waiting helps.
+    ///
+    /// Cleared when the user disables the server, so toggling it off and on is
+    /// the recovery path after installing the runtime — the same gesture that
+    /// already clears a backoff penalty.
+    terminal: HashSet<String>,
 }
 
 impl Supervisor {
@@ -53,6 +64,7 @@ impl Supervisor {
             identity,
             proxy,
             backoff: HashMap::new(),
+            terminal: HashSet::new(),
         }
     }
 
@@ -102,8 +114,12 @@ impl Supervisor {
             if !server.enabled {
                 // The disable path owns tearing the connection down. All that
                 // is left here is to forget any backoff, so re-enabling gets an
-                // immediate attempt rather than inheriting an old penalty.
+                // immediate attempt rather than inheriting an old penalty. A
+                // terminal verdict is forgotten for the same reason, and it is
+                // the only way back: a user who installs the missing runtime
+                // toggles the server off and on to have it tried again.
                 self.backoff.remove(&server_id);
+                self.terminal.remove(&server_id);
                 continue;
             }
 
@@ -124,6 +140,13 @@ impl Supervisor {
                 connections.disconnect(&server_id).await;
             }
 
+            // Checked after the liveness block, not before it: a live
+            // connection is still worth probing and tearing down, and only the
+            // attempt that follows is pointless.
+            if self.terminal.contains(&server_id) {
+                continue;
+            }
+
             if !self
                 .backoff
                 .entry(server_id.clone())
@@ -139,11 +162,24 @@ impl Supervisor {
             {
                 Ok(tools) => {
                     self.backoff.remove(&server_id);
+                    self.terminal.remove(&server_id);
                     tracing::info!(
                         server_id = %server_id,
                         qualified_name = %server.qualified_name,
                         tools = tools.len(),
                         "reconnected"
+                    );
+                }
+                Err(error) if error.is_missing_runtime() => {
+                    // No backoff entry: a penalty says "wait, then try again",
+                    // and there is nothing to wait for. The server is parked
+                    // until the user disables and re-enables it.
+                    self.backoff.remove(&server_id);
+                    self.terminal.insert(server_id.clone());
+                    tracing::warn!(
+                        server_id = %server_id,
+                        qualified_name = %server.qualified_name,
+                        "connecting failed and will not be retried: {error}"
                     );
                 }
                 Err(error) => {
@@ -165,5 +201,14 @@ impl Supervisor {
     #[must_use]
     pub fn backed_off_count(&self) -> usize {
         self.backoff.len()
+    }
+
+    /// How many servers the supervisor has parked as unretryable.
+    ///
+    /// Disjoint from [`Self::backed_off_count`] by construction: a terminal
+    /// verdict removes any penalty rather than adding to one.
+    #[must_use]
+    pub fn terminally_failed_count(&self) -> usize {
+        self.terminal.len()
     }
 }

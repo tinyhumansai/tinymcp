@@ -6,15 +6,24 @@
 //! existing message: callers match on variants, and message text is not a
 //! stable API.
 //!
-//! # Why one variant carries structure
+//! # Why some variants carry structure
 //!
-//! [`Error::Unauthorized`] is the one a caller acts on rather than reports. A
+//! [`Error::Unauthorized`] is one a caller acts on rather than reports. A
 //! server that answers 401 is *working* — it is reachable, it understood the
 //! request, and it wants credentials — so the right response is to offer the
 //! user a way to authenticate, not to show them a failure. Distinguishing that
 //! from a transport error by matching on message text is how it used to be
 //! done, and text drifts. It carries its own fields so the decision is made on
 //! data.
+//!
+//! [`Error::MissingRuntime`] is the other, and it is the same argument pointed
+//! at the opposite conclusion. A 401 says *try again with credentials*; a
+//! missing `uvx` says *stop*. No amount of retrying installs a binary, so a
+//! caller that cannot tell this apart from a transport failure will schedule
+//! reconnects forever against a host where the answer cannot change. It was a
+//! [`Error::MalformedResponse`] carrying a formatted sentence, which was wrong
+//! twice over — nothing was malformed and no response arrived — and which left
+//! every caller that wanted to act on it substring-matching English.
 //!
 //! # Endpoints in messages are always redacted
 //!
@@ -23,7 +32,7 @@
 //! and user interfaces, and a URL with credentials in its userinfo would reach
 //! all three.
 
-use tinymcp_bus::McpAuthChallenge;
+use tinymcp_bus::{CommandKind, McpAuthChallenge};
 
 /// Errors returned by this crate.
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +62,34 @@ pub enum Error {
         /// one that wants a static credential, so it drives which affordance a
         /// caller offers.
         resource_metadata: Option<String>,
+    },
+
+    /// A stdio server's launcher is not installed on this host.
+    ///
+    /// Terminal, and that is the point: the command was not found on the
+    /// resolved `PATH`, so the process was never started and no reconnect can
+    /// change the outcome. A caller should stop attempting and surface an
+    /// install path — see the module note on why this is a variant rather than
+    /// a message.
+    ///
+    /// `runtime` is what to install, not what was typed. `command` is the
+    /// launcher as configured, kept verbatim so a user can see the exact string
+    /// that was looked up — an absolute path that is wrong for this machine
+    /// reads very differently from a bare `uvx`.
+    ///
+    /// The guidance is in the message for the reason given on
+    /// [`Self::Unauthorized`]: an error that has crossed an RPC boundary and
+    /// been re-reported as a string still has to be useful to whoever reads it.
+    #[error("{}", missing_runtime_guidance(command, *runtime))]
+    MissingRuntime {
+        /// The launcher that was not found, exactly as it was configured.
+        command: String,
+        /// The runtime that launcher belongs to, and therefore what to install.
+        ///
+        /// [`CommandKind::Binary`] means the command was not recognised as
+        /// belonging to a known ecosystem, so there is nothing to name beyond
+        /// the command itself.
+        runtime: CommandKind,
     },
 
     /// A remote server answered with a status other than success.
@@ -233,6 +270,17 @@ impl Error {
         }
     }
 
+    /// Builds a [`Self::MissingRuntime`] for a launcher that was not found.
+    ///
+    /// The runtime is classified from the command name rather than passed in,
+    /// so every producer of this variant agrees about which ecosystem a
+    /// launcher belongs to.
+    pub(crate) fn missing_runtime(command: impl Into<String>) -> Self {
+        let command = command.into();
+        let runtime = crate::transport::stdio::spawn_env::required_runtime(&command);
+        Self::MissingRuntime { command, runtime }
+    }
+
     /// Whether this error means "the server wants credentials".
     ///
     /// Callers use this instead of inspecting a message, which is the whole
@@ -251,6 +299,30 @@ impl Error {
     #[must_use]
     pub const fn is_unauthorized(&self) -> bool {
         matches!(self, Self::Unauthorized { .. })
+    }
+
+    /// Whether this error means "the runtime this server needs is not here".
+    ///
+    /// Terminal. A caller uses this to stop retrying and offer an install path,
+    /// which is the whole reason [`Self::MissingRuntime`] is a variant: the
+    /// condition used to be reachable only by substring-matching a sentence,
+    /// and a supervisor that could not see it scheduled reconnects on a
+    /// five-minute ceiling against a binary that was never going to appear.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tinymcp::{CommandKind, Error};
+    /// let error = Error::MissingRuntime {
+    ///     command: "uvx".into(),
+    ///     runtime: CommandKind::Python,
+    /// };
+    /// assert!(error.is_missing_runtime());
+    /// assert!(!error.is_unauthorized());
+    /// ```
+    #[must_use]
+    pub const fn is_missing_runtime(&self) -> bool {
+        matches!(self, Self::MissingRuntime { .. })
     }
 
     /// Whether the 401 advertised OAuth.
@@ -283,6 +355,39 @@ impl From<serde_json::Error> for Error {
 /// Use this alias in public signatures instead of spelling out
 /// `std::result::Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// The sentence a user reads when a stdio launcher is not installed.
+///
+/// "Not found" is almost never what they need to hear; "this server needs
+/// Node.js" is. The recognised runtimes get a name and an address, and anything
+/// else gets a path hint, because naming the wrong ecosystem is worse than
+/// naming none.
+///
+/// Lives here, beside the variant, so [`Error::MissingRuntime`]'s `Display` and
+/// [`crate::transport::stdio::spawn_env::missing_command_error`] — which
+/// delegates to it — cannot drift into two different sentences.
+pub(crate) fn missing_runtime_guidance(command: &str, runtime: CommandKind) -> String {
+    match runtime {
+        CommandKind::Node => format!(
+            "`{command}` was not found. This MCP server needs Node.js, which does not appear \
+             to be installed, or is not on this application's PATH. Install Node.js from \
+             https://nodejs.org and restart the application."
+        ),
+        CommandKind::Python => format!(
+            "`{command}` was not found. This MCP server needs uv (Python), which does not \
+             appear to be installed. Install it from https://docs.astral.sh/uv/ and restart \
+             the application."
+        ),
+        // `CommandKind::Binary`, and whatever is added to that non-exhaustive
+        // enum next. A runtime this crate cannot name is exactly the case the
+        // generic sentence exists for, so a new variant degrades to correct
+        // guidance rather than to a compile error in every downstream crate.
+        _ => format!(
+            "`{command}` was not found on this application's PATH. Install it, or its runtime, \
+             make sure it is available in your shell, then restart the application."
+        ),
+    }
+}
 
 /// How much of a failure body to put in a message.
 ///
