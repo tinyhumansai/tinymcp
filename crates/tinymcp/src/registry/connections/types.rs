@@ -27,11 +27,13 @@ const REMOTE_TIMEOUT_SECS: u64 = 30;
 
 /// How long a request to a connected server is allowed to take.
 ///
-/// Public because it is the budget every other deadline in this crate has to be
-/// reconciled against: a server answering inside this window is *usable*, so
-/// anything that judges liveness on a shorter one is measuring impatience
-/// rather than health. [`SupervisorConfig`](crate::SupervisorConfig) derives its
-/// probe window from this for that reason.
+/// Public because it is the budget every other deadline in this crate is
+/// reconciled against: a server answering inside this window is *usable*. A
+/// liveness probe deliberately uses a shorter window
+/// ([`SupervisorConfig::probe_timeout`](crate::SupervisorConfig)) so a server
+/// that has gone quiet is noticed early — which is exactly why one probe
+/// timeout is not a verdict, and why it takes a run of them before a session is
+/// torn down. The reconciliation is that run, not an equal number.
 pub const REMOTE_REQUEST_TIMEOUT: Duration = Duration::from_secs(REMOTE_TIMEOUT_SECS);
 
 /// What a liveness probe observed.
@@ -40,10 +42,12 @@ pub const REMOTE_REQUEST_TIMEOUT: Duration = Duration::from_secs(REMOTE_TIMEOUT_
 /// different correct response to each, which is the whole reason this is not a
 /// `bool`. A transport that answered with an error is broken now and there is
 /// nothing to wait for. A transport that did not answer inside the probe window
-/// may simply be slower than that window — the window is deliberately shorter
-/// than [`REMOTE_REQUEST_TIMEOUT`], so exceeding it does not mean the server
-/// would have failed a real call. Collapsing the two lets a supervisor tear
-/// down a working session and then report a drop that never happened.
+/// may simply be slower than that window. The window is at most
+/// [`REMOTE_REQUEST_TIMEOUT`] and is normally configured shorter — it is an
+/// early signal, not the budget a real call gets — so exceeding it does not
+/// mean the server would have failed a real call. Collapsing the two lets a
+/// supervisor tear down a working session and then report a drop that never
+/// happened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ProbeOutcome {

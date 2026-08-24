@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use super::backoff::BackoffState;
-use crate::registry::{Connections, OAuthFlow, ProbeOutcome, REMOTE_REQUEST_TIMEOUT, Store};
+use crate::registry::{Connections, OAuthFlow, ProbeOutcome, Store};
 use tinymcp_bus::{InstalledServer, McpClientIdentityConfig, McpProxyConfig};
 
 /// How many consecutive probe timeouts end the session.
@@ -31,14 +31,29 @@ pub struct SupervisorConfig {
     pub tick_interval: Duration,
     /// How long a liveness probe may take before it is recorded as a timeout.
     ///
-    /// Defaults to [`REMOTE_REQUEST_TIMEOUT`], the budget a real call gets.
-    /// Anything shorter judges a server unusable on a deadline it was never
-    /// held to, so a server answering inside its own budget would be
-    /// disconnected for being slow.
+    /// Deliberately shorter than [`REMOTE_REQUEST_TIMEOUT`](crate::REMOTE_REQUEST_TIMEOUT),
+    /// the budget a real
+    /// call gets: this is an early signal that a server has gone quiet, not a
+    /// verdict on whether it is usable. Exceeding it therefore means *slow*,
+    /// not *dead*, which is why a single timeout costs nothing and it takes a
+    /// run of consecutive ones to tear a session down. That run is the
+    /// reconciliation between the two deadlines — by the time one is acted on,
+    /// the server has had far longer than a real request would ever get.
     ///
-    /// Exceeding this is still not on its own a reason to tear a session down:
-    /// it takes a run of consecutive timeouts, so a single slow answer costs
-    /// nothing.
+    /// # Why not simply widen it to the transport budget
+    ///
+    /// Because [`Self::tick`](super::Supervisor::tick) probes installs in
+    /// sequence and each probe can consume the whole window, so the window
+    /// bounds the worst-case cycle. Widening it to 30s multiplies that by
+    /// ~3.75 and, past a handful of unresponsive installs, a cycle outruns
+    /// `tick_interval`. [`Supervisor::run`](super::Supervisor::run) sets
+    /// `MissedTickBehavior::Delay` so that does not become a burst of
+    /// catch-up ticks — but a host that drives `tick` from its own timer gets
+    /// no such protection, and at least one does. Raising this default is
+    /// therefore not a local decision; it needs the probe loop bounded first
+    /// (concurrent probes, or a cycle deadline).
+    ///
+    /// A host that knows its servers are slow can still raise it explicitly.
     pub probe_timeout: Duration,
 }
 
@@ -46,7 +61,7 @@ impl Default for SupervisorConfig {
     fn default() -> Self {
         Self {
             tick_interval: Duration::from_secs(60),
-            probe_timeout: REMOTE_REQUEST_TIMEOUT,
+            probe_timeout: Duration::from_secs(8),
         }
     }
 }

@@ -349,13 +349,19 @@ async fn a_tick_over_an_empty_store_does_nothing() {
 }
 
 #[test]
-fn the_default_probe_window_is_the_budget_a_real_call_gets() {
+fn the_default_probe_window_is_shorter_than_a_real_request_budget() {
     let config = SupervisorConfig::default();
     assert_eq!(config.tick_interval, Duration::from_secs(60));
-    // Not an independent number: judging liveness on a shorter deadline than a
-    // real request is held to is how a usable server gets disconnected for
-    // being slow.
-    assert_eq!(config.probe_timeout, crate::REMOTE_REQUEST_TIMEOUT);
+    assert_eq!(config.probe_timeout, Duration::from_secs(8));
+    // The probe is an early signal, not a verdict, so its window is
+    // deliberately tighter than the budget a real call gets. What keeps a
+    // merely-slow server from being torn down is the consecutive-timeout run,
+    // not an equal deadline — and the window also bounds the worst-case cycle,
+    // since `tick` probes installs in sequence.
+    assert!(
+        config.probe_timeout < crate::REMOTE_REQUEST_TIMEOUT,
+        "the probe window must stay tighter than the request budget"
+    );
 }
 
 // ---------------------------------------------------------------------------
