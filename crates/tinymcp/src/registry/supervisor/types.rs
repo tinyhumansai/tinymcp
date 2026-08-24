@@ -37,7 +37,8 @@ pub struct SupervisorConfig {
     /// disconnected for being slow.
     ///
     /// Exceeding this is still not on its own a reason to tear a session down:
-    /// it takes [`CONSECUTIVE_TIMEOUTS_BEFORE_TEARDOWN`] of them.
+    /// it takes a run of consecutive timeouts, so a single slow answer costs
+    /// nothing.
     pub probe_timeout: Duration,
 }
 
