@@ -10,7 +10,7 @@
 
 use super::McpStdioClient;
 use crate::Error;
-use tinymcp_bus::{LATEST_PROTOCOL_VERSION, McpClientIdentityConfig};
+use tinymcp_bus::{CommandKind, LATEST_PROTOCOL_VERSION, McpClientIdentityConfig};
 
 /// A client for `command` with no arguments and no environment.
 fn client_for(command: &str, env: Vec<(String, String)>) -> McpStdioClient {
@@ -63,6 +63,52 @@ async fn a_missing_uv_runtime_says_so_by_name() {
     let error = client.initialize().await.expect_err("a missing uvx");
 
     assert!(error.to_string().contains("uv"), "{error}");
+}
+
+#[tokio::test]
+async fn a_missing_runtime_is_a_variant_a_caller_can_branch_on() {
+    // The contract is the variant, not the sentence. A caller deciding whether
+    // to stop retrying must not have to substring-match English, which is what
+    // it had to do while this was a `MalformedResponse` carrying a message.
+    for (command, expected) in [
+        ("uvx", CommandKind::Python),
+        ("uv", CommandKind::Python),
+        ("npx", CommandKind::Node),
+        ("npm", CommandKind::Node),
+        ("node", CommandKind::Node),
+        // Unrecognised launchers are still terminal; there is just no ecosystem
+        // to name.
+        ("some-bespoke-server", CommandKind::Binary),
+    ] {
+        // Bare names only. An absolute path would have to not exist on the
+        // machine running the test, and `required_runtime`'s own tests already
+        // cover path stripping and case without touching the filesystem.
+        let client = client_for(command, empty_path());
+
+        let error = client
+            .initialize()
+            .await
+            .expect_err("a launcher that is not on the path");
+
+        assert!(
+            error.is_missing_runtime(),
+            "`{command}` produced {error:?}, which no caller can act on"
+        );
+        assert!(
+            !error.is_unauthorized(),
+            "`{command}` must not look like a credential problem"
+        );
+        match &error {
+            Error::MissingRuntime {
+                command: got,
+                runtime,
+            } => {
+                assert_eq!(got, command, "the command is kept verbatim");
+                assert_eq!(*runtime, expected, "`{command}` needs {expected:?}");
+            }
+            other => panic!("`{command}` produced {other:?}, not MissingRuntime"),
+        }
+    }
 }
 
 #[tokio::test]

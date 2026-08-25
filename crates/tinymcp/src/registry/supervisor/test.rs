@@ -7,6 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use axum::routing::post;
@@ -268,6 +269,63 @@ async fn a_failed_reconnect_earns_a_backoff_penalty() {
     assert!(!connections.is_connected("srv-1").await);
     assert_eq!(supervisor.backed_off_count(), 1);
     assert!(connections.last_error("srv-1").await.is_some());
+}
+
+#[tokio::test]
+async fn a_missing_runtime_is_terminal_and_earns_no_backoff_penalty() {
+    // A binary that is not installed will not appear because we waited five
+    // minutes, so the supervisor must park the server instead of scheduling
+    // another attempt against it.
+    let store = Store::open_in_memory().unwrap();
+    store
+        .insert_server(&install("srv-1", Transport::Stdio, true))
+        .unwrap();
+    // `install` launches through `npx`; an empty PATH forces the
+    // missing-command branch whether or not this machine has Node.
+    store
+        .set_env_values(
+            "srv-1",
+            &BTreeMap::from([(
+                "PATH".to_string(),
+                "/tinymcp/deliberately/does/not/exist".to_string(),
+            )]),
+        )
+        .unwrap();
+
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    let mut supervisor = supervisor();
+    let base = Instant::now();
+
+    supervisor.tick(&store, &connections, &oauth, base).await;
+
+    assert!(!connections.is_connected("srv-1").await);
+    assert_eq!(
+        supervisor.backed_off_count(),
+        0,
+        "a backoff promises that waiting helps, and here it cannot"
+    );
+    assert_eq!(supervisor.terminally_failed_count(), 1);
+
+    // Far past any backoff window, so a penalised server would certainly be
+    // retried by now. A parked one must not be.
+    let first_error = connections.last_error("srv-1").await;
+    assert!(first_error.is_some(), "the first attempt is still reported");
+    supervisor
+        .tick(&store, &connections, &oauth, base + BACKOFF_MAX * 2)
+        .await;
+
+    assert_eq!(supervisor.backed_off_count(), 0);
+    assert_eq!(supervisor.terminally_failed_count(), 1);
+
+    // Disabling clears the verdict, so installing the runtime and toggling the
+    // server is a way back.
+    store.update_enabled("srv-1", false).unwrap();
+    supervisor
+        .tick(&store, &connections, &oauth, base + BACKOFF_MAX * 3)
+        .await;
+
+    assert_eq!(supervisor.terminally_failed_count(), 0);
 }
 
 #[tokio::test]

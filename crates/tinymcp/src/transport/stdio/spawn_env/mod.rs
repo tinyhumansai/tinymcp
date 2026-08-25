@@ -42,6 +42,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
+use tinymcp_bus::CommandKind;
 use tokio::sync::OnceCell;
 
 /// The separator this platform puts between path entries.
@@ -388,24 +389,44 @@ fn executable_candidates(base: PathBuf) -> Vec<PathBuf> {
 /// ```
 #[must_use]
 pub fn missing_command_error(command: &str) -> String {
+    crate::error::missing_runtime_guidance(command, required_runtime(command))
+}
+
+/// Which runtime a stdio command needs, from the command name alone.
+///
+/// The launcher is the only evidence available at this point — the install's
+/// own [`CommandKind`] is not threaded into the transport — so the name is what
+/// classifies it. A path is reduced to its final component and lowercased
+/// first, because `/opt/homebrew/bin/NPX` needs Node.js just as much as `npx`
+/// does.
+///
+/// [`CommandKind::Binary`] is the honest answer for anything unrecognised: the
+/// command needs *something*, and guessing at which ecosystem would send a user
+/// to install the wrong thing.
+///
+/// This is what [`missing_command_error`] switches on, and what
+/// [`crate::Error::MissingRuntime`] carries, so the sentence a user reads and
+/// the value a caller branches on can never disagree about which runtime is
+/// missing.
+///
+/// # Examples
+///
+/// ```
+/// # use tinymcp::transport::stdio::spawn_env::required_runtime;
+/// # use tinymcp::CommandKind;
+/// assert_eq!(required_runtime("npx"), CommandKind::Node);
+/// assert_eq!(required_runtime("/opt/homebrew/bin/uvx"), CommandKind::Python);
+/// assert_eq!(required_runtime("some-bespoke-server"), CommandKind::Binary);
+/// ```
+#[must_use]
+pub fn required_runtime(command: &str) -> CommandKind {
     let lowered = command.to_ascii_lowercase();
     let base = lowered.rsplit(['/', '\\']).next().unwrap_or(&lowered);
 
     match base {
-        "npx" | "npm" | "node" => format!(
-            "`{command}` was not found. This MCP server needs Node.js, which does not appear \
-             to be installed, or is not on this application's PATH. Install Node.js from \
-             https://nodejs.org and restart the application."
-        ),
-        "uvx" | "uv" => format!(
-            "`{command}` was not found. This MCP server needs uv (Python), which does not \
-             appear to be installed. Install it from https://docs.astral.sh/uv/ and restart \
-             the application."
-        ),
-        _ => format!(
-            "`{command}` was not found on this application's PATH. Install it, or its runtime, \
-             make sure it is available in your shell, then restart the application."
-        ),
+        "npx" | "npm" | "node" => CommandKind::Node,
+        "uvx" | "uv" => CommandKind::Python,
+        _ => CommandKind::Binary,
     }
 }
 

@@ -132,9 +132,7 @@ impl McpStdioClient {
                 command = %self.command,
                 "the stdio command was not found on the resolved path"
             );
-            return Err(Error::malformed(spawn_env::missing_command_error(
-                &self.command,
-            )));
+            return Err(Error::missing_runtime(self.command.clone()));
         }
 
         let mut command = Command::new(&self.command);
