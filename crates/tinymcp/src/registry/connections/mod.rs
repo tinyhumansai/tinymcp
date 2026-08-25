@@ -42,7 +42,7 @@ mod types;
 /// flow's connection test so a test dials exactly as a real connect would.
 pub(crate) use dial::build_http_auth;
 
-pub use types::Connections;
+pub use types::{Connections, ProbeOutcome, REMOTE_REQUEST_TIMEOUT};
 
 #[cfg(test)]
 mod test;

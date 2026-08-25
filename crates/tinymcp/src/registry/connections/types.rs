@@ -25,6 +25,74 @@ use tinymcp_bus::{
 /// that passes the test behaves the same once installed.
 const REMOTE_TIMEOUT_SECS: u64 = 30;
 
+/// How long a request to a connected server is allowed to take.
+///
+/// Public because it is the budget every other deadline in this crate is
+/// reconciled against: a server answering inside this window is *usable*. A
+/// liveness probe deliberately uses a shorter window
+/// ([`SupervisorConfig::probe_timeout`](crate::SupervisorConfig)) so a server
+/// that has gone quiet is noticed early — which is exactly why one probe
+/// timeout is not a verdict, and why it takes a run of them before a session is
+/// torn down. The reconciliation is that run, not an equal number.
+pub const REMOTE_REQUEST_TIMEOUT: Duration = Duration::from_secs(REMOTE_TIMEOUT_SECS);
+
+/// What a liveness probe observed.
+///
+/// The failing outcomes are kept apart because a caller has a genuinely
+/// different correct response to each, which is the whole reason this is not a
+/// `bool`. A transport that answered with an error is broken now and there is
+/// nothing to wait for. A transport that did not answer inside the probe window
+/// may simply be slower than that window. The window is at most
+/// [`REMOTE_REQUEST_TIMEOUT`] and is normally configured shorter — it is an
+/// early signal, not the budget a real call gets — so exceeding it does not
+/// mean the server would have failed a real call. Collapsing the two lets a
+/// supervisor tear down a working session and then report a drop that never
+/// happened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ProbeOutcome {
+    /// The server answered inside the probe window.
+    Alive {
+        /// How long the round trip took.
+        elapsed: Duration,
+    },
+    /// There is no entry for this server, so there was nothing to probe.
+    Missing,
+    /// The transport answered with an error.
+    Broken {
+        /// What the transport reported, already rendered.
+        error: String,
+        /// How long it took to fail.
+        elapsed: Duration,
+    },
+    /// The server did not answer inside the probe window.
+    ///
+    /// Not the same as broken: nothing was observed to fail, only to be slow.
+    TimedOut {
+        /// The window that elapsed without an answer.
+        after: Duration,
+    },
+}
+
+impl ProbeOutcome {
+    /// Whether the server answered.
+    #[must_use]
+    pub const fn is_alive(&self) -> bool {
+        matches!(self, Self::Alive { .. })
+    }
+
+    /// A stable one-word label, for structured log fields.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Alive { .. } => "alive",
+            Self::Missing => "missing",
+            Self::Broken { .. } => "broken",
+            Self::TimedOut { .. } => "timed_out",
+        }
+    }
+}
+
 /// A live transport for one connected install.
 #[derive(Debug)]
 enum ActiveClient {
@@ -314,28 +382,47 @@ impl Connections {
         self.live.read().await.contains_key(server_id)
     }
 
-    /// Whether a connected server still answers, within `timeout`.
+    /// What a connected server does when asked a question, within `timeout`.
     ///
     /// Issues a real round trip. This is how a dead transport becomes visible
     /// before a user's next tool call finds it.
     ///
-    /// A missing entry, a transport error, and a timeout all report `false`:
-    /// each means "not usable, reconnect", and distinguishing them would give a
-    /// caller a choice it has no different response to.
-    pub async fn probe_alive(&self, server_id: &str, timeout: Duration) -> bool {
+    /// Reports [`ProbeOutcome`] rather than a bool because the failures are not
+    /// interchangeable. A missing entry and a transport error mean the session
+    /// is unusable now. A timeout means only that the answer did not arrive
+    /// inside `timeout`, which is normally shorter than
+    /// [`REMOTE_REQUEST_TIMEOUT`] — so a server that would have served a real
+    /// call perfectly well can still exceed it. A caller that treats the two
+    /// alike disconnects working sessions and then reports a drop that never
+    /// happened.
+    pub async fn probe_alive(&self, server_id: &str, timeout: Duration) -> ProbeOutcome {
         let Some(connection) = self.get(server_id).await else {
-            return false;
+            return ProbeOutcome::Missing;
         };
 
+        // Measured rather than inferred: a caller deciding whether a slow server
+        // is worth keeping needs the number, and a log that carries it turns a
+        // repeated warning into evidence instead of a restatement.
+        let started = tokio::time::Instant::now();
         match tokio::time::timeout(timeout, connection.client.list_tools()).await {
-            Ok(Ok(_)) => true,
+            Ok(Ok(_)) => ProbeOutcome::Alive {
+                elapsed: started.elapsed(),
+            },
             Ok(Err(error)) => {
-                tracing::debug!(server_id, "probe found a broken transport: {error}");
-                false
+                let elapsed = started.elapsed();
+                tracing::debug!(
+                    server_id,
+                    ?elapsed,
+                    "probe found a broken transport: {error}"
+                );
+                ProbeOutcome::Broken {
+                    error: error.to_string(),
+                    elapsed,
+                }
             }
             Err(_) => {
                 tracing::debug!(server_id, ?timeout, "probe timed out");
-                false
+                ProbeOutcome::TimedOut { after: timeout }
             }
         }
     }

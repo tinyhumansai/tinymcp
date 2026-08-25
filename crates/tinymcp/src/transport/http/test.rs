@@ -1291,3 +1291,52 @@ fn a_payload_split_over_several_data_lines_is_joined() {
 
     assert_eq!(value, json!({ "ok": true }));
 }
+
+// ---------------------------------------------------------------------------
+// Redirect policy
+// ---------------------------------------------------------------------------
+
+#[test]
+fn follows_an_https_to_https_redirect() {
+    use super::{RedirectDecision, redirect_decision};
+    assert_eq!(
+        redirect_decision(Some("https"), "https", 1),
+        RedirectDecision::Follow
+    );
+}
+
+#[test]
+fn refuses_an_https_to_http_downgrade() {
+    use super::{RedirectDecision, redirect_decision};
+    // A same-origin downgrade is the gap reqwest leaves open: a bearer on a
+    // same-host hop, and any custom header or query-param credential on any
+    // hop, are not stripped. The policy refuses the hop instead.
+    let decision = redirect_decision(Some("https"), "http", 1);
+    assert!(matches!(decision, RedirectDecision::Error(_)));
+}
+
+#[test]
+fn does_not_refuse_a_plain_http_redirect_that_started_on_http() {
+    // An endpoint the host already allowed over HTTP (loopback, or an
+    // unauthenticated server) is not downgraded by staying on HTTP.
+    use super::{RedirectDecision, redirect_decision};
+    assert_eq!(
+        redirect_decision(Some("http"), "http", 1),
+        RedirectDecision::Follow
+    );
+}
+
+#[test]
+fn caps_the_redirect_chain_at_max_redirects() {
+    // `hops` counts the initial URL (reqwest's accounting), so the cap fires
+    // one past `MAX_REDIRECTS` — matching `Policy::limited`.
+    use super::{MAX_REDIRECTS, RedirectDecision, redirect_decision};
+    assert_eq!(
+        redirect_decision(Some("https"), "https", MAX_REDIRECTS),
+        RedirectDecision::Follow
+    );
+    assert!(matches!(
+        redirect_decision(Some("https"), "https", MAX_REDIRECTS + 1),
+        RedirectDecision::Error(_)
+    ));
+}

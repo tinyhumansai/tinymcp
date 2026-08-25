@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use super::dial::{build_http_auth, credential_safe_dial_url, is_internal_key};
 use super::status::{ConnectFailure, classify};
-use super::types::Connections;
+use super::types::{Connections, ProbeOutcome};
 use crate::Error;
 use crate::registry::Store;
 use crate::registry::oauth::{OAUTH_BUNDLE_KEY, OAuthFlow};
@@ -462,15 +462,19 @@ async fn a_connected_server_answers_a_probe() {
         connections
             .probe_alive("srv-1", Duration::from_secs(5))
             .await
+            .is_alive()
     );
 }
 
 #[tokio::test]
-async fn a_server_that_was_never_connected_fails_its_probe() {
-    assert!(
-        !Connections::new()
+async fn a_server_that_was_never_connected_reports_a_missing_probe() {
+    // Missing rather than merely "not alive": there was no transport to judge,
+    // which is a different thing from one that answered badly.
+    assert_eq!(
+        Connections::new()
             .probe_alive("srv-1", Duration::from_secs(1))
-            .await
+            .await,
+        ProbeOutcome::Missing
     );
 }
 
@@ -916,6 +920,7 @@ mod stdio {
             connections
                 .probe_alive("srv-1", Duration::from_secs(5))
                 .await
+                .is_alive()
         );
     }
 
@@ -970,5 +975,41 @@ mod stdio {
                 .await
                 .is_ok()
         );
+    }
+}
+
+#[test]
+fn every_probe_outcome_has_a_stable_label_and_only_one_is_alive() {
+    // The label rides on the supervisor's warning, so it is part of what an
+    // operator greps for; and `is_alive` is what every caller branches on.
+    let cases = [
+        (
+            ProbeOutcome::Alive {
+                elapsed: Duration::from_millis(12),
+            },
+            "alive",
+            true,
+        ),
+        (ProbeOutcome::Missing, "missing", false),
+        (
+            ProbeOutcome::Broken {
+                error: "closed".into(),
+                elapsed: Duration::from_millis(3),
+            },
+            "broken",
+            false,
+        ),
+        (
+            ProbeOutcome::TimedOut {
+                after: Duration::from_secs(30),
+            },
+            "timed_out",
+            false,
+        ),
+    ];
+
+    for (outcome, label, alive) in cases {
+        assert_eq!(outcome.as_str(), label);
+        assert_eq!(outcome.is_alive(), alive, "{label}");
     }
 }
