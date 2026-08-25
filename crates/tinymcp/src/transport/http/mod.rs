@@ -12,10 +12,13 @@
 //! retried, so a server that answers 404 for some other reason costs one extra
 //! round trip rather than an unbounded loop.
 //!
-//! **Redirects are followed, up to five.** Servers are commonly published
-//! behind a vanity URL that redirects to the real endpoint. `reqwest` strips
-//! `Authorization` and `Cookie` on a cross-origin redirect, so a bearer token
-//! does not follow the request to another host.
+//! **Redirects are followed, up to five, but an HTTPS→HTTP downgrade is
+//! refused.** Servers are commonly published behind a vanity URL that redirects
+//! to the real endpoint. `reqwest` strips `Authorization` and `Cookie` on a
+//! cross-origin redirect, so a bearer token does not follow the request to
+//! another host — but a same-origin downgrade, and any custom header or
+//! query-param credential on any hop, are not stripped, so the policy itself
+//! refuses a hop that would move the request from HTTPS to plaintext.
 //!
 //! **The SSE body is read incrementally.** See the `sse` module for why that is
 //! load-bearing rather than an optimization.
@@ -171,10 +174,14 @@ impl McpHttpClientBuilder {
             .connect_timeout(CONNECT_TIMEOUT)
             // Servers are commonly published behind a vanity URL that redirects
             // to the real endpoint; refusing to follow it surfaces as a bare
-            // "MCP HTTP 301". `reqwest` strips `Authorization` and `Cookie` on
-            // a cross-origin redirect, so a bearer token does not follow the
-            // request to another host.
-            .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS));
+            // "MCP HTTP 301". A custom policy follows up to `MAX_REDIRECTS`
+            // hops but refuses an HTTPS→HTTP downgrade, which would carry any
+            // attached credential over plaintext. `reqwest` strips
+            // `Authorization` and `Cookie` on a cross-origin redirect, so a
+            // bearer token does not follow the request to another host, but
+            // custom headers, query-param credentials and same-origin
+            // downgrades are not stripped — the policy closes that gap.
+            .redirect(redirect_policy());
 
         if let Some(proxy) = self.proxy.as_ref() {
             builder = apply_proxy(builder, proxy);
@@ -195,6 +202,61 @@ impl McpHttpClientBuilder {
             state: Mutex::new(SessionState::default()),
         })
     }
+}
+
+/// The redirect policy every HTTP client uses.
+///
+/// Follows vanity-URL redirects (servers are commonly published behind one)
+/// but caps the chain at [`MAX_REDIRECTS`] and refuses an HTTPS→HTTP downgrade:
+/// a redirect that moves the request to plaintext after it has been over TLS
+/// would carry any attached credential in the clear. The same-origin case is
+/// the gap `reqwest` leaves open — it strips `Authorization` and `Cookie` only
+/// on a cross-origin hop, so a bearer on a same-host downgrade and any custom
+/// header or query-param credential on any hop would otherwise follow. A
+/// refused downgrade surfaces as a redirect error rather than a silent leak.
+fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        // `previous[0]` is the initial URL (reqwest counts it, not a redirect),
+        // so it is the scheme the host configured — and, for a credentialed
+        // non-loopback endpoint, the one already required to be HTTPS.
+        let origin_scheme = attempt.previous().first().map(reqwest::Url::scheme);
+        match redirect_decision(
+            origin_scheme,
+            attempt.url().scheme(),
+            attempt.previous().len(),
+        ) {
+            RedirectDecision::Follow => attempt.follow(),
+            RedirectDecision::Error(msg) => attempt.error(msg),
+        }
+    })
+}
+
+/// What [`redirect_policy`] decides for one hop, as a pure function of its
+/// inputs so the rule is unit-testable without standing up a redirect server.
+///
+/// `hops` is `previous.len()`, matching reqwest's `Limit` accounting: the
+/// initial URL is counted, so a chain that has followed `MAX_REDIRECTS`
+/// redirects reports `MAX_REDIRECTS + 1`.
+#[derive(Debug, PartialEq, Eq)]
+enum RedirectDecision {
+    Follow,
+    Error(&'static str),
+}
+
+fn redirect_decision(
+    origin_scheme: Option<&str>,
+    target_scheme: &str,
+    hops: usize,
+) -> RedirectDecision {
+    if origin_scheme == Some("https") && target_scheme == "http" {
+        return RedirectDecision::Error(
+            "refusing an https→http redirect that would expose credentials in cleartext",
+        );
+    }
+    if hops > MAX_REDIRECTS {
+        return RedirectDecision::Error("too many redirects");
+    }
+    RedirectDecision::Follow
 }
 
 /// Applies a resolved proxy to a client builder.
