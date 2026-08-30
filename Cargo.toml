@@ -84,7 +84,7 @@ parking_lot = "0.12"
 # registry. The crate's public boundary returns `Error` from `src/error/`.
 anyhow = "1"
 # HTTP basic authentication encodes its credentials.
-base64 = "0.22"
+base64 = "0.23"
 # `StreamExt::next` over the SSE response body. See the `reqwest` note.
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # Structured diagnostics. Endpoints are always passed through `redact_endpoint`
