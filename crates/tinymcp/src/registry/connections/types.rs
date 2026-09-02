@@ -111,6 +111,20 @@ impl ActiveClient {
         }
     }
 
+    /// The `instructions` the server sent in its handshake, if any.
+    ///
+    /// Both transports cache the initialize result, so this reads the completed
+    /// handshake rather than performing one. `None` on a transport error for the
+    /// same reason it is `None` for a server that sent nothing: the caller is
+    /// describing a server, and a missing description is not worth failing over.
+    async fn instructions(&self) -> Option<String> {
+        let initialized = match self {
+            Self::Stdio(client) => client.initialize().await,
+            Self::Http(client) => client.initialize().await,
+        };
+        initialized.ok().and_then(|result| result.instructions)
+    }
+
     /// Calls a tool.
     async fn call_tool(&self, name: &str, arguments: Value) -> Result<McpServerToolResult> {
         match self {
@@ -137,6 +151,11 @@ struct Connection {
     qualified_name: String,
     display_name: String,
     description: Option<String>,
+    /// The handshake's `instructions`, captured once at connect time.
+    ///
+    /// Stored rather than re-read per overview: the value cannot change without
+    /// a reconnect, which rebuilds this whole record anyway.
+    instructions: Option<String>,
 }
 
 impl Connection {
@@ -263,12 +282,18 @@ impl Connections {
             })
             .collect();
 
+        // Read before the client is moved into the record. The handshake is
+        // already complete by here — `list_tools` above cannot have succeeded
+        // otherwise — so this reads the cached result and does not dial again.
+        let instructions = client.instructions().await;
+
         let connection = Arc::new(Connection {
             client,
             tools: RwLock::new(tools.clone()),
             qualified_name: server.qualified_name.clone(),
             display_name: server.display_name.clone(),
             description: server.description.clone(),
+            instructions,
         });
 
         self.live
@@ -553,6 +578,7 @@ impl Connections {
                 qualified_name: connection.qualified_name.clone(),
                 display_name: connection.display_name.clone(),
                 description: connection.description.clone(),
+                instructions: connection.instructions.clone(),
                 tools: connection.tools_snapshot().await,
             });
         }

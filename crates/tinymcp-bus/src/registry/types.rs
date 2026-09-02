@@ -255,6 +255,17 @@ pub struct ConnectedServerOverview {
     /// hint a host can show.
     #[serde(default)]
     pub description: Option<String>,
+    /// The server's own `initialize` instructions, when it sent any.
+    ///
+    /// A hand-added server has no registry entry and therefore no
+    /// [`description`](Self::description) — the handshake's `instructions` is
+    /// then the only thing that can say what the server is *for*, and without it
+    /// a host has nothing to show but a name and a tool count.
+    ///
+    /// Untrusted remote free-form text, on the same footing as `description`:
+    /// sanitize before placing it in an LLM's context.
+    #[serde(default)]
+    pub instructions: Option<String>,
     /// The tools the server advertises.
     ///
     /// Kept in full so a host can fall back to a tool count when a server has
