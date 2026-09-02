@@ -230,6 +230,7 @@ fn an_overview_round_trips_with_its_tools() {
         qualified_name: "@test/server".into(),
         display_name: "Test".into(),
         description: Some("does things".into()),
+        instructions: Some("call list_accounts first".into()),
         tools: vec![McpTool::new("a"), McpTool::new("b")],
     };
     let encoded = serde_json::to_value(&overview).unwrap();
@@ -237,6 +238,23 @@ fn an_overview_round_trips_with_its_tools() {
         serde_json::from_value::<ConnectedServerOverview>(encoded).unwrap(),
         overview
     );
+}
+
+#[test]
+fn an_overview_written_before_instructions_existed_still_decodes() {
+    // `#[serde(default)]`, so a payload from an older peer — or a stored
+    // snapshot — decodes as "no instructions" rather than failing the whole
+    // overview and taking the server listing with it.
+    let overview: ConnectedServerOverview = serde_json::from_value(json!({
+        "server_id": "uuid-1",
+        "qualified_name": "@test/server",
+        "display_name": "Test",
+        "description": "does things",
+        "tools": [{ "name": "a" }]
+    }))
+    .unwrap();
+    assert_eq!(overview.instructions, None);
+    assert_eq!(overview.tools.len(), 1);
 }
 
 // ---------------------------------------------------------------------------
