@@ -15,8 +15,9 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 
 use super::backoff::{BACKOFF_BASE, BACKOFF_MAX, BackoffState, delay_after};
+use super::report::{ServerRef, SupervisorEvent, TickReport};
 use super::types::{Supervisor, SupervisorConfig};
-use crate::registry::{Connections, OAuthFlow, Store};
+use crate::registry::{Connections, OAuthFlow, ProbeOutcome, Store};
 use tinymcp_bus::{CommandKind, InstalledServer, McpClientIdentityConfig, Transport};
 
 // ---------------------------------------------------------------------------
@@ -626,6 +627,11 @@ struct ServerDials {
     list_delay: std::sync::atomic::AtomicU64,
     /// Whether `tools/list` answers with a JSON-RPC error instead of tools.
     list_errors: std::sync::atomic::AtomicBool,
+    /// Whether the *next* `tools/list` alone answers with an error.
+    ///
+    /// One failure, then back to normal: the shape of a transport that
+    /// hiccups once and is fine again by the time the reconnect lists tools.
+    fail_next_list: std::sync::atomic::AtomicBool,
     /// Whether `initialize` succeeds, i.e. whether a reconnect can work.
     initialize_ok: std::sync::atomic::AtomicBool,
 }
@@ -635,8 +641,16 @@ impl ServerDials {
         std::sync::Arc::new(Self {
             list_delay: std::sync::atomic::AtomicU64::new(0),
             list_errors: std::sync::atomic::AtomicBool::new(false),
+            fail_next_list: std::sync::atomic::AtomicBool::new(false),
             initialize_ok: std::sync::atomic::AtomicBool::new(true),
         })
+    }
+
+    /// Fail the next `tools/list` only, so a probe finds a broken transport
+    /// but the reconnect that follows can still complete.
+    fn fail_next_list(&self) {
+        self.fail_next_list
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn set_list_delay(&self, delay: Duration) {
@@ -703,7 +717,10 @@ async fn serve_adjustable_server(dials: &std::sync::Arc<ServerDials>) -> String 
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 }
 
-                if dials.list_errors.load(std::sync::atomic::Ordering::SeqCst) {
+                let fail_once = dials
+                    .fail_next_list
+                    .swap(false, std::sync::atomic::Ordering::SeqCst);
+                if fail_once || dials.list_errors.load(std::sync::atomic::Ordering::SeqCst) {
                     return Json(json!({
                         "jsonrpc": "2.0",
                         "id": id,
@@ -903,4 +920,368 @@ async fn a_transport_that_answers_with_an_error_is_torn_down_at_once() {
         "a transport error is not a timeout and must not fill the streak"
     );
     assert_eq!(supervisor.backed_off_count(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// The report
+//
+// A tick hands back what it observed so a host can route it: a log line cannot
+// be filtered into an event log or turned into a notification, and which
+// observations a user should hear about is the host's call, not this crate's.
+// These pin that every branch of the cycle reports itself, carrying the numbers
+// a host needs to make that call — the streak, the failure count, whether a
+// rebuild happened within the cycle or after the server had stayed down.
+// ---------------------------------------------------------------------------
+
+fn kinds(report: &TickReport) -> Vec<&'static str> {
+    report.events.iter().map(SupervisorEvent::kind).collect()
+}
+
+#[tokio::test]
+async fn an_answered_probe_is_reported() {
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, server) = connected_to(url).await;
+    let mut supervisor = probing_supervisor();
+
+    let report = supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+
+    assert!(!report.is_empty(), "a healthy server is an observation too");
+    match report.events.as_slice() {
+        [
+            SupervisorEvent::ProbeAnswered {
+                server: reported, ..
+            },
+        ] => assert_eq!(*reported, ServerRef::from(&server)),
+        other => panic!("expected one probe_answered event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_kept_timeout_is_reported_with_its_place_in_the_streak() {
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, server) = connected_to(url).await;
+    dials.set_list_delay(SLOWER_THAN_THE_PROBE);
+    dials.refuse_reconnects();
+    let mut supervisor = probing_supervisor();
+
+    let report = supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+
+    assert_eq!(
+        report.events,
+        [SupervisorEvent::ProbeTimedOut {
+            server: ServerRef::from(&server),
+            after: TEST_PROBE_TIMEOUT,
+            consecutive: 1,
+            teardown_after: 3,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn the_teardown_after_a_run_of_timeouts_reports_the_drop_and_the_refused_reconnect() {
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, server) = connected_to(url).await;
+    dials.set_list_delay(SLOWER_THAN_THE_PROBE);
+    dials.refuse_reconnects();
+    let mut supervisor = probing_supervisor();
+
+    for _ in 0..2 {
+        supervisor
+            .tick(&store, &connections, &oauth, Instant::now())
+            .await;
+    }
+    let report = supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+
+    assert_eq!(kinds(&report), ["transport_dropped", "reconnect_failed"]);
+    match report.events.as_slice() {
+        [
+            dropped,
+            SupervisorEvent::ReconnectFailed {
+                server: reported,
+                error,
+                failures,
+                retry_in,
+            },
+        ] => {
+            assert_eq!(
+                *dropped,
+                SupervisorEvent::TransportDropped {
+                    server: ServerRef::from(&server),
+                    outcome: ProbeOutcome::TimedOut {
+                        after: TEST_PROBE_TIMEOUT,
+                    },
+                    consecutive_timeouts: 3,
+                }
+            );
+            assert_eq!(*reported, ServerRef::from(&server));
+            assert!(error.contains("not accepting sessions"), "{error}");
+            assert_eq!(*failures, 1);
+            assert_eq!(*retry_in, BACKOFF_BASE);
+        }
+        other => panic!("expected a drop then a refused reconnect, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_broken_transport_is_reported_and_so_is_the_rebuild_that_follows() {
+    // The common field case: one request fails, the session is rebuilt within
+    // the same cycle, and no user was around to notice. The report still
+    // carries both halves, the drop first, with `after_failures` at zero so a
+    // host can tell this blip from a server that stayed down.
+    let dials = ServerDials::new();
+    let url = serve_adjustable_server(&dials).await;
+    let (store, connections, oauth, server) = connected_to(url).await;
+    dials.fail_next_list();
+    let mut supervisor = probing_supervisor();
+
+    let report = supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+
+    assert_eq!(kinds(&report), ["transport_dropped", "reconnected"]);
+    match report.events.as_slice() {
+        [
+            SupervisorEvent::TransportDropped {
+                server: reported,
+                outcome: ProbeOutcome::Broken { error, .. },
+                consecutive_timeouts,
+            },
+            rebuilt,
+        ] => {
+            assert_eq!(*reported, ServerRef::from(&server));
+            assert!(error.contains("the session is gone"), "{error}");
+            assert_eq!(*consecutive_timeouts, 0);
+            assert_eq!(
+                *rebuilt,
+                SupervisorEvent::Reconnected {
+                    server: ServerRef::from(&server),
+                    tools: 1,
+                    after_failures: 0,
+                }
+            );
+        }
+        other => panic!("expected a broken drop then a rebuild, got {other:?}"),
+    }
+    assert_eq!(connections.connected_count().await, 1);
+}
+
+#[tokio::test]
+async fn a_failed_reconnect_is_reported_with_its_penalty_and_the_window_is_quiet() {
+    let store = Store::open_in_memory().unwrap();
+    let server = install(
+        "srv-1",
+        Transport::HttpRemote {
+            url: "http://127.0.0.1:1/mcp".into(),
+        },
+        true,
+    );
+    store.insert_server(&server).unwrap();
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    let mut supervisor = supervisor();
+    let base = Instant::now();
+
+    let report = supervisor.tick(&store, &connections, &oauth, base).await;
+
+    match report.events.as_slice() {
+        [
+            SupervisorEvent::ReconnectFailed {
+                server: reported,
+                failures,
+                retry_in,
+                ..
+            },
+        ] => {
+            assert_eq!(*reported, ServerRef::from(&server));
+            assert_eq!(*failures, 1);
+            assert_eq!(*retry_in, BACKOFF_BASE);
+        }
+        other => panic!("expected one reconnect_failed event, got {other:?}"),
+    }
+
+    // Inside the backoff window nothing is dialled, so there is nothing to
+    // report — a host must not read silence as recovery.
+    let quiet = supervisor
+        .tick(&store, &connections, &oauth, base + Duration::from_secs(1))
+        .await;
+    assert!(quiet.is_empty());
+}
+
+#[tokio::test]
+async fn a_reconnect_after_failures_reports_how_many_it_took() {
+    let url = serve_working_server().await;
+    let store = Store::open_in_memory().unwrap();
+    store
+        .insert_server(&install(
+            "srv-1",
+            Transport::HttpRemote {
+                url: "http://127.0.0.1:1/mcp".into(),
+            },
+            true,
+        ))
+        .unwrap();
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    let mut supervisor = supervisor();
+    let base = Instant::now();
+
+    supervisor.tick(&store, &connections, &oauth, base).await;
+
+    // The server comes back, and the window has elapsed.
+    store.delete_server("srv-1").unwrap();
+    let server = install("srv-1", Transport::HttpRemote { url }, true);
+    store.insert_server(&server).unwrap();
+    let report = supervisor
+        .tick(&store, &connections, &oauth, base + Duration::from_secs(30))
+        .await;
+
+    assert_eq!(
+        report.events,
+        [SupervisorEvent::Reconnected {
+            server: ServerRef::from(&server),
+            tools: 1,
+            after_failures: 1,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn a_parked_server_is_reported_once_and_then_stays_quiet() {
+    let store = Store::open_in_memory().unwrap();
+    let server = install("srv-1", Transport::Stdio, true);
+    store.insert_server(&server).unwrap();
+    store
+        .set_env_values(
+            "srv-1",
+            &BTreeMap::from([(
+                "PATH".to_string(),
+                "/tinymcp/deliberately/does/not/exist".to_string(),
+            )]),
+        )
+        .unwrap();
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    let mut supervisor = supervisor();
+    let base = Instant::now();
+
+    let report = supervisor.tick(&store, &connections, &oauth, base).await;
+
+    match report.events.as_slice() {
+        [
+            SupervisorEvent::Parked {
+                server: reported,
+                error,
+            },
+        ] => {
+            assert_eq!(*reported, ServerRef::from(&server));
+            assert!(!error.is_empty(), "the parking reason is carried");
+        }
+        other => panic!("expected one parked event, got {other:?}"),
+    }
+
+    let quiet = supervisor
+        .tick(&store, &connections, &oauth, base + BACKOFF_MAX * 2)
+        .await;
+    assert!(
+        quiet.is_empty(),
+        "a parked server is not retried, so there is nothing to report"
+    );
+}
+
+#[tokio::test]
+async fn a_disabled_install_and_an_empty_store_report_nothing() {
+    let store = Store::open_in_memory().unwrap();
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+    let mut supervisor = supervisor();
+
+    let empty = supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+    assert!(empty.is_empty());
+
+    store
+        .insert_server(&install("srv-off", Transport::Stdio, false))
+        .unwrap();
+    let disabled = supervisor
+        .tick(&store, &connections, &oauth, Instant::now())
+        .await;
+    assert!(disabled.is_empty());
+}
+
+#[test]
+fn a_server_ref_carries_the_install_identity() {
+    let server = install("srv-1", Transport::Stdio, true);
+    let reference = ServerRef::from(&server);
+
+    assert_eq!(reference.server_id, "srv-1");
+    assert_eq!(reference.qualified_name, "@test/srv-1");
+    assert_eq!(reference.display_name, "srv-1");
+}
+
+#[test]
+fn every_event_names_its_server_and_its_kind() {
+    let server = ServerRef {
+        server_id: "srv-1".into(),
+        qualified_name: "@test/srv-1".into(),
+        display_name: "srv-1".into(),
+    };
+    let events = [
+        SupervisorEvent::ProbeAnswered {
+            server: server.clone(),
+            elapsed: Duration::from_millis(5),
+        },
+        SupervisorEvent::ProbeTimedOut {
+            server: server.clone(),
+            after: Duration::from_secs(8),
+            consecutive: 1,
+            teardown_after: 3,
+        },
+        SupervisorEvent::TransportDropped {
+            server: server.clone(),
+            outcome: ProbeOutcome::Missing,
+            consecutive_timeouts: 0,
+        },
+        SupervisorEvent::Reconnected {
+            server: server.clone(),
+            tools: 2,
+            after_failures: 0,
+        },
+        SupervisorEvent::ReconnectFailed {
+            server: server.clone(),
+            error: "refused".into(),
+            failures: 1,
+            retry_in: Duration::from_secs(5),
+        },
+        SupervisorEvent::Parked {
+            server: server.clone(),
+            error: "no runtime".into(),
+        },
+    ];
+
+    let labels: Vec<_> = events.iter().map(SupervisorEvent::kind).collect();
+    assert_eq!(
+        labels,
+        [
+            "probe_answered",
+            "probe_timed_out",
+            "transport_dropped",
+            "reconnected",
+            "reconnect_failed",
+            "parked",
+        ]
+    );
+    for event in &events {
+        assert_eq!(event.server(), &server);
+    }
+    assert!(TickReport::default().is_empty());
 }

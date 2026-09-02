@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use super::backoff::BackoffState;
+use super::report::{ServerRef, SupervisorEvent, TickReport};
 use crate::registry::{Connections, OAuthFlow, ProbeOutcome, Store};
 use tinymcp_bus::{InstalledServer, McpClientIdentityConfig, McpProxyConfig};
 
@@ -139,6 +140,9 @@ impl Supervisor {
 
         loop {
             interval.tick().await;
+            // The report is for a host that drives `tick` itself. This loop
+            // has no one to hand it to, and everything in it was logged as it
+            // happened.
             self.tick(store, connections, oauth, Instant::now()).await;
         }
     }
@@ -147,18 +151,24 @@ impl Supervisor {
     ///
     /// `now` is supplied rather than read so backoff timing is deterministic
     /// under test.
+    ///
+    /// The report says what the cycle observed and did, install by install.
+    /// All of it was logged as it happened; the report exists for a host that
+    /// wants to put those observations somewhere a log line cannot go.
     pub async fn tick(
         &mut self,
         store: &Store,
         connections: &Connections,
         oauth: &OAuthFlow,
         now: Instant,
-    ) {
+    ) -> TickReport {
+        let mut report = TickReport::default();
+
         let servers = match store.list_servers() {
             Ok(servers) => servers,
             Err(error) => {
                 tracing::warn!("the supervisor could not list installed servers: {error}");
-                return;
+                return report;
             }
         };
 
@@ -179,10 +189,12 @@ impl Supervisor {
                 continue;
             }
 
-            if connections.is_connected(&server_id).await
-                && self.judge_probe(connections, &server).await == AfterProbe::Keep
-            {
-                continue;
+            if connections.is_connected(&server_id).await {
+                let (verdict, event) = self.judge_probe(connections, &server).await;
+                report.push(event);
+                if verdict == AfterProbe::Keep {
+                    continue;
+                }
             }
 
             // Checked after the liveness block, not before it: a live
@@ -201,43 +213,88 @@ impl Supervisor {
                 continue;
             }
 
-            match connections
-                .connect(store, oauth, &self.identity, self.proxy.as_ref(), &server)
-                .await
-            {
-                Ok(tools) => {
-                    self.backoff.remove(&server_id);
-                    self.timeouts.remove(&server_id);
-                    self.terminal.remove(&server_id);
-                    tracing::info!(
-                        server_id = %server_id,
-                        qualified_name = %server.qualified_name,
-                        tools = tools.len(),
-                        "reconnected"
-                    );
+            let event = self
+                .attempt_connect(store, connections, oauth, &server, now)
+                .await;
+            report.push(event);
+        }
+
+        report
+    }
+
+    /// Dials one install that is not connected, and records what came of it.
+    ///
+    /// Split out of [`Self::tick`] for the same reason as
+    /// [`Self::judge_probe`]: what an attempt's outcome *means* — a penalty, a
+    /// parking, a recovery — is the substance, and the loop is bookkeeping.
+    async fn attempt_connect(
+        &mut self,
+        store: &Store,
+        connections: &Connections,
+        oauth: &OAuthFlow,
+        server: &InstalledServer,
+        now: Instant,
+    ) -> SupervisorEvent {
+        let server_id = server.server_id.clone();
+
+        match connections
+            .connect(store, oauth, &self.identity, self.proxy.as_ref(), server)
+            .await
+        {
+            Ok(tools) => {
+                // Read before it is forgotten: how many attempts this success
+                // took is what tells a host whether the server had been
+                // unavailable across cycles or was merely rebuilt within one.
+                let after_failures = self
+                    .backoff
+                    .remove(&server_id)
+                    .map_or(0, |state| state.failures);
+                self.timeouts.remove(&server_id);
+                self.terminal.remove(&server_id);
+                tracing::info!(
+                    server_id = %server_id,
+                    qualified_name = %server.qualified_name,
+                    tools = tools.len(),
+                    after_failures,
+                    "reconnected"
+                );
+                SupervisorEvent::Reconnected {
+                    server: ServerRef::from(server),
+                    tools: tools.len(),
+                    after_failures,
                 }
-                Err(error) if error.is_missing_runtime() => {
-                    // No backoff entry: a penalty says "wait, then try again",
-                    // and there is nothing to wait for. The server is parked
-                    // until the user disables and re-enables it.
-                    self.backoff.remove(&server_id);
-                    self.terminal.insert(server_id.clone());
-                    tracing::warn!(
-                        server_id = %server_id,
-                        qualified_name = %server.qualified_name,
-                        "connecting failed and will not be retried: {error}"
-                    );
+            }
+            Err(error) if error.is_missing_runtime() => {
+                // No backoff entry: a penalty says "wait, then try again",
+                // and there is nothing to wait for. The server is parked
+                // until the user disables and re-enables it.
+                self.backoff.remove(&server_id);
+                self.terminal.insert(server_id.clone());
+                tracing::warn!(
+                    server_id = %server_id,
+                    qualified_name = %server.qualified_name,
+                    "connecting failed and will not be retried: {error}"
+                );
+                SupervisorEvent::Parked {
+                    server: ServerRef::from(server),
+                    error: error.to_string(),
                 }
-                Err(error) => {
-                    let state = self.backoff.entry(server_id.clone()).or_default();
-                    state.record_failure(now);
-                    tracing::warn!(
-                        server_id = %server_id,
-                        qualified_name = %server.qualified_name,
-                        failures = state.failures,
-                        retry_in_seconds = state.current_delay().as_secs(),
-                        "reconnecting failed: {error}"
-                    );
+            }
+            Err(error) => {
+                let state = self.backoff.entry(server_id.clone()).or_default();
+                state.record_failure(now);
+                tracing::warn!(
+                    server_id = %server_id,
+                    qualified_name = %server.qualified_name,
+                    failures = state.failures,
+                    retry_in_seconds = state.current_delay().as_secs(),
+                    "reconnecting failed: {error}"
+                );
+                SupervisorEvent::ReconnectFailed {
+                    server: ServerRef::from(server),
+                    error: error.to_string(),
+                    failures: state.failures,
+                    retry_in: state.current_delay(),
                 }
             }
         }
@@ -246,18 +303,20 @@ impl Supervisor {
     /// Probes one connected server and decides what its answer means.
     ///
     /// Split out of [`Self::tick`] because the decision is the substance of
-    /// this type and the loop around it is bookkeeping.
+    /// this type and the loop around it is bookkeeping. Returns the verdict
+    /// and the event that records it; a `Rebuild` verdict has already ended
+    /// the session by the time this returns.
     async fn judge_probe(
         &mut self,
         connections: &Connections,
         server: &InstalledServer,
-    ) -> AfterProbe {
+    ) -> (AfterProbe, SupervisorEvent) {
         let server_id = server.server_id.clone();
         let outcome = connections
             .probe_alive(&server_id, self.config.probe_timeout)
             .await;
 
-        match &outcome {
+        let (verdict, event) = match &outcome {
             ProbeOutcome::Alive { elapsed } => {
                 tracing::trace!(
                     server_id = %server_id,
@@ -266,45 +325,19 @@ impl Supervisor {
                 );
                 self.backoff.remove(&server_id);
                 self.timeouts.remove(&server_id);
-                return AfterProbe::Keep;
+                (
+                    AfterProbe::Keep,
+                    SupervisorEvent::ProbeAnswered {
+                        server: ServerRef::from(server),
+                        elapsed: *elapsed,
+                    },
+                )
             }
             // Slow, not gone. Say so, count it, and leave the session
             // alone until a run of them says otherwise — the warning
             // reports what was observed rather than asserting a cause
             // nothing measured.
-            ProbeOutcome::TimedOut { after } => {
-                let streak = self
-                    .timeouts
-                    .entry(server_id.clone())
-                    .and_modify(|streak| *streak = streak.saturating_add(1))
-                    .or_insert(1);
-                let streak = *streak;
-
-                if streak < CONSECUTIVE_TIMEOUTS_BEFORE_TEARDOWN {
-                    tracing::warn!(
-                        server_id = %server_id,
-                        qualified_name = %server.qualified_name,
-                        outcome = outcome.as_str(),
-                        probe_timeout_seconds = after.as_secs(),
-                        consecutive_timeouts = streak,
-                        teardown_after = CONSECUTIVE_TIMEOUTS_BEFORE_TEARDOWN,
-                        "the liveness probe did not answer in time; \
-                         keeping the session"
-                    );
-                    return AfterProbe::Keep;
-                }
-
-                tracing::warn!(
-                    server_id = %server_id,
-                    qualified_name = %server.qualified_name,
-                    outcome = outcome.as_str(),
-                    probe_timeout_seconds = after.as_secs(),
-                    consecutive_timeouts = streak,
-                    "the liveness probe has not answered for \
-                     {streak} consecutive ticks; reconnecting"
-                );
-                self.timeouts.remove(&server_id);
-            }
+            ProbeOutcome::TimedOut { after } => self.judge_timeout(server, *after),
             // Observed to fail, so there is nothing to wait for: this is
             // the case the supervisor was built for, and it still acts
             // on the first sighting.
@@ -318,17 +351,98 @@ impl Supervisor {
                      reconnecting: {error}"
                 );
                 self.timeouts.remove(&server_id);
+                (
+                    AfterProbe::Rebuild,
+                    SupervisorEvent::TransportDropped {
+                        server: ServerRef::from(server),
+                        outcome: outcome.clone(),
+                        consecutive_timeouts: 0,
+                    },
+                )
             }
             // The entry went between the membership check and the probe.
-            // Nothing to report and nothing to tear down, but the caller still
-            // has to rebuild it.
+            // Nothing was observed to fail and there is nothing to tear down,
+            // but the caller still has to rebuild it, and a host still wants
+            // to know that it did.
             ProbeOutcome::Missing => {
                 self.timeouts.remove(&server_id);
+                (
+                    AfterProbe::Rebuild,
+                    SupervisorEvent::TransportDropped {
+                        server: ServerRef::from(server),
+                        outcome: ProbeOutcome::Missing,
+                        consecutive_timeouts: 0,
+                    },
+                )
             }
+        };
+
+        if verdict == AfterProbe::Rebuild {
+            connections.disconnect(&server_id).await;
         }
 
-        connections.disconnect(&server_id).await;
-        AfterProbe::Rebuild
+        (verdict, event)
+    }
+
+    /// Counts one probe timeout and decides whether the run has become a drop.
+    ///
+    /// The timeout half of [`Self::judge_probe`], on its own because it is the
+    /// one outcome with history: a single timeout keeps the session, and only
+    /// [`CONSECUTIVE_TIMEOUTS_BEFORE_TEARDOWN`] of them in a row end it.
+    fn judge_timeout(
+        &mut self,
+        server: &InstalledServer,
+        after: Duration,
+    ) -> (AfterProbe, SupervisorEvent) {
+        let server_id = server.server_id.clone();
+        let outcome = ProbeOutcome::TimedOut { after };
+        let streak = self
+            .timeouts
+            .entry(server_id.clone())
+            .and_modify(|streak| *streak = streak.saturating_add(1))
+            .or_insert(1);
+        let streak = *streak;
+
+        if streak < CONSECUTIVE_TIMEOUTS_BEFORE_TEARDOWN {
+            tracing::warn!(
+                server_id = %server_id,
+                qualified_name = %server.qualified_name,
+                outcome = outcome.as_str(),
+                probe_timeout_seconds = after.as_secs(),
+                consecutive_timeouts = streak,
+                teardown_after = CONSECUTIVE_TIMEOUTS_BEFORE_TEARDOWN,
+                "the liveness probe did not answer in time; \
+                 keeping the session"
+            );
+            return (
+                AfterProbe::Keep,
+                SupervisorEvent::ProbeTimedOut {
+                    server: ServerRef::from(server),
+                    after,
+                    consecutive: streak,
+                    teardown_after: CONSECUTIVE_TIMEOUTS_BEFORE_TEARDOWN,
+                },
+            );
+        }
+
+        tracing::warn!(
+            server_id = %server_id,
+            qualified_name = %server.qualified_name,
+            outcome = outcome.as_str(),
+            probe_timeout_seconds = after.as_secs(),
+            consecutive_timeouts = streak,
+            "the liveness probe has not answered for \
+             {streak} consecutive ticks; reconnecting"
+        );
+        self.timeouts.remove(&server_id);
+        (
+            AfterProbe::Rebuild,
+            SupervisorEvent::TransportDropped {
+                server: ServerRef::from(server),
+                outcome,
+                consecutive_timeouts: streak,
+            },
+        )
     }
 
     /// How many servers currently carry a backoff penalty.
