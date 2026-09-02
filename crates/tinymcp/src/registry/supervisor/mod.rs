@@ -26,10 +26,22 @@
 //! unreachable MCP server as a process-level health failure would take a whole
 //! deployment out of rotation because one optional integration was down. It
 //! logs, and it keeps trying.
+//!
+//! # What it hands back instead
+//!
+//! Every [`Supervisor::tick`] returns a [`TickReport`]: one [`SupervisorEvent`]
+//! per thing the cycle observed or did — a probe answered or timed out, a
+//! session torn down, a reconnect that succeeded, failed, or was parked. A
+//! host decides which of those its user should hear about, and where — an
+//! event log, a notification for a server that stays down — without this
+//! crate guessing at that policy. [`Supervisor::run`] drops the report; it is
+//! for a host that drives the cycle itself.
 
 mod backoff;
+mod report;
 mod types;
 
+pub use report::{ServerRef, SupervisorEvent, TickReport};
 pub use types::{Supervisor, SupervisorConfig};
 
 #[cfg(test)]
