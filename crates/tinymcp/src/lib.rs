@@ -71,8 +71,10 @@ pub mod audit;
 pub mod config_servers;
 mod error;
 pub mod registry;
-#[cfg(feature = "module")]
+#[cfg(all(feature = "module", not(feature = "static-link")))]
 mod tinybus_module;
+#[cfg(feature = "static-link")]
+pub mod tinybus_module;
 pub mod transport;
 
 pub use audit::AuditStore;

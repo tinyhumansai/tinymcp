@@ -116,10 +116,9 @@ impl McpService {
 
 // Every member is `async fn` because the interface macro requires it: it
 // rejects a blocking method outright, on the grounds that one would stall the
-// connection's dispatch task for every other caller. A handful of members have
-// nothing to await, and that is fine — the uniformity is what the macro is
-// buying, and it is not this impl's call to make.
-#[allow(clippy::unused_async_trait_impl)]
+// connection's dispatch task for every other caller. Synchronous members await
+// an immediately ready future so both supported Clippy versions accept the
+// required async signature without changing scheduling.
 #[tinybus::interface(name = "ai.tinyhumans.tinymcp.Mcp")]
 impl McpService {
     // -- browsing -----------------------------------------------------------
@@ -153,6 +152,7 @@ impl McpService {
 
     /// `()`
     async fn registry_settings_get(&self) -> tinybus::Result<RegistrySettings> {
+        std::future::ready(()).await;
         Ok(self.dynamic.registry_settings())
     }
 
@@ -166,6 +166,7 @@ impl McpService {
         mcp_official_base: Option<String>,
         mcp_official_token: Option<String>,
     ) -> tinybus::Result<RegistrySettings> {
+        std::future::ready(()).await;
         Ok(self.dynamic.set_registry_settings(
             smithery_api_key,
             mcp_official_base,
@@ -177,6 +178,7 @@ impl McpService {
 
     /// `()`
     async fn installed_list(&self) -> tinybus::Result<Vec<InstalledServer>> {
+        std::future::ready(()).await;
         self.dynamic
             .installed_list()
             .map_err(|error| Self::failed(&error))
@@ -396,6 +398,7 @@ impl McpService {
 
     /// `()` — the names the host declared.
     async fn static_list(&self) -> tinybus::Result<Vec<String>> {
+        std::future::ready(()).await;
         Ok(self
             .static_servers
             .list()
@@ -438,6 +441,7 @@ impl McpService {
 
     /// `(record)` — returns the row identifier.
     async fn audit_record_write(&self, record: NewMcpWriteRecord) -> tinybus::Result<i64> {
+        std::future::ready(()).await;
         self.audit
             .record(&record)
             .map_err(|error| Self::failed(&error))
@@ -448,6 +452,7 @@ impl McpService {
         &self,
         query: McpWriteListQuery,
     ) -> tinybus::Result<Vec<McpWriteRecord>> {
+        std::future::ready(()).await;
         self.audit
             .list(&query)
             .map_err(|error| Self::failed(&error))

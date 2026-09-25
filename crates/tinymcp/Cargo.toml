@@ -42,6 +42,14 @@ sha2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+[[example]]
+name = "verify_module"
+required-features = ["module"]
+
+[[example]]
+name = "verify_github_release"
+required-features = ["module"]
+
 [dev-dependencies]
 # `net` stands up the loopback test servers; `test-util` pauses the clock so a
 # five-minute timeout is testable without waiting five minutes. The rest comes
@@ -57,6 +65,8 @@ default = ["module", "rustls-tls"]
 # released artifact is a loadable module; a host consuming this crate as a path
 # dependency turns it off and links neither `tinybus` nor its module SDK.
 module = ["dep:tinybus", "dep:tinybus-module"]
+# Link the TinyBus module into a host binary with Rust-addressable entry points.
+static-link = ["module"]
 # Bundle a TLS stack, so a build needs no system OpenSSL. The default.
 rustls-tls = ["reqwest/rustls-tls"]
 # Use the operating system's TLS stack and certificate store instead. A host

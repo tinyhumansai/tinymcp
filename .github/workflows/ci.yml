@@ -62,7 +62,8 @@ jobs:
       - name: Verify the module loads and serves its interface
         run: |
           set -euo pipefail
-          cargo build --all-features --package tinymcp --lib
+          # A static-link build has Rust entries but no dynamic ABI symbols.
+          cargo build --package tinymcp --lib
           cargo run --package tinymcp --example verify_module -- \
             target/debug/libtinymcp.so
 
