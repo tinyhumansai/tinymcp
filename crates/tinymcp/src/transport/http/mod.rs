@@ -121,6 +121,7 @@ pub struct McpHttpClientBuilder {
     auth: McpAuthConfig,
     identity: McpClientIdentityConfig,
     proxy: Option<McpProxyConfig>,
+    pinned_addresses: Option<Vec<std::net::SocketAddr>>,
 }
 
 impl McpHttpClientBuilder {
@@ -133,6 +134,7 @@ impl McpHttpClientBuilder {
             auth: McpAuthConfig::None,
             identity: McpClientIdentityConfig::default(),
             proxy: None,
+            pinned_addresses: None,
         }
     }
 
@@ -164,6 +166,14 @@ impl McpHttpClientBuilder {
         self
     }
 
+    /// Pins a checked public endpoint and refuses every redirect. Catalog
+    /// endpoints use this after resolving and screening all DNS answers.
+    #[must_use]
+    pub fn pinned_public_endpoint(mut self, addresses: Vec<std::net::SocketAddr>) -> Self {
+        self.pinned_addresses = Some(addresses);
+        self
+    }
+
     /// Builds the client.
     ///
     /// # Errors
@@ -190,6 +200,24 @@ impl McpHttpClientBuilder {
             .timeout(DISCOVERY_BUDGET)
             .connect_timeout(CONNECT_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none());
+
+        if let Some(addresses) = self.pinned_addresses.as_ref() {
+            if self.proxy.is_some() {
+                return Err(Error::malformed(
+                    "a public MCP endpoint cannot use an unchecked proxy",
+                ));
+            }
+            let endpoint = reqwest::Url::parse(&self.endpoint)
+                .map_err(|_| Error::malformed("invalid pinned MCP endpoint"))?;
+            let host = endpoint
+                .host_str()
+                .ok_or_else(|| Error::malformed("pinned MCP endpoint has no host"))?;
+            builder = builder.redirect(reqwest::redirect::Policy::none());
+            if host.parse::<std::net::IpAddr>().is_err() {
+                builder = builder.resolve_to_addrs(host, addresses);
+                discovery_builder = discovery_builder.resolve_to_addrs(host, addresses);
+            }
+        }
 
         if let Some(proxy) = self.proxy.as_ref() {
             builder = apply_proxy(builder, proxy);

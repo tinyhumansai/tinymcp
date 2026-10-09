@@ -1,6 +1,7 @@
 //! Deciding how a server from a catalog will actually be run.
 
 use serde_json::Value;
+use std::net::IpAddr;
 
 use crate::error::{Error, Result};
 use tinymcp_bus::{CommandKind, RegistryConnection, RegistryServerDetail, Transport};
@@ -115,6 +116,32 @@ pub fn build_install_transport(
                 "the hosted connection for `{qualified_name}` declares no endpoint"
             )));
         }
+        let endpoint = reqwest::Url::parse(&url)
+            .map_err(|_| Error::malformed("hosted endpoint is not a valid URL"))?;
+        if endpoint.scheme() != "https"
+            || endpoint.username() != ""
+            || endpoint.password().is_some()
+        {
+            return Err(Error::malformed(
+                "catalog hosted endpoints must use HTTPS without embedded credentials",
+            ));
+        }
+        let host = endpoint
+            .host_str()
+            .ok_or_else(|| Error::malformed("hosted endpoint has no host"))?;
+        let host = host.trim_start_matches('[').trim_end_matches(']');
+        if host.eq_ignore_ascii_case("localhost")
+            || host.ends_with(".localhost")
+            || host.ends_with(".local")
+            || host.ends_with(".internal")
+            || host
+                .parse::<IpAddr>()
+                .is_ok_and(|ip| crate::registry::oauth::endpoint_guard::is_blocked_ip(&ip))
+        {
+            return Err(Error::malformed(
+                "catalog hosted endpoint targets a local address",
+            ));
+        }
 
         return Ok((
             Transport::HttpRemote { url },
@@ -126,7 +153,26 @@ pub fn build_install_transport(
     }
 
     let (kind, command, args) = resolve_command(qualified_name, Some(connection));
+    validate_catalog_command(&command, &args)?;
     Ok((Transport::Stdio, kind, command, args))
+}
+
+/// Recheck persisted catalog commands at launch as well as at installation.
+pub(crate) fn validate_catalog_command(command: &str, args: &[String]) -> Result<()> {
+    if !matches!(command, "npx" | "uvx" | "bunx") {
+        return Err(Error::malformed(
+            "catalog subprocess launcher is not approved",
+        ));
+    }
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-c" | "--call"))
+    {
+        return Err(Error::malformed(
+            "catalog subprocess cannot request a shell command",
+        ));
+    }
+    Ok(())
 }
 
 /// Works out the command a subprocess install is launched with.

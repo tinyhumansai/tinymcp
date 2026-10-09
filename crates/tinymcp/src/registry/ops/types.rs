@@ -847,11 +847,14 @@ impl McpRegistry {
 
         let tools = if let Transport::HttpRemote { url } = transport {
             let auth = crate::registry::connections::build_http_auth(&env);
+            let addresses =
+                crate::registry::oauth::endpoint_guard::guard_endpoint(&url, "MCP").await?;
             let client = crate::transport::http::McpHttpClient::builder(url)
                 .timeout_secs(TEST_CONNECTION_TIMEOUT_SECS)
                 .auth(auth)
                 .identity(self.identity.clone())
                 .proxy(self.proxy.clone())
+                .pinned_public_endpoint(addresses)
                 .build()?;
             client.initialize().await?;
             let tools = client.list_tools().await?;

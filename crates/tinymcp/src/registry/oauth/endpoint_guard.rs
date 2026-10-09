@@ -27,7 +27,7 @@ use crate::error::{Error, Result};
 /// # Errors
 ///
 /// [`Error::MalformedResponse`] naming the endpoint and why it was refused.
-pub(super) async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAddr>> {
+pub(crate) async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAddr>> {
     let refuse = |why: String| Error::malformed(format!("{what} endpoint refused: {why}"));
     let url = Url::parse(raw).map_err(|error| refuse(format!("not a valid url: {error}")))?;
     if url.scheme() != "https" {
@@ -93,7 +93,7 @@ fn client_pinned_to(host: &str, addresses: &[SocketAddr]) -> Result<reqwest::Cli
 /// Whether an address is one the flow must never POST OAuth material to:
 /// loopback, private or unique-local, link-local (the metadata address among
 /// them), unspecified, broadcast, documentation, multicast, or `0.0.0.0/8`.
-pub(super) fn is_blocked_ip(ip: &IpAddr) -> bool {
+pub(crate) fn is_blocked_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             v4.is_loopback()
