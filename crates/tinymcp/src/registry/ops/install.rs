@@ -130,10 +130,13 @@ pub fn build_install_transport(
             .host_str()
             .ok_or_else(|| Error::malformed("hosted endpoint has no host"))?;
         let host = host.trim_start_matches('[').trim_end_matches(']');
+        let local_domain = host.rsplit_once('.').is_some_and(|(_, suffix)| {
+            suffix.eq_ignore_ascii_case("localhost")
+                || suffix.eq_ignore_ascii_case("local")
+                || suffix.eq_ignore_ascii_case("internal")
+        });
         if host.eq_ignore_ascii_case("localhost")
-            || host.ends_with(".localhost")
-            || host.ends_with(".local")
-            || host.ends_with(".internal")
+            || local_domain
             || host
                 .parse::<IpAddr>()
                 .is_ok_and(|ip| crate::registry::oauth::endpoint_guard::is_blocked_ip(&ip))
@@ -164,10 +167,11 @@ pub(crate) fn validate_catalog_command(command: &str, args: &[String]) -> Result
             "catalog subprocess launcher is not approved",
         ));
     }
-    if args
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "-c" | "--call"))
-    {
+    if args.iter().any(|arg| {
+        matches!(arg.as_str(), "-c" | "--call")
+            || arg.starts_with("-c=")
+            || arg.starts_with("--call=")
+    }) {
         return Err(Error::malformed(
             "catalog subprocess cannot request a shell command",
         ));

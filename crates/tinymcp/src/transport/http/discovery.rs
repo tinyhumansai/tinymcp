@@ -236,7 +236,14 @@ impl McpHttpClient {
     /// over [`MAX_DOCUMENT_BYTES`] all mean the document is not there. A 5xx or
     /// a transport failure means it could not be checked.
     async fn fetch_discovery_json(&self, url: &str) -> Fetched {
-        let response = match self.discovery_http.get(url).send().await {
+        let client = match self.discovery_client_for(url, &self.discovery_http).await {
+            Ok(client) => client,
+            Err(error) => {
+                tracing::debug!(url = %redact_endpoint(url), "[mcp] unsafe discovery URL refused: {error}");
+                return Fetched::Missing;
+            }
+        };
+        let response = match client.get(url).send().await {
             Ok(response) => response,
             Err(error) => {
                 tracing::debug!(url = %redact_endpoint(url), "[mcp] well-known lookup failed: {error}");

@@ -406,9 +406,7 @@ impl Connections {
         // the one that gets sent.
         let auth = build_http_auth(&store.load_env_values(&server.server_id).unwrap_or_default());
 
-        let is_https = reqwest::Url::parse(url)
-            .map(|endpoint| endpoint.scheme() == "https")
-            .unwrap_or(false);
+        let is_https = reqwest::Url::parse(url).is_ok_and(|endpoint| endpoint.scheme() == "https");
         let public_addresses = if is_https {
             Some(crate::registry::oauth::endpoint_guard::guard_endpoint(url, "MCP").await?)
         } else {

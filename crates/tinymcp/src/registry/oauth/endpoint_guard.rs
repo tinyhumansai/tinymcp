@@ -65,7 +65,7 @@ pub(crate) async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAd
 /// Builds an HTTP client pinned to the public addresses checked for `raw`.
 /// Redirects are disabled so a validated endpoint cannot replay credentials to
 /// a different, unchecked destination.
-pub(super) async fn guarded_client(raw: &str, what: &str) -> Result<reqwest::Client> {
+pub(crate) async fn guarded_client(raw: &str, what: &str) -> Result<reqwest::Client> {
     let addresses = guard_endpoint(raw, what).await?;
     let url = Url::parse(raw)
         .map_err(|error| Error::malformed(format!("invalid {what} url: {error}")))?;

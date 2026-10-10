@@ -85,6 +85,8 @@ pub struct McpHttpClient {
     auth: McpAuthConfig,
     state: Mutex<SessionState>,
     discovery_http: reqwest::Client,
+    /// Pinned public HTTPS connections must screen every discovery target.
+    public_endpoint_only: bool,
     well_known: Mutex<Option<WellKnownOutcome>>,
 }
 
@@ -182,6 +184,7 @@ impl McpHttpClientBuilder {
     /// constructed — in practice a malformed proxy URL or an unusable TLS
     /// configuration.
     pub fn build(self) -> Result<McpHttpClient> {
+        let public_endpoint_only = self.pinned_addresses.is_some();
         let mut builder = reqwest::Client::builder()
             .timeout(self.timeout)
             .connect_timeout(CONNECT_TIMEOUT)
@@ -240,6 +243,7 @@ impl McpHttpClientBuilder {
             auth: self.auth,
             state: Mutex::new(SessionState::default()),
             discovery_http,
+            public_endpoint_only,
             well_known: Mutex::new(None),
         })
     }
@@ -888,13 +892,27 @@ impl McpHttpClient {
         request
     }
 
-    /// Fetches and decodes a JSON document from an arbitrary URL.
+    /// Builds a no-redirect client pinned to each server-supplied discovery URL
+    /// when the MCP endpoint is restricted to public addresses.
+    async fn discovery_client_for(
+        &self,
+        url: &str,
+        default: &reqwest::Client,
+    ) -> Result<reqwest::Client> {
+        if self.public_endpoint_only {
+            crate::registry::oauth::endpoint_guard::guarded_client(url, "MCP discovery").await
+        } else {
+            Ok(default.clone())
+        }
+    }
+
+    /// Fetches and decodes a JSON document from a discovery URL.
     async fn fetch_json<T>(&self, url: &str) -> Result<T>
     where
         T: for<'de> Deserialize<'de>,
     {
-        let response = self
-            .http
+        let client = self.discovery_client_for(url, &self.http).await?;
+        let response = client
             .get(url)
             .send()
             .await
