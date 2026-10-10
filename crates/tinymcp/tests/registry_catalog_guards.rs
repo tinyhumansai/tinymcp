@@ -1,6 +1,8 @@
 //! Exercises catalog admission through the non-test library build, where the
 //! unit-test-only HTTP loopback fixture exception must not exist.
 
+#![allow(clippy::expect_used, clippy::panic)]
+
 use tinymcp::registry::ops::build_install_transport;
 use tinymcp_bus::RegistryConnection;
 
