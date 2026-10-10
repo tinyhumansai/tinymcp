@@ -169,7 +169,9 @@ impl McpHttpClientBuilder {
     }
 
     /// Pins a checked public endpoint and refuses every redirect. Catalog
-    /// endpoints use this after resolving and screening all DNS answers.
+    /// endpoints use this after resolving and screening all DNS answers. A
+    /// configured proxy cannot preserve the approved address pin and causes
+    /// [`Self::build`] to fail closed.
     #[must_use]
     pub fn pinned_public_endpoint(mut self, addresses: Vec<std::net::SocketAddr>) -> Self {
         self.pinned_addresses = Some(addresses);
@@ -180,9 +182,10 @@ impl McpHttpClientBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ClientBuild`] when the underlying HTTP client cannot be
-    /// constructed — in practice a malformed proxy URL or an unusable TLS
-    /// configuration.
+    /// Returns [`Error::MalformedResponse`] if a pinned endpoint has no usable
+    /// host or a configured proxy would bypass its address pin. Returns
+    /// [`Error::ClientBuild`] when the underlying HTTP client cannot be
+    /// constructed, for example with an unusable TLS configuration.
     pub fn build(self) -> Result<McpHttpClient> {
         let public_endpoint_only = self.pinned_addresses.is_some();
         let mut builder = reqwest::Client::builder()

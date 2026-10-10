@@ -172,11 +172,10 @@ pub(crate) fn validate_catalog_command(command: &str, args: &[String]) -> Result
             "catalog subprocess launcher is not approved",
         ));
     }
-    if args.iter().any(|arg| {
-        matches!(arg.as_str(), "-c" | "--call")
-            || arg.starts_with("-c=")
-            || arg.starts_with("--call=")
-    }) {
+    if args
+        .iter()
+        .any(|arg| arg.starts_with("-c") || arg == "--call" || arg.starts_with("--call="))
+    {
         return Err(Error::malformed(
             "catalog subprocess cannot request a shell command",
         ));
