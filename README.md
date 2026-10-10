@@ -375,3 +375,10 @@ aggregate replies, and response construction. See [the operation contract](crate
 Existing stdio/HTTP library entrypoints remain available. Compiled-module listener
 entrypoints and moving the legacy server declaration/error types into the pure
 contract are subsequent migration slices; the new bridge does not add host framing.
+
+Contract 1.9 moves shared server declarations, headers and errors into the pure
+bus vocabulary and adds four bounded metadata preparation operations. Generic
+lexical helpers are shared through TinyTools without its default features.
+Library DTO algorithms use extension traits; see
+[public API and migration details](docs/specs/pure-vocabulary.md). Host stdio/HTTP
+adapters and release integration remain separate work.
