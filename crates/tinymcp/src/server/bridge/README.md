@@ -59,7 +59,7 @@ without retaining historical operations or imposing a lifetime operation limit. 
 cancellation cannot abort a successor. Cancellation aborts and joins the
 protocol future and drops outstanding callback channels. Close and shutdown also
 join workers before returning. Batches contain at most 256 elements. Closing a session and
-shutdown also release all state. Shutdown is scoped to the registry object; it
+shutdown release session and worker state while retaining bounded retry fencing. Shutdown is scoped to the registry object; it
 does not stop its installed-client supervisor or sessions on other directories.
 
 The protocol handles malformed JSON, notifications, batches, negotiation and
