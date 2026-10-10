@@ -847,15 +847,23 @@ impl McpRegistry {
 
         let tools = if let Transport::HttpRemote { url } = transport {
             let auth = crate::registry::connections::build_http_auth(&env);
-            let addresses =
-                crate::registry::oauth::endpoint_guard::guard_endpoint(&url, "MCP").await?;
-            let client = crate::transport::http::McpHttpClient::builder(url)
+            // Registry facade tests use an ephemeral HTTP loopback server.
+            // Shipped builds always validate and pin catalog endpoints.
+            let fixture_endpoint = cfg!(test) && url.starts_with("http://127.0.0.1:");
+            let addresses = if fixture_endpoint {
+                None
+            } else {
+                Some(crate::registry::oauth::endpoint_guard::guard_endpoint(&url, "MCP").await?)
+            };
+            let mut builder = crate::transport::http::McpHttpClient::builder(url)
                 .timeout_secs(TEST_CONNECTION_TIMEOUT_SECS)
                 .auth(auth)
                 .identity(self.identity.clone())
-                .proxy(self.proxy.clone())
-                .pinned_public_endpoint(addresses)
-                .build()?;
+                .proxy(self.proxy.clone());
+            if let Some(addresses) = addresses {
+                builder = builder.pinned_public_endpoint(addresses);
+            }
+            let client = builder.build()?;
             client.initialize().await?;
             let tools = client.list_tools().await?;
             // Closed rather than left open: a test must not leave a session
