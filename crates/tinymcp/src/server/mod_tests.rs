@@ -3,6 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use crate::{RequestContextExt, RequestHeadersExt, ResourceSpecExt, ServerToolSpecExt};
 use serde_json::{Map, Value, json};
 
 use super::{
@@ -192,4 +193,37 @@ async fn a_handler_without_resources_lists_none_and_reads_none() {
         .await
         .expect_err("no tools");
     assert_eq!(err.message(), "no tool `x`");
+}
+
+#[tokio::test]
+async fn prompt_defaults_preserve_existing_handlers_and_reject_unknown_prompts() {
+    let handler = Minimal;
+    let ctx = RequestContext::new("mcp", RequestHeaders::new());
+    assert!(!handler.supports_prompts());
+    assert_eq!(
+        handler.list_prompts(&ctx).await.unwrap(),
+        json!({"prompts":[]})
+    );
+    assert_eq!(
+        handler
+            .get_prompt(&ctx, "missing", Map::new())
+            .await
+            .unwrap_err(),
+        ToolCallError::InvalidParams("unknown prompt `missing`".into())
+    );
+}
+
+#[test]
+fn implementation_and_contract_share_identical_server_dto_types() {
+    let info: tinymcp_bus::ServerInfo = ServerInfo::new("fixture", "1");
+    let tool: tinymcp_bus::ServerToolSpec = ServerToolSpec::new("echo", "echo", json!({}));
+    let resource: tinymcp_bus::ResourceSpec = ResourceSpec::new("fixture://info", "info");
+    let error: tinymcp_bus::ToolCallError = ToolCallError::Internal("failed".into());
+    let headers: tinymcp_bus::RequestHeaders = RequestHeaders::new();
+    let context: tinymcp_bus::RequestContext = RequestContext::new("mcp", headers);
+    assert_eq!(info.name, "fixture");
+    assert_eq!(tool.name, "echo");
+    assert_eq!(resource.name, "info");
+    assert_eq!(error.code(), -32603);
+    assert_eq!(context.source_type(), "mcp");
 }

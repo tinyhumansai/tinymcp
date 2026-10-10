@@ -95,6 +95,18 @@ fn the_method_table_holds_every_declared_member() {
             methods::STATIC_CALL_TOOL,
             methods::AUDIT_RECORD_WRITE,
             methods::AUDIT_LIST_WRITES,
+            methods::DRAIN_SUPERVISOR_EVENTS,
+            methods::SERVER_OPEN,
+            methods::SERVER_SUBMIT,
+            methods::SERVER_POLL,
+            methods::SERVER_COMPLETE,
+            methods::SERVER_CANCEL,
+            methods::SERVER_CLOSE,
+            methods::SERVER_SHUTDOWN,
+            methods::TRANSFORM_TEXT,
+            methods::NORMALIZE_TOOL_ARGUMENTS,
+            methods::DISPLAY_REMOTE_TOOL,
+            methods::RENDER_TOOL_OUTPUT,
             methods::OPEN,
         ]
     );

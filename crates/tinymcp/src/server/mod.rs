@@ -7,6 +7,7 @@
 //! See `README.md` beside this file for the design and the wire guarantees.
 
 pub mod args;
+pub mod bridge;
 #[cfg(test)]
 mod fixture;
 #[cfg(feature = "server-http")]
@@ -29,3 +30,12 @@ pub use types::{
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+mod context;
+mod headers;
+mod resource_spec;
+mod tool_spec;
+pub use context::RequestContextExt;
+pub use headers::RequestHeadersExt;
+pub use resource_spec::ResourceSpecExt;
+pub use tool_spec::ServerToolSpecExt;

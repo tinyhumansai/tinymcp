@@ -54,3 +54,9 @@ only, since `authorization` carries a bearer token.
   behavior, pinned by tests.
 - Auth rejections are `401` with `text/plain`; session rejections are
   plain-text `400`/`404` with fixed messages.
+
+
+The compiled-module adapter uses [opaque server sessions](bridge/README.md) and
+host callbacks for tools, resources and prompts. Prompt-capable handlers advertise
+`prompts` and answer `prompts/list` and `prompts/get`; existing handlers keep their
+previous capabilities through the default trait methods.

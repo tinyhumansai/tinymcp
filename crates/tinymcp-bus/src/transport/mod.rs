@@ -23,9 +23,9 @@
 //!
 //! Several fields here — a tool's `description` and `title`, a server's
 //! `instructions` — are free-form strings from a remote peer the user chose but
-//! nobody vetted. [`McpRemoteTool`] carries display accessors that apply
-//! [`crate::sanitize`]; read those rather than the raw fields anywhere the
-//! value reaches a model's context.
+//! nobody vetted. [`McpRemoteTool`] stores this raw vocabulary. Prepare it
+//! through the module `DisplayRemoteTool` operation or implementation extensions
+//! before placing it in model context.
 
 mod types;
 
@@ -36,7 +36,3 @@ pub use types::{
     McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
     SUPPORTED_PROTOCOL_VERSIONS,
 };
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod test;

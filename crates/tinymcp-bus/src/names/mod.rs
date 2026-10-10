@@ -137,6 +137,33 @@ pub mod methods {
     /// Lists recorded writes.
     pub const AUDIT_LIST_WRITES: &str = "AuditListWrites";
 
+    /// Drains ordered supervisor observations with a caller-supplied limit.
+    pub const DRAIN_SUPERVISOR_EVENTS: &str = "DrainSupervisorEvents";
+
+    /// Opens opaque server protocol state.
+    pub const SERVER_OPEN: &str = "ServerOpen";
+    /// Submits one line and transport headers.
+    pub const SERVER_SUBMIT: &str = "ServerSubmit";
+    /// Drains a callback or final response.
+    pub const SERVER_POLL: &str = "ServerPoll";
+    /// Completes a host callback.
+    pub const SERVER_COMPLETE: &str = "ServerComplete";
+    /// Cancels the active operation.
+    pub const SERVER_CANCEL: &str = "ServerCancel";
+    /// Closes one server session.
+    pub const SERVER_CLOSE: &str = "ServerClose";
+    /// Closes every session for this object.
+    pub const SERVER_SHUTDOWN: &str = "ServerShutdown";
+
+    /// Module-owned `TransformText` metadata operation.
+    pub const TRANSFORM_TEXT: &str = "TransformText";
+    /// Module-owned `NormalizeToolArguments` metadata operation.
+    pub const NORMALIZE_TOOL_ARGUMENTS: &str = "NormalizeToolArguments";
+    /// Module-owned `DisplayRemoteTool` metadata operation.
+    pub const DISPLAY_REMOTE_TOOL: &str = "DisplayRemoteTool";
+    /// Module-owned `RenderToolOutput` metadata operation.
+    pub const RENDER_TOOL_OUTPUT: &str = "RenderToolOutput";
+
     // -- Directories --------------------------------------------------------
 
     /// Opens a data directory as its own object and returns the object path
@@ -188,6 +215,18 @@ pub const METHODS: &[&str] = &[
     // Audit
     methods::AUDIT_RECORD_WRITE,
     methods::AUDIT_LIST_WRITES,
+    methods::DRAIN_SUPERVISOR_EVENTS,
+    methods::SERVER_OPEN,
+    methods::SERVER_SUBMIT,
+    methods::SERVER_POLL,
+    methods::SERVER_COMPLETE,
+    methods::SERVER_CANCEL,
+    methods::SERVER_CLOSE,
+    methods::SERVER_SHUTDOWN,
+    methods::TRANSFORM_TEXT,
+    methods::NORMALIZE_TOOL_ARGUMENTS,
+    methods::DISPLAY_REMOTE_TOOL,
+    methods::RENDER_TOOL_OUTPUT,
     // Directories
     methods::OPEN,
 ];

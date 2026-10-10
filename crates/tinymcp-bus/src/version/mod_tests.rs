@@ -4,14 +4,14 @@ use super::{CONTRACT_VERSION, binds, is_compatible};
 
 #[test]
 fn the_shipped_contract_version_is_pinned() {
-    assert_eq!(CONTRACT_VERSION, (1, 6));
+    assert_eq!(CONTRACT_VERSION, (1, 9));
 }
 
 #[test]
 fn a_host_on_this_contract_refuses_a_module_from_before_it() {
     // 1.6 added the tool UI presentation vocabulary; a 1.5 module predates it.
     assert!(!is_compatible((1, 0)));
-    assert!(!is_compatible((1, 5)));
+    assert!(!is_compatible((1, 6)));
 }
 
 #[test]
@@ -21,7 +21,7 @@ fn the_contract_binds_to_itself() {
 
 #[test]
 fn a_newer_minor_on_the_module_side_binds() {
-    assert!(is_compatible((1, 7)));
+    assert!(is_compatible((1, 9)));
     assert!(is_compatible((1, 97)));
 }
 

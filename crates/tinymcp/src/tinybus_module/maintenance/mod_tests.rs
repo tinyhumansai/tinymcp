@@ -192,6 +192,10 @@ async fn a_dropped_connection_is_restored_by_the_next_cycle() {
         "{report:?}"
     );
     assert!(registry.connections().is_connected("srv-1").await);
+    let batch = maintenance.drain(256).unwrap();
+    assert_eq!(batch.events, report.events);
+    assert_eq!(batch.dropped, 0);
+    assert_eq!(maintenance.drain(256).unwrap().events, Vec::new());
 }
 
 #[tokio::test]

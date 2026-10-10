@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
+use super::events::Events;
+
 use crate::registry::{BootOutcome, McpRegistry, Supervisor, SupervisorConfig, TickReport};
 
 /// Where the supervisor's cycles come from.
@@ -56,6 +58,7 @@ impl Pacing {
 pub(in crate::tinybus_module) struct Maintenance {
     booted: watch::Receiver<Option<BootOutcome>>,
     task: JoinHandle<()>,
+    events: Arc<Events>,
 }
 
 impl Maintenance {
@@ -81,9 +84,29 @@ impl Maintenance {
         reports: Option<mpsc::UnboundedSender<TickReport>>,
     ) -> Self {
         let (booted_tx, booted) = watch::channel(None);
-        let task = tokio::spawn(run(registry, config, pacing, reports, booted_tx));
+        let events = Arc::new(Events::default());
+        let task = tokio::spawn(run(
+            registry,
+            config,
+            pacing,
+            reports,
+            booted_tx,
+            events.clone(),
+        ));
 
-        Self { booted, task }
+        Self {
+            booted,
+            task,
+            events,
+        }
+    }
+
+    /// Drains observations in order for the host's notification adapter.
+    pub(in crate::tinybus_module) fn drain(
+        &self,
+        limit: usize,
+    ) -> tinybus::Result<tinymcp_bus::SupervisorBatch> {
+        self.events.drain(limit)
     }
 
     /// Waits for the boot pass to finish and returns what it did.
@@ -111,6 +134,7 @@ async fn run(
     mut pacing: Pacing,
     reports: Option<mpsc::UnboundedSender<TickReport>>,
     booted: watch::Sender<Option<BootOutcome>>,
+    events: Arc<Events>,
 ) {
     let outcome = registry.connect_installed().await;
     tracing::info!(
@@ -134,9 +158,10 @@ async fn run(
             )
             .await;
 
+        events.record(report.clone());
         if let Some(reports) = &reports {
             // A receiver that went away is not a reason to stop supervising.
-            let _ = reports.send(report);
+            let _ = reports.send(report.clone());
         }
     }
 }

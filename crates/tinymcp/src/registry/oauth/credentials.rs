@@ -63,8 +63,11 @@ pub trait OAuthCredentialStore: Send + Sync {
     ) -> impl Future<Output = Result<()>> + Send;
 }
 
-#[allow(clippy::unused_async_trait_impl)]
 impl OAuthCredentialStore for Store {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "The trait remains async for host stores that perform remote secret I/O."
+    )]
     async fn remote_url(&self, server_id: &str) -> Result<Option<String>> {
         let server = self.get_server(server_id)?;
         Ok(match server.transport {
@@ -73,10 +76,18 @@ impl OAuthCredentialStore for Store {
         })
     }
 
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "The trait remains async for host stores that perform remote secret I/O."
+    )]
     async fn load_credentials(&self, server_id: &str) -> Result<BTreeMap<String, String>> {
         self.load_env_values(server_id)
     }
 
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "The trait remains async for host stores that perform remote secret I/O."
+    )]
     async fn store_credentials(
         &self,
         server_id: &str,

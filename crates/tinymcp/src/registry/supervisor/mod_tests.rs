@@ -1281,7 +1281,7 @@ fn every_event_names_its_server_and_its_kind() {
         ]
     );
     for event in &events {
-        assert_eq!(event.server(), &server);
+        assert_eq!(event.server(), Some(&server));
     }
     assert!(TickReport::default().is_empty());
 }

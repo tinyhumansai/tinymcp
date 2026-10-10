@@ -2,10 +2,11 @@
 
 use std::sync::Arc;
 
+use crate::normalize_tool_arguments;
+use crate::sanitize::sanitize_for_llm;
 use async_trait::async_trait;
 use serde_json::Value;
-use tinymcp_bus::sanitize::sanitize_for_llm;
-use tinymcp_bus::{McpTool, normalize_tool_arguments};
+use tinymcp_bus::McpTool;
 use tinytools::{PermissionLevel, Tool, ToolCategory, ToolExposure, ToolResult};
 
 use super::invoker::McpToolInvoker;

@@ -37,28 +37,6 @@ impl CommandKind {
             Self::Binary => "binary",
         }
     }
-
-    /// Parses a persisted string, falling back to [`Self::Node`].
-    ///
-    /// The fallback is deliberate: `npx` is what the overwhelming majority of
-    /// registry listings use, so an unrecognised value is far more likely to be
-    /// a stale row than a new ecosystem.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use tinymcp_bus::CommandKind;
-    /// assert_eq!(CommandKind::parse("python"), CommandKind::Python);
-    /// assert_eq!(CommandKind::parse("nonsense"), CommandKind::Node);
-    /// ```
-    #[must_use]
-    pub fn parse(raw: &str) -> Self {
-        match raw {
-            "python" => Self::Python,
-            "binary" => Self::Binary,
-            _ => Self::Node,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -90,33 +68,6 @@ impl Transport {
         match self {
             Self::Stdio => "stdio",
             Self::HttpRemote { .. } => "http_remote",
-        }
-    }
-
-    /// The inverse of [`Self::dispatch_kind`], for re-hydrating a stored row.
-    ///
-    /// An unknown or empty kind becomes [`Self::Stdio`]. That is the
-    /// migration-safety hatch: rows written before the column existed were all
-    /// stdio installs, and a misconfigured row should stall on connect rather
-    /// than get misrouted to a transport it was never meant for.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use tinymcp_bus::Transport;
-    /// assert_eq!(Transport::parse("", None), Transport::Stdio);
-    /// assert_eq!(
-    ///     Transport::parse("http_remote", Some("https://x.test/mcp")),
-    ///     Transport::HttpRemote { url: "https://x.test/mcp".into() },
-    /// );
-    /// ```
-    #[must_use]
-    pub fn parse(kind: &str, deployment_url: Option<&str>) -> Self {
-        match kind {
-            "http_remote" => Self::HttpRemote {
-                url: deployment_url.unwrap_or_default().to_string(),
-            },
-            _ => Self::Stdio,
         }
     }
 

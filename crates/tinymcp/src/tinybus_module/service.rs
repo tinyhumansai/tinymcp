@@ -33,6 +33,7 @@ pub struct McpService {
     /// change only when its configuration does.
     static_servers: McpServerRegistry,
     audit: AuditStore,
+    server_sessions: crate::server::bridge::ServerSessions,
     /// The boot pass and supervisor, when they have been started.
     ///
     /// Held so they live exactly as long as the service; see
@@ -72,6 +73,7 @@ impl McpService {
             dynamic,
             static_servers,
             audit,
+            server_sessions: crate::server::bridge::ServerSessions::default(),
             maintenance: None,
             opener: None,
         })
@@ -551,6 +553,120 @@ impl McpService {
         self.audit
             .list(&query)
             .map_err(|error| Self::failed(&error))
+    }
+
+    /// `(limit)` — drains observations for this registry object, once.
+    async fn drain_supervisor_events(
+        &self,
+        limit: usize,
+    ) -> tinybus::Result<tinymcp_bus::SupervisorBatch> {
+        std::future::ready(()).await;
+        if !(1..=256).contains(&limit) {
+            return Err(tinybus::Error::failed("invalid supervisor drain limit"));
+        }
+        match &self.maintenance {
+            Some(maintenance) => maintenance.drain(limit),
+            None => Ok(tinymcp_bus::SupervisorBatch::default()),
+        }
+    }
+
+    /// `(config)` — opens opaque module-owned protocol state.
+    async fn server_open(
+        &self,
+        config: tinymcp_bus::ServerSessionConfig,
+    ) -> tinybus::Result<String> {
+        self.server_sessions
+            .open(config)
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+    /// `(session, headers, input)` — submits or retries caller-known input.
+    async fn server_submit(
+        &self,
+        session: String,
+        headers: serde_json::Map<String, Value>,
+        input: tinymcp_bus::ServerInput,
+    ) -> tinybus::Result<()> {
+        self.server_sessions
+            .submit(&session, headers, input)
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+    /// `(session)` — observes a replayable operation snapshot.
+    async fn server_poll(
+        &self,
+        session: String,
+    ) -> tinybus::Result<tinymcp_bus::ServerOperationSnapshot> {
+        self.server_sessions
+            .poll(&session)
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+    /// `(session, callback, reply)` — completes host policy and dispatch.
+    async fn server_complete(
+        &self,
+        session: String,
+        callback: String,
+        reply: tinymcp_bus::ServerHostReply,
+    ) -> tinybus::Result<()> {
+        self.server_sessions
+            .complete(&session, &callback, reply)
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+    /// `(operation_ref)` — aborts only the caller-known target operation.
+    async fn server_cancel(
+        &self,
+        operation: tinymcp_bus::ServerOperationRef,
+    ) -> tinybus::Result<()> {
+        self.server_sessions
+            .cancel(&operation.session_id, &operation.operation_id)
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+    /// `(session)` — closes a session and all its protocol work.
+    async fn server_close(&self, session: String) -> tinybus::Result<()> {
+        self.server_sessions
+            .close(&session)
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+    /// `()` — closes every protocol session owned by this object.
+    async fn server_shutdown(&self) -> tinybus::Result<usize> {
+        Ok(self.server_sessions.shutdown().await)
+    }
+
+    /// `(request)` — bounded shared lexical text processing.
+    async fn transform_text(
+        &self,
+        request: tinymcp_bus::TransformTextRequest,
+    ) -> tinybus::Result<String> {
+        std::future::ready(()).await;
+        crate::processing::transform_text(&request).map_err(|error| Self::failed(&error))
+    }
+    /// `(arguments)` — tolerant argument decoding owned by the module.
+    async fn normalize_tool_arguments(
+        &self,
+        arguments: Option<Value>,
+    ) -> tinybus::Result<serde_json::Map<String, Value>> {
+        std::future::ready(()).await;
+        crate::processing::normalize_arguments(arguments).map_err(|error| Self::failed(&error))
+    }
+    /// `(tool)` — sanitized remote title/description metadata.
+    async fn display_remote_tool(
+        &self,
+        tool: tinymcp_bus::DisplayRemoteToolRequest,
+    ) -> tinybus::Result<tinymcp_bus::RemoteToolDisplay> {
+        std::future::ready(()).await;
+        crate::processing::display_remote_tool(&tool).map_err(|error| Self::failed(&error))
+    }
+    /// `(request)` — bounded tool output projection.
+    async fn render_tool_output(
+        &self,
+        request: tinymcp_bus::RenderToolOutputRequest,
+    ) -> tinybus::Result<String> {
+        std::future::ready(()).await;
+        crate::processing::render_tool_output(&request).map_err(|error| Self::failed(&error))
     }
 
     // -- directories ----------------------------------------------------------

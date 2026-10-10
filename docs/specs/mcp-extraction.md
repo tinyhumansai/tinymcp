@@ -77,7 +77,7 @@ no behavior, no I/O. CI asserts it. It carries:
 | `transport/` | `McpRemoteTool`, `McpInitializeResult`, `McpServerToolResult`, `McpToolResult`, `McpSseEvent`, `McpAuthChallenge`, `McpAuthorizationContext`, `ProtectedResourceMetadata`, `AuthorizationServerMetadata` |
 | `registry/` | `InstalledServer`, `McpTool`, `ConnStatus`, `ServerStatus`, `Transport`, `CommandKind`, and the Smithery / official-registry DTOs |
 | `audit/` | the write-audit record types |
-| `sanitize/` | `sanitize_for_llm`, `strip_control_chars`, `strip_instruction_fences`, `truncate_utf8_safe`, `MAX_DESCRIPTION_BYTES`, `MAX_TITLE_BYTES` |
+| `sanitize/` | `MAX_DESCRIPTION_BYTES`, `MAX_TITLE_BYTES` (presentation limits only) |
 | `version/` | `CONTRACT_VERSION` and `is_compatible` |
 | method payloads | one request and one response type per member |
 
@@ -86,16 +86,13 @@ behavior: the two transports, the spawn-environment probe, the static registry,
 the dynamic registry with its store and supervisor, OAuth, the audit log, and
 the TinyBus adapter.
 
-### Why `sanitize` lives in the contract crate
+### Generic lexical helpers
 
-The HTTP transport applies `sanitize_for_llm` to every remote tool description
-and title before any consumer sees them; that bound is part of what a caller is
-promised, so it cannot live only in the implementation. OpenHuman also runs
-*skill* descriptions through the same pipeline from its orchestrator prompt
-builder, which is not MCP work at all. Duplicating the function in both repos
-would let two copies of a security-relevant truncation-and-stripping rule
-drift. It is pure, allocation-only, dependency-free code, so the contract crate
-is the one place both can name.
+Generic stripping and UTF-8 truncation live in the TinyTools library, so skill
+and harness metadata can use them without MCP loading. MCP implementation
+re-exports the exact helper functions and retains its presentation byte caps.
+The bus has vocabulary only. Contract-only MCP hosts request preparation over
+the four bounded operations described in [pure vocabulary](pure-vocabulary.md).
 
 ### The interface
 
@@ -131,7 +128,7 @@ Each is resolved explicitly rather than by pulling OpenHuman in behind it:
 | `config::apply_runtime_proxy_to_builder` | Proxy settings become explicit fields on the configuration payload the host hands over. |
 | `core::bus::BUS`, `core::events::DomainEvent` | Lifecycle notifications become TinyBus **signals** the module emits. `registry/bus.rs` was pure `tracing` logging with no side effects and does not move. |
 | `security::prompt_injection::scan_tool_definition` | Stays in OpenHuman. Tool-definition scanning is host policy: the module returns definitions verbatim and the host scans at its own edge, where the result feeds the host's own threat model. |
-| `util::sanitize` | Moves into `tinymcp-bus`; OpenHuman depends on it from there. See above. |
+| `util::sanitize` | Generic helpers belong to TinyTools; host adapters migrate separately. |
 | `skills::types::ToolResult` | Becomes `McpToolResult` in the contract crate. OpenHuman converts at its edge. |
 | `agent::turn_origin`, `tools::traits::*` | The agent runtime and policy stay in OpenHuman. The optional `tinymcp::tools` adapter implements the shared `tinytools::Tool` interface and delegates execution through a host-provided invoker; OpenHuman retains its own bridge and policy. |
 | SQLite file location | The host supplies a data directory in the module configuration. The filename stays `mcp_clients.db`. |

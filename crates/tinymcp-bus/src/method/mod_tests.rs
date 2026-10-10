@@ -17,7 +17,12 @@ fn a_tool_outcome_carries_the_raw_reply_and_its_rendering() {
 
     assert_eq!(outcome.result, raw);
     assert!(!outcome.is_error);
-    assert_eq!(outcome.rendered.text(), "sunny");
+    assert_eq!(
+        outcome.rendered.content,
+        vec![crate::McpToolContent::Text {
+            text: "sunny".into()
+        }]
+    );
 }
 
 #[test]

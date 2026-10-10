@@ -6,6 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use crate::RequestHeadersExt;
 use serde_json::{Value, json};
 use tinymcp_bus::{LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS};
 
@@ -222,12 +223,12 @@ async fn a_batch_answers_its_requests_in_order_as_one_array_line() {
 }
 
 #[tokio::test]
-async fn a_batch_of_one_request_answers_a_bare_object_line() {
+async fn a_batch_of_one_request_keeps_array_framing() {
     assert_eq!(
         line(r#"[{"jsonrpc":"2.0","id":9,"method":"ping"}]"#)
             .await
             .as_deref(),
-        Some(r#"{"id":9,"jsonrpc":"2.0","result":{}}"#)
+        Some(r#"[{"id":9,"jsonrpc":"2.0","result":{}}]"#)
     );
 }
 
@@ -427,4 +428,178 @@ async fn resource_templates_are_always_an_empty_list() {
             "{input}"
         );
     }
+}
+
+#[tokio::test]
+async fn bounded_framing_matches_library_shapes_and_charges_envelope_punctuation() {
+    for value in [
+        json!({"jsonrpc":"2.0","id":1,"method":"ping"}),
+        json!([]),
+        json!([[], {"jsonrpc":"2.0","id":2,"method":"ping"}]),
+        json!([{"method":"notifications/initialized"}]),
+        json!([{"jsonrpc":"2.0","id":1,"method":"ping"}, {"jsonrpc":"2.0","id":2,"method":"ping"}]),
+    ] {
+        let input = value.to_string();
+        let expected = line(&input).await;
+        let size = expected.as_ref().map_or(0, String::len);
+        let actual = super::handle_line_bounded(
+            &DEMO,
+            &mut ClientSession::new("demo"),
+            &RequestHeaders::new(),
+            &input,
+            size,
+        )
+        .await
+        .unwrap();
+        assert_eq!(actual, expected);
+        if size > 0 {
+            assert!(
+                super::handle_line_bounded(
+                    &DEMO,
+                    &mut ClientSession::new("demo"),
+                    &RequestHeaders::new(),
+                    &input,
+                    size - 1
+                )
+                .await
+                .is_err()
+            );
+        }
+    }
+    for limit in [0, 1000] {
+        let result = super::handle_line_bounded(
+            &DEMO,
+            &mut ClientSession::new("demo"),
+            &RequestHeaders::new(),
+            "{",
+            limit,
+        )
+        .await;
+        assert_eq!(result.is_ok(), limit > 0);
+    }
+    let mut output = super::LimitedOutput {
+        bytes: Vec::new(),
+        limit: 0,
+    };
+    assert!(std::io::Write::flush(&mut output).is_ok());
+}
+
+struct CountingResources {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+struct CountingCalls {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl crate::server::McpServerHandler for CountingCalls {
+    fn server_info(&self) -> crate::server::ServerInfo {
+        DEMO.server_info()
+    }
+
+    fn list_tools<'a>(
+        &'a self,
+        ctx: &'a crate::server::RequestContext,
+    ) -> futures_util::future::BoxFuture<'a, Vec<crate::server::ServerToolSpec>> {
+        DEMO.list_tools(ctx)
+    }
+
+    fn call_tool<'a>(
+        &'a self,
+        _ctx: &'a crate::server::RequestContext,
+        _name: &'a str,
+        _arguments: serde_json::Map<String, Value>,
+    ) -> futures_util::future::BoxFuture<'a, Result<Value, crate::server::ToolCallError>> {
+        Box::pin(async move {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(json!({"ok": true}))
+        })
+    }
+}
+
+#[tokio::test]
+async fn bounded_batch_does_not_dispatch_after_framing_budget_is_exhausted() {
+    use std::sync::atomic::Ordering;
+
+    let handler = CountingCalls {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    };
+    let first = r#"{"id":1,"jsonrpc":"2.0","result":{}}"#;
+    let limit = first.len() + 2;
+    let input = json!([
+        {"jsonrpc":"2.0","id":1,"method":"ping"},
+        {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"side_effect"}}
+    ])
+    .to_string();
+
+    assert!(
+        super::handle_line_bounded(
+            &handler,
+            &mut ClientSession::new("fixture"),
+            &RequestHeaders::new(),
+            &input,
+            limit,
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(handler.calls.load(Ordering::SeqCst), 0);
+}
+impl crate::server::McpServerHandler for CountingResources {
+    fn server_info(&self) -> crate::server::ServerInfo {
+        DEMO.server_info()
+    }
+    fn source_type_prefix(&self) -> &'static str {
+        "fixture"
+    }
+    fn list_resources(&self) -> Vec<crate::server::ResourceSpec> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        vec![
+            crate::server::ResourceSpec::new("fixture://large", "large")
+                .with_description("x".repeat(100)),
+        ]
+    }
+    fn list_tools<'a>(
+        &'a self,
+        ctx: &'a crate::server::RequestContext,
+    ) -> futures_util::future::BoxFuture<'a, Vec<crate::server::ServerToolSpec>> {
+        DEMO.list_tools(ctx)
+    }
+    fn call_tool<'a>(
+        &'a self,
+        ctx: &'a crate::server::RequestContext,
+        name: &'a str,
+        arguments: serde_json::Map<String, Value>,
+    ) -> futures_util::future::BoxFuture<'a, Result<Value, crate::server::ToolCallError>> {
+        DEMO.call_tool(ctx, name, arguments)
+    }
+    fn read_resource<'a>(
+        &'a self,
+        uri: &'a str,
+    ) -> futures_util::future::BoxFuture<'a, Result<Value, crate::server::ToolCallError>> {
+        DEMO.read_resource(uri)
+    }
+}
+
+#[tokio::test]
+async fn bounded_static_batch_stops_construction_when_second_response_exhausts_budget() {
+    let handler = CountingResources {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    };
+    let input = json!(vec![
+        json!({"jsonrpc":"2.0","id":1,"method":"resources/list"});
+        256
+    ])
+    .to_string();
+    let result = super::handle_line_bounded(
+        &handler,
+        &mut ClientSession::new("fixture"),
+        &RequestHeaders::new(),
+        &input,
+        300,
+    )
+    .await;
+    assert!(result.is_err());
+    // Only two small declarations are constructed, rather than buffering all 256.
+    assert_eq!(handler.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
 }

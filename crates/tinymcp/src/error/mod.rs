@@ -247,7 +247,7 @@ pub enum Error {
     /// Refused before anything is sent: MCP requires an object, and a server
     /// handed anything else answers with an error that names the protocol
     /// rather than the value. The message is the reason
-    /// [`tinymcp_bus::normalize_tool_arguments`] gave, which names what
+    /// [`crate::normalize_tool_arguments`] gave, which names what
     /// arrived, because it is read by the model that sent it.
     #[error("invalid arguments for tool `{tool}`: {reason}")]
     InvalidArguments {
@@ -473,9 +473,8 @@ impl Error {
 
     /// Builds a [`Self::InvalidArgument`] from anything printable.
     ///
-    /// Only the `TinyBus` adapter (the `module` feature) raises this error, so the
-    /// constructor does not exist in a build without it.
-    #[cfg(any(feature = "module", test))]
+    /// Shared processing and protocol validation use this in library-only
+    /// builds as well as in the `TinyBus` adapter.
     pub(crate) fn invalid_argument(detail: impl std::fmt::Display) -> Self {
         Self::InvalidArgument {
             detail: detail.to_string(),

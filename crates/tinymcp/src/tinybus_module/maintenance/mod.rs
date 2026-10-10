@@ -26,6 +26,7 @@
 //! [`Pacing::Interval`]; a test uses [`Pacing::Driven`] and sends each cycle
 //! itself, so nothing waits on a wall clock.
 
+mod events;
 mod types;
 
 pub(super) use types::Maintenance;

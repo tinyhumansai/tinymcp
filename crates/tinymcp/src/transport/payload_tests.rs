@@ -13,14 +13,14 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use super::{
+use serde_json::json;
+use tinymcp_bus::transport::{
     AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
     LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
     McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
     McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
 };
-use crate::{MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, McpClientIdentityConfig};
-use serde_json::json;
+use tinymcp_bus::{MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, McpClientIdentityConfig};
 
 // ---------------------------------------------------------------------------
 // Protocol versions
@@ -485,7 +485,7 @@ fn the_streamable_http_header_names_are_pinned() {
     // differently never see each other's session.
     assert_eq!(HEADER_PROTOCOL_VERSION, "MCP-Protocol-Version");
     assert_eq!(HEADER_SESSION_ID, "Mcp-Session-Id");
-    assert_eq!(crate::HEADER_SESSION_ID, HEADER_SESSION_ID);
+    assert_eq!(tinymcp_bus::HEADER_SESSION_ID, HEADER_SESSION_ID);
 }
 
 // ---------------------------------------------------------------------------
@@ -519,7 +519,7 @@ fn a_tool_without_meta_serializes_without_the_member() {
 
 #[test]
 fn a_resource_listing_entry_keeps_its_wire_names() {
-    let resource: super::McpResource = serde_json::from_value(json!({
+    let resource: tinymcp_bus::McpResource = serde_json::from_value(json!({
         "uri": "ui://card",
         "name": "card",
         "mimeType": "text/html;profile=mcp-app",
@@ -539,13 +539,13 @@ fn a_resource_listing_entry_keeps_its_wire_names() {
 
 #[test]
 fn resource_contents_count_text_and_blob_bytes() {
-    let contents: super::McpResourceContents = serde_json::from_value(json!({
+    let contents: tinymcp_bus::McpResourceContents = serde_json::from_value(json!({
         "uri": "ui://card", "text": "abc", "blob": "AAAA",
     }))
     .unwrap();
     assert_eq!(contents.byte_len(), 7);
 
-    let empty: super::McpResourceContents =
+    let empty: tinymcp_bus::McpResourceContents =
         serde_json::from_value(json!({ "uri": "ui://card" })).unwrap();
     assert_eq!(empty.byte_len(), 0);
 }
@@ -579,3 +579,5 @@ fn a_result_without_host_facing_parts_keeps_its_old_wire_form() {
         json!({ "content": [{ "type": "text", "text": "x" }], "is_error": false })
     );
 }
+
+use super::{McpRemoteToolExt, McpToolResultExt};

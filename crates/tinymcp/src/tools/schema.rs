@@ -1,7 +1,7 @@
 //! Making a server's argument schema safe to hand a model.
 
+use crate::sanitize::sanitize_for_llm;
 use serde_json::{Value, json};
-use tinymcp_bus::sanitize::sanitize_for_llm;
 
 use super::MAX_LLM_BLOCK_BYTES;
 

@@ -22,3 +22,9 @@
 pub mod store;
 
 pub use store::AuditStore;
+
+mod query;
+pub use query::McpWriteListQueryExt;
+#[cfg(test)]
+#[path = "query_tests.rs"]
+mod query_test;

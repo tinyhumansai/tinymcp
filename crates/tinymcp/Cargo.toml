@@ -45,9 +45,10 @@ serde_json = { workspace = true }
 # serving MCP over stdio alone, or not serving at all, links neither.
 axum = { workspace = true, optional = true }
 tokio-stream = { workspace = true, optional = true }
-# Only the `tools` feature needs these: the `tinytools::Tool` adapter over a
+# TinyTools also provides generic lexical sanitization without optional features.
+# The remaining optional dependencies support the `tinytools::Tool` adapter over a
 # server's advertised tools. See the note on the workspace entry.
-tinytools = { workspace = true, optional = true }
+tinytools.workspace = true
 async-trait = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
 # `SecretScrubber` (the `tools` feature) parses endpoints for userinfo and
@@ -97,8 +98,8 @@ server-http = ["dep:axum", "dep:tokio-stream", "tokio/net"]
 # Expose each server tool as a `tinytools::Tool` (`tinymcp::tools`): stable
 # `mcp_<server>_<tool>` names, sanitized descriptions and schemas, direct or
 # deferred exposure, and an invoker seam a host wraps with its own policy.
-# Off by default so the loadable module does not link the tool vocabulary.
-tools = ["dep:tinytools", "dep:async-trait", "dep:anyhow", "dep:url", "dep:urlencoding"]
+# Off by default so the loadable module does not link the optional execution adapter.
+tools = ["dep:async-trait", "dep:anyhow", "dep:url", "dep:urlencoding"]
 # Tool-provided UI for hosts (`tinymcp::ui`): widget template resolution,
 # widget document checks, link classification, and the widget tool-call and
 # rendering policy. Off by default; a host that renders tool UI turns it on.

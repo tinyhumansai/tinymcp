@@ -36,62 +36,7 @@ const REMOTE_TIMEOUT_SECS: u64 = 30;
 /// torn down. The reconciliation is that run, not an equal number.
 pub const REMOTE_REQUEST_TIMEOUT: Duration = Duration::from_secs(REMOTE_TIMEOUT_SECS);
 
-/// What a liveness probe observed.
-///
-/// The failing outcomes are kept apart because a caller has a genuinely
-/// different correct response to each, which is the whole reason this is not a
-/// `bool`. A transport that answered with an error is broken now and there is
-/// nothing to wait for. A transport that did not answer inside the probe window
-/// may simply be slower than that window. The window is at most
-/// [`REMOTE_REQUEST_TIMEOUT`] and is normally configured shorter — it is an
-/// early signal, not the budget a real call gets — so exceeding it does not
-/// mean the server would have failed a real call. Collapsing the two lets a
-/// supervisor tear down a working session and then report a drop that never
-/// happened.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ProbeOutcome {
-    /// The server answered inside the probe window.
-    Alive {
-        /// How long the round trip took.
-        elapsed: Duration,
-    },
-    /// There is no entry for this server, so there was nothing to probe.
-    Missing,
-    /// The transport answered with an error.
-    Broken {
-        /// What the transport reported, already rendered.
-        error: String,
-        /// How long it took to fail.
-        elapsed: Duration,
-    },
-    /// The server did not answer inside the probe window.
-    ///
-    /// Not the same as broken: nothing was observed to fail, only to be slow.
-    TimedOut {
-        /// The window that elapsed without an answer.
-        after: Duration,
-    },
-}
-
-impl ProbeOutcome {
-    /// Whether the server answered.
-    #[must_use]
-    pub const fn is_alive(&self) -> bool {
-        matches!(self, Self::Alive { .. })
-    }
-
-    /// A stable one-word label, for structured log fields.
-    #[must_use]
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            Self::Alive { .. } => "alive",
-            Self::Missing => "missing",
-            Self::Broken { .. } => "broken",
-            Self::TimedOut { .. } => "timed_out",
-        }
-    }
-}
+pub use tinymcp_bus::supervisor::ProbeOutcome;
 
 /// A live transport for one connected install.
 #[derive(Debug)]

@@ -35,3 +35,16 @@ pub use store::Store;
 pub use supervisor::{
     ServerRef, SupervisedHost, Supervisor, SupervisorConfig, SupervisorEvent, TickReport,
 };
+
+mod command_kind;
+mod config_redaction;
+mod transport_kind;
+pub use command_kind::CommandKindExt;
+pub use config_redaction::McpRegistryAuthConfigExt;
+pub use transport_kind::TransportExt;
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod config_test;
+#[cfg(test)]
+#[path = "payload_tests.rs"]
+mod payload_test;

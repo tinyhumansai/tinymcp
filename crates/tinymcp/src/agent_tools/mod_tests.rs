@@ -316,7 +316,7 @@ fn effects_serialize_in_snake_case() {
 
 #[test]
 fn the_call_outcome_kind_is_pinned() {
-    assert_eq!(super::MCP_CALL_RESULT_KIND, "mcp_call");
+    assert_eq!(tinymcp_bus::MCP_CALL_RESULT_KIND, "mcp_call");
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn a_failed_outcome_pins_its_wire_form_and_round_trips() {
         "docs",
         "search",
         super::McpCallError {
-            code: crate::errors::UNAUTHORIZED.into(),
+            code: tinymcp_bus::errors::UNAUTHORIZED.into(),
             unauthorized: true,
             advertises_oauth: true,
         },
@@ -367,8 +367,8 @@ fn a_failed_outcome_pins_its_wire_form_and_round_trips() {
 
 #[test]
 fn a_plain_error_carries_no_authorization_signal() {
-    let error = super::McpCallError::new(crate::errors::TRANSPORT);
-    assert_eq!(error.code, crate::errors::TRANSPORT);
+    let error = super::McpCallError::new(tinymcp_bus::errors::TRANSPORT);
+    assert_eq!(error.code, tinymcp_bus::errors::TRANSPORT);
     assert!(!error.unauthorized);
     assert!(!error.advertises_oauth);
 }
@@ -396,7 +396,7 @@ fn an_outcome_is_read_back_only_from_metadata_of_its_kind() {
 #[test]
 fn decoding_an_outcome_rejects_what_the_constructors_never_produce() {
     let decode = |value: serde_json::Value| serde_json::from_value::<super::McpCallOutcome>(value);
-    let error = json!({ "code": crate::errors::TRANSPORT, "unauthorized": false, "advertises_oauth": false });
+    let error = json!({ "code": tinymcp_bus::errors::TRANSPORT, "unauthorized": false, "advertises_oauth": false });
     let base =
         |ok: bool| json!({ "kind": "mcp_call", "server": "docs", "tool": "search", "ok": ok });
 
@@ -427,7 +427,7 @@ fn decoding_an_outcome_rejects_what_the_constructors_never_produce() {
         super::McpCallOutcome::failed(
             "docs",
             "search",
-            super::McpCallError::new(crate::errors::TRANSPORT)
+            super::McpCallError::new(tinymcp_bus::errors::TRANSPORT)
         )
     );
 }

@@ -1,5 +1,9 @@
 # Plan: Extracting the OpenHuman MCP client and registry into `tinymcp`
 
+Historical extraction plan. Sanitizer placement and contract behavioral helpers
+are superseded by [the pure vocabulary specification](../specs/pure-vocabulary.md).
+Host adapters remain pending; checked items below describe the original extraction.
+
 - **Specification:** [`../specs/mcp-extraction.md`](../specs/mcp-extraction.md)
 - **Status:** In progress
 

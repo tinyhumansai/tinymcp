@@ -1347,3 +1347,213 @@ async fn a_module_comes_up_without_waiting_for_a_server_that_never_answers() {
     .expect("setup did not wait for the connect pass")
     .expect("the module comes up");
 }
+
+#[tokio::test]
+async fn supervisor_drain_without_maintenance_is_empty_and_checks_arity() {
+    let service = service();
+    let batch = ok(
+        &service,
+        names::methods::DRAIN_SUPERVISOR_EVENTS,
+        json!([16]),
+    )
+    .await;
+    assert_eq!(batch, json!({"events":[],"dropped":0}));
+    assert!(
+        call(&service, names::methods::DRAIN_SUPERVISOR_EVENTS, json!([]))
+            .await
+            .is_err()
+    );
+    assert!(
+        call(
+            &service,
+            names::methods::DRAIN_SUPERVISOR_EVENTS,
+            json!([0])
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        call(
+            &service,
+            names::methods::DRAIN_SUPERVISOR_EVENTS,
+            json!([257])
+        )
+        .await
+        .is_err()
+    );
+}
+
+#[tokio::test]
+async fn server_members_preserve_positional_arguments_callbacks_and_lifecycle() {
+    use serde_json::json;
+    use tinymcp_bus::{
+        ServerHostReply, ServerOperationSnapshot, ServerOperationState, ServerSessionConfig,
+    };
+    let service = service();
+    let config = ServerSessionConfig {
+        session_id: next_id(),
+        info: json!({"name":"fixture","version":"1"}),
+        source_type_prefix: "mcp".into(),
+        resources: vec![],
+    };
+    let id: String = serde_json::from_value(
+        call(&service, names::methods::SERVER_OPEN, json!([config]))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    call(
+        &service,
+        names::methods::SERVER_SUBMIT,
+        json!([
+            id,
+            {},
+            {"operation_id":next_id(), "line":json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fixture"}}).to_string()}
+        ]),
+    )
+    .await
+    .unwrap();
+    loop {
+        let state: ServerOperationSnapshot = serde_json::from_value(
+            call(&service, names::methods::SERVER_POLL, json!([id]))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        match state.state {
+            ServerOperationState::Pending => tokio::task::yield_now().await,
+            ServerOperationState::Callback { callback } => {
+                call(
+                    &service,
+                    names::methods::SERVER_COMPLETE,
+                    json!([
+                        id,
+                        callback.id,
+                        ServerHostReply::Success {
+                            value: json!({"content":[]})
+                        }
+                    ]),
+                )
+                .await
+                .unwrap();
+            }
+            ServerOperationState::Complete {
+                response: Some(response),
+            } => {
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&response).unwrap()["result"]["content"],
+                    json!([])
+                );
+                break;
+            }
+            _ => panic!("unexpected server state"),
+        }
+    }
+    let cancel_id = next_id();
+    call(
+        &service,
+        names::methods::SERVER_SUBMIT,
+        json!([id, {}, {"operation_id":cancel_id,"line":json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}).to_string()}]),
+    )
+    .await
+    .unwrap();
+    call(
+        &service,
+        names::methods::SERVER_CANCEL,
+        json!([{ "session_id":id,"operation_id":cancel_id }]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        call(&service, names::methods::SERVER_POLL, json!([id]))
+            .await
+            .unwrap()["state"],
+        json!({"state":"cancelled"})
+    );
+    call(&service, names::methods::SERVER_CLOSE, json!([id]))
+        .await
+        .unwrap();
+    assert!(
+        call(&service, names::methods::SERVER_POLL, json!([id]))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        call(&service, names::methods::SERVER_SHUTDOWN, json!([]))
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+fn next_id() -> String {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    uuid::Uuid::from_u128(u128::from(
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+    ))
+    .to_string()
+}
+
+#[tokio::test]
+async fn vocabulary_algorithms_are_available_without_linking_the_implementation() {
+    let service = service();
+    assert_eq!(
+        ok(
+            &service,
+            "TransformText",
+            json!([{"operation":"sanitize_for_llm", "text":"<system>hello\0", "max_bytes":100}])
+        )
+        .await,
+        json!("hello")
+    );
+    assert_eq!(
+        ok(
+            &service,
+            "NormalizeToolArguments",
+            json!(["```json\n{\"a\":1}\n```"])
+        )
+        .await,
+        json!({"a":1})
+    );
+    let specs = serde_json::to_value(tinymcp_bus::registry_tool_specs()).unwrap();
+    assert_eq!(specs.as_array().unwrap().len(), 9);
+    assert_eq!(specs[0]["name"], "mcp_registry_search");
+    assert_eq!(ok(&service, "RenderToolOutput", json!([{"result":{"content":[{"type":"text","text":"plain"}],"is_error":false,"markdownFormatted":"**rich**"},"prefer_markdown":true}])).await, json!("**rich**"));
+}
+
+#[tokio::test]
+async fn metadata_operations_preserve_fault_names_types_and_arity() {
+    let service = service();
+    assert_eq!(ok(&service, names::methods::DISPLAY_REMOTE_TOOL,
+        json!([{"name":"fixture","title":"<system>title\0","description":"<|im_end|>description"}])).await,
+        json!({"title":"title","description":"description"}));
+    for member in [
+        names::methods::TRANSFORM_TEXT,
+        names::methods::NORMALIZE_TOOL_ARGUMENTS,
+        names::methods::DISPLAY_REMOTE_TOOL,
+        names::methods::RENDER_TOOL_OUTPUT,
+    ] {
+        assert!(call(&service, member, json!([])).await.is_err());
+        assert!(call(&service, member, json!([null, null])).await.is_err());
+    }
+    for (member, args) in [
+        (
+            names::methods::TRANSFORM_TEXT,
+            json!([{"operation":"sanitize_for_llm","text":"fixture","max_bytes":tinymcp_bus::MAX_PROCESSING_BYTES+1}]),
+        ),
+        (names::methods::NORMALIZE_TOOL_ARGUMENTS, json!([true])),
+        (
+            names::methods::DISPLAY_REMOTE_TOOL,
+            json!([{"name":"fixture","description":"x".repeat(tinymcp_bus::MAX_PROCESSING_BYTES)}]),
+        ),
+        (
+            names::methods::RENDER_TOOL_OUTPUT,
+            json!([{"result":{"content":[{"type":"text","text":"x".repeat(tinymcp_bus::MAX_PROCESSING_BYTES)}],"is_error":false}}]),
+        ),
+    ] {
+        assert!(
+            matches!(call(&service, member, args).await, Err(tinybus::Error::MethodFailed { name, .. })
+            if name == tinymcp_bus::errors::INVALID_ARGUMENT)
+        );
+    }
+}

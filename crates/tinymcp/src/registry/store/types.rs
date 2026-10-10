@@ -1,5 +1,6 @@
 //! The store and its operations.
 
+use crate::{CommandKindExt, TransportExt};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
