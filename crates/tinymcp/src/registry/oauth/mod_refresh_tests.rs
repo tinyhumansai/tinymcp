@@ -162,7 +162,6 @@ struct SupersededStore {
     writes: AtomicUsize,
 }
 
-#[allow(clippy::unused_async_trait_impl)]
 impl crate::registry::OAuthCredentialStore for SupersededStore {
     async fn remote_url(&self, server_id: &str) -> crate::Result<Option<String>> {
         self.inner.remote_url(server_id).await

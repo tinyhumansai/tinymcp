@@ -63,7 +63,6 @@ pub trait OAuthCredentialStore: Send + Sync {
     ) -> impl Future<Output = Result<()>> + Send;
 }
 
-#[allow(clippy::unused_async_trait_impl)]
 impl OAuthCredentialStore for Store {
     async fn remote_url(&self, server_id: &str) -> Result<Option<String>> {
         let server = self.get_server(server_id)?;
