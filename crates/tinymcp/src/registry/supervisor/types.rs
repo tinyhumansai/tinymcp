@@ -453,13 +453,13 @@ impl Supervisor {
             // Nothing was observed to fail and there is nothing to tear down,
             // but the caller still has to rebuild it, and a host still wants
             // to know that it did.
-            ProbeOutcome::Missing => {
+            _ => {
                 self.timeouts.remove(&server_id);
                 (
                     AfterProbe::Rebuild,
                     SupervisorEvent::TransportDropped {
                         server: ServerRef::from(server),
-                        outcome: ProbeOutcome::Missing,
+                        outcome: outcome.clone(),
                         consecutive_timeouts: 0,
                     },
                 )

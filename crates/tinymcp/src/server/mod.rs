@@ -7,6 +7,7 @@
 //! See `README.md` beside this file for the design and the wire guarantees.
 
 pub mod args;
+pub mod bridge;
 #[cfg(test)]
 mod fixture;
 #[cfg(feature = "server-http")]

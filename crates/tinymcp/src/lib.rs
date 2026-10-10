@@ -128,3 +128,8 @@ pub use tinymcp_bus::{
     RegistryServerDetail, RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS, SearchCuration,
     ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize, version,
 };
+
+pub use tinymcp_bus::{
+    ServerCallback, ServerHostCall, ServerHostReply, ServerInput, ServerOperationRef,
+    ServerOperationSnapshot, ServerOperationState, ServerSessionConfig,
+};

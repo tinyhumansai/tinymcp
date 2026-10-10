@@ -349,3 +349,29 @@ Since `--all-features` includes `static-link`, its `cdylib` has Rust-addressable
 entries rather than exported C ABI symbols; run `verify_module` against a
 default-feature build. The static entry test covers the all-features mode,
 while `verify_module` parses and checks the generated manifest in dynamic mode.
+
+## Supervisor observations
+
+Contract 1.7 exposes ordered supervisor observations through
+`DrainSupervisorEvents(limit)`. Each registry object retains a bounded queue;
+the host drains it once and decides which events warrant a user notification.
+The module keeps ownership of probes and reconnection. See the
+[supervisor observation contract](docs/specs/supervisor-observations.md).
+
+
+## Compiled-module server protocol
+
+Contract 1.8 adds `ServerOpen`, `ServerSubmit`, `ServerPoll`, `ServerComplete`,
+`ServerCancel`, `ServerClose` and `ServerShutdown`. The module owns MCP framing,
+negotiation, provenance and method validation; typed callbacks return validated
+tool, resource and prompt operations to the host for approvals and domain dispatch.
+Session identifiers are caller-known UUID-encoded counters, so a lost acquisition
+reply can still be recovered or cancelled. A bounded rolling admission window
+permits concurrent reordered opens and retires closed identifiers without lifetime
+exhaustion. Close joins active workers; per-session operation high-water marks
+fence retired retries. The bridge bounds session counts, batch counts, input and callback bytes,
+aggregate replies, and response construction. See [the operation contract](crates/tinymcp/src/server/bridge/README.md).
+
+Existing stdio/HTTP library entrypoints remain available. Compiled-module listener
+entrypoints and moving the legacy server declaration/error types into the pure
+contract are subsequent migration slices; the new bridge does not add host framing.

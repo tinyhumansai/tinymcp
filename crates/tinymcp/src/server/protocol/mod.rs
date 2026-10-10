@@ -60,6 +60,86 @@ pub async fn handle_line(
     }
 }
 
+/// Compiled-module framing with a budget charged before retaining each response.
+/// Stops dispatch immediately when an envelope (including batch punctuation)
+/// exceeds the budget. Library transports retain their existing unbounded API.
+pub(crate) async fn handle_line_bounded(
+    handler: &dyn McpServerHandler,
+    session: &mut ClientSession,
+    headers: &RequestHeaders,
+    line: &str,
+    limit: usize,
+) -> Result<Option<String>, ()> {
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        let response = handle_line(handler, session, headers, line).await;
+        return if response.as_ref().is_some_and(|line| line.len() > limit) {
+            Err(())
+        } else {
+            Ok(response)
+        };
+    };
+    let empty_batch = value.as_array().is_some_and(Vec::is_empty);
+    let items = match value {
+        Value::Array(items) if !items.is_empty() => items,
+        other => vec![other],
+    };
+    let mut output = LimitedOutput {
+        bytes: Vec::new(),
+        limit,
+    };
+    let mut count = 0;
+    for item in items {
+        let response = if empty_batch {
+            Some(error_response(
+                Value::Null,
+                INVALID_REQUEST,
+                "Invalid Request",
+                Some(json!("batch must not be empty")),
+            ))
+        } else {
+            handle_single_message(handler, session, headers, item).await
+        };
+        if let Some(response) = response {
+            if count == 1 {
+                std::io::Write::write_all(&mut output, b"[").map_err(|_| ())?;
+                output.bytes.rotate_right(1);
+            }
+            if count > 0 {
+                std::io::Write::write_all(&mut output, b",").map_err(|_| ())?;
+            }
+            serde_json::to_writer(&mut output, &response).map_err(|_| ())?;
+            count += 1;
+            if count > 1 && output.bytes.len() == limit {
+                return Err(());
+            }
+        }
+    }
+    if count == 0 {
+        return Ok(None);
+    }
+    if count > 1 {
+        std::io::Write::write_all(&mut output, b"]").map_err(|_| ())?;
+    }
+    String::from_utf8(output.bytes).map(Some).map_err(|_| ())
+}
+
+struct LimitedOutput {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+impl std::io::Write for LimitedOutput {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+            return Err(std::io::Error::other("server output exceeds byte limit"));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Answers one parsed JSON-RPC message or batch.
 ///
 /// Returns one response per request, in order; notifications contribute
@@ -182,14 +262,27 @@ async fn handle_request(
                 request_id,
                 session.source_type()
             );
-            success_response(id, initialize_result(&handler.server_info(), &params))
+            let mut result = initialize_result(&handler.server_info(), &params);
+            if handler.supports_prompts() {
+                result["capabilities"]["prompts"] = json!({});
+            }
+            success_response(id, result)
         }
         "ping" => success_response(id, json!({})),
         "tools/list" => {
             let ctx = RequestContext::new(session.source_type(), headers.clone());
-            let tools = handler
-                .list_tools(&ctx)
-                .await
+            let tools = match handler.list_tools_result(&ctx).await {
+                Ok(tools) => tools,
+                Err(error) => {
+                    return error_response(
+                        id,
+                        error.code(),
+                        error.jsonrpc_message(),
+                        Some(json!(error.message())),
+                    );
+                }
+            };
+            let tools = tools
                 .iter()
                 .map(super::ServerToolSpec::to_json)
                 .collect::<Vec<_>>();
@@ -214,7 +307,16 @@ async fn handle_request(
         }
         "resources/read" => {
             tracing::debug!("[mcp_server] resources/read request id={request_id}");
-            read_resource(handler, id, &params).await
+            let ctx = RequestContext::new(session.source_type(), headers.clone());
+            read_resource(handler, &ctx, id, &params).await
+        }
+        "prompts/list" if handler.supports_prompts() => {
+            let ctx = RequestContext::new(session.source_type(), headers.clone());
+            handler_response(id, handler.list_prompts(&ctx).await)
+        }
+        "prompts/get" if handler.supports_prompts() => {
+            let ctx = RequestContext::new(session.source_type(), headers.clone());
+            get_prompt(handler, &ctx, id, params).await
         }
         "tools/call" => {
             let ctx = RequestContext::new(session.source_type(), headers.clone());
@@ -229,7 +331,48 @@ async fn handle_request(
     }
 }
 
-async fn read_resource(handler: &dyn McpServerHandler, id: Value, params: &Value) -> Value {
+async fn get_prompt(
+    handler: &dyn McpServerHandler,
+    ctx: &RequestContext,
+    id: Value,
+    params: Value,
+) -> Value {
+    let Some(name) = params
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    else {
+        return error_response(
+            id,
+            INVALID_PARAMS,
+            "Invalid params",
+            Some(json!("prompts/get requires a non-empty name")),
+        );
+    };
+    let arguments = match params.get("arguments") {
+        None => Map::new(),
+        Some(Value::Object(arguments)) if arguments.values().all(Value::is_string) => {
+            arguments.clone()
+        }
+        _ => {
+            return error_response(
+                id,
+                INVALID_PARAMS,
+                "Invalid params",
+                Some(json!("prompt arguments must be a string-valued object")),
+            );
+        }
+    };
+    handler_response(id, handler.get_prompt(ctx, name, arguments).await)
+}
+
+async fn read_resource(
+    handler: &dyn McpServerHandler,
+    ctx: &RequestContext,
+    id: Value,
+    params: &Value,
+) -> Value {
     let Some(uri) = params
         .get("uri")
         .and_then(Value::as_str)
@@ -245,7 +388,7 @@ async fn read_resource(handler: &dyn McpServerHandler, id: Value, params: &Value
             )),
         );
     };
-    match handler.read_resource(uri).await {
+    match handler.read_resource_context(ctx, uri).await {
         Ok(result) => success_response(id, result),
         Err(err) => {
             tracing::debug!(
@@ -323,6 +466,18 @@ async fn call_tool(
                 Some(json!(err.message())),
             )
         }
+    }
+}
+
+fn handler_response(id: Value, result: Result<Value, super::ToolCallError>) -> Value {
+    match result {
+        Ok(value) => success_response(id, value),
+        Err(error) => error_response(
+            id,
+            error.code(),
+            error.jsonrpc_message(),
+            Some(json!(error.message())),
+        ),
     }
 }
 
