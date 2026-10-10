@@ -59,9 +59,16 @@ fn store_with(server: &InstalledServer) -> Store {
 
 #[tokio::test]
 async fn a_persisted_catalog_command_is_checked_again_before_spawn() {
+    let directory = tempfile::tempdir().unwrap();
+    let marker = directory.path().join("spawned");
     let mut server = install("catalog-1", Transport::Stdio);
     server.command = "sh".into();
-    server.args = vec!["-c".into(), "exit 0".into()];
+    server.args = vec![
+        "-c".into(),
+        "touch \"$1\"".into(),
+        "sh".into(),
+        marker.to_string_lossy().into_owned(),
+    ];
     let store = Store::open_in_memory().unwrap();
     store.insert_catalog_server_if_absent(&server).unwrap();
 
@@ -79,6 +86,7 @@ async fn a_persisted_catalog_command_is_checked_again_before_spawn() {
         matches!(error, Error::MalformedResponse { .. }),
         "{error:?}"
     );
+    assert!(!marker.exists(), "catalog command must not have spawned");
 }
 
 /// Binds a loopback port and serves `app`.
