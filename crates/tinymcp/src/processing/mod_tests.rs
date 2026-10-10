@@ -194,7 +194,7 @@ fn pretty_json_and_joined_output_stop_writing_at_the_cap() {
         limit: 3,
     };
     assert!(std::io::Write::write_all(&mut writer, b"four").is_err());
-    assert!(writer.bytes.is_empty());
+    assert_eq!(writer.bytes, Vec::<u8>::new());
     assert!(std::io::Write::flush(&mut writer).is_ok());
     std::io::Write::write_all(&mut writer, b"abc").unwrap();
     assert!(std::io::Write::write_all(&mut writer, b"d").is_err());

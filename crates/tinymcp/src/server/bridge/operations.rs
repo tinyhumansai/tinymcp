@@ -87,6 +87,14 @@ impl Registry {
         self.reserved.insert(sequence);
         Ok(())
     }
+
+    fn reserve_close(&mut self, sequence: u128) {
+        let floor = self.sequence.saturating_sub(ADMISSION_WINDOW);
+        let ceiling = self.sequence.saturating_add(ADMISSION_WINDOW);
+        if sequence > floor && sequence <= ceiling && !self.reserved.contains(&sequence) {
+            self.reserved.insert(sequence);
+        }
+    }
 }
 
 /// One registry object's bounded active sessions and rolling admission window.
@@ -174,8 +182,7 @@ impl ServerSessions {
         bounded(&headers)?;
         let operation_sequence = validate_id(&input.operation_id)?.as_u128();
         if serde_json::from_str::<Value>(&input.line)
-            .ok()
-            .is_some_and(|value| value.as_array().is_some_and(|items| items.len() > 256))
+            .is_ok_and(|value| value.as_array().is_some_and(|items| items.len() > 256))
         {
             return Err(invalid("server batch exceeds item limit"));
         }
@@ -347,7 +354,9 @@ impl ServerSessions {
     pub async fn close(&self, id: &str) -> Result<()> {
         let identifier = validate_id(id)?;
         let mut sessions = self.sessions.lock().await;
-        let _ = sessions.reserve(identifier.as_u128());
+        if !sessions.active.contains_key(&identifier.to_string()) {
+            sessions.reserve_close(identifier.as_u128());
+        }
         if let Some(mut session) = sessions.active.remove(&identifier.to_string())
             && let Some(mut operation) = session.operation.take()
         {

@@ -30,10 +30,18 @@ impl HostSecrets {
 }
 
 impl OAuthCredentialStore for HostSecrets {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "The host-store trait remains async for real vaults that perform remote secret I/O."
+    )]
     async fn remote_url(&self, _server_id: &str) -> crate::Result<Option<String>> {
         Ok(self.url.clone())
     }
 
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "The host-store trait remains async for real vaults that perform remote secret I/O."
+    )]
     async fn load_credentials(&self, server_id: &str) -> crate::Result<BTreeMap<String, String>> {
         Ok(self
             .values
@@ -43,6 +51,10 @@ impl OAuthCredentialStore for HostSecrets {
             .unwrap_or_default())
     }
 
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "The host-store trait remains async for real vaults that perform remote secret I/O."
+    )]
     async fn store_credentials(
         &self,
         server_id: &str,
