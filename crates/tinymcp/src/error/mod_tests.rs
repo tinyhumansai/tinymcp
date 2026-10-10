@@ -333,6 +333,10 @@ fn one_of_every_variant() -> Vec<Error> {
         endpoint: "https://example.test".into(),
         source: Box::new(a_reqwest_error()),
     });
+    errors.push(Error::EndpointResolution {
+        what: "MCP discovery".into(),
+        detail: "temporary DNS failure".into(),
+    });
     errors.push(Error::NotConnected {
         server: "srv".into(),
     });

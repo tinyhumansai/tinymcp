@@ -22,6 +22,7 @@ use axum::{Json, Router};
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::{Value, json};
 
+use super::discovery::discovery_failure_is_transient;
 use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
 use super::{
@@ -30,6 +31,17 @@ use super::{
 };
 use crate::Error;
 use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig};
+
+#[test]
+fn only_endpoint_resolution_failures_retry_discovery() {
+    assert!(discovery_failure_is_transient(&Error::EndpointResolution {
+        what: "MCP discovery".into(),
+        detail: "temporary resolver failure".into(),
+    }));
+    assert!(!discovery_failure_is_transient(&Error::malformed(
+        "discovery endpoint targets a local address"
+    )));
+}
 
 #[test]
 fn rfc8414_metadata_url_places_issuer_path_after_well_known_segment() {
@@ -1060,6 +1072,105 @@ fn a_malformed_proxy_url_does_not_fail_the_client_build() {
         .build();
 
     assert!(client.is_ok());
+}
+
+#[test]
+fn a_pinned_public_endpoint_builds_only_without_an_unchecked_proxy() {
+    use tinymcp_bus::McpProxyConfig;
+
+    let addresses = vec!["8.8.8.8:443".parse().unwrap()];
+    let client = McpHttpClient::builder("https://public.example/mcp")
+        .pinned_public_endpoint(addresses.clone())
+        .build()
+        .expect("pinned public endpoint");
+    assert!(client.public_endpoint_only);
+
+    let error = McpHttpClient::builder("https://public.example/mcp")
+        .proxy(Some(McpProxyConfig {
+            http_proxy: Some("http://127.0.0.1:8080".into()),
+            ..McpProxyConfig::default()
+        }))
+        .pinned_public_endpoint(addresses)
+        .build()
+        .expect_err("an unchecked proxy would bypass the pinned address");
+    assert!(error.to_string().contains("unchecked proxy"), "{error}");
+}
+
+#[test]
+fn a_pinned_endpoint_requires_a_valid_host() {
+    let addresses = vec!["8.8.8.8:443".parse().unwrap()];
+    for url in ["not a URL", "mailto:somebody@example.com"] {
+        assert!(
+            McpHttpClient::builder(url)
+                .pinned_public_endpoint(addresses.clone())
+                .build()
+                .is_err(),
+            "{url} has no usable host"
+        );
+    }
+    assert!(
+        McpHttpClient::builder("https://8.8.8.8/mcp")
+            .pinned_public_endpoint(addresses)
+            .build()
+            .is_ok(),
+        "an HTTPS IP literal can be pinned"
+    );
+}
+
+#[test]
+fn a_pinned_endpoint_rejects_empty_private_mismatched_and_wrong_port_addresses() {
+    for addresses in [
+        vec![],
+        vec!["127.0.0.1:443".parse().unwrap()],
+        vec!["8.8.8.8:80".parse().unwrap()],
+        vec!["1.1.1.1:443".parse().unwrap()],
+    ] {
+        assert!(
+            McpHttpClient::builder("https://8.8.8.8/mcp")
+                .pinned_public_endpoint(addresses)
+                .build()
+                .is_err()
+        );
+    }
+    assert!(
+        McpHttpClient::builder("http://8.8.8.8/mcp")
+            .pinned_public_endpoint(vec!["8.8.8.8:80".parse().unwrap()])
+            .build()
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn pinned_discovery_refuses_unvetted_urls_before_fetching() {
+    let client = McpHttpClient::builder("https://8.8.8.8/mcp")
+        .pinned_public_endpoint(vec!["8.8.8.8:443".parse().unwrap()])
+        .build()
+        .unwrap();
+    for url in [
+        "http://8.8.8.8/discovery",
+        "https://127.0.0.1/discovery",
+        "https://169.254.169.254/discovery",
+    ] {
+        assert!(
+            client
+                .discovery_client_for(url, &client.discovery_http)
+                .await
+                .is_err(),
+            "{url} should be refused"
+        );
+    }
+    assert!(
+        client
+            .discovery_client_for("https://8.8.8.8/discovery", &client.discovery_http)
+            .await
+            .is_ok()
+    );
+    assert!(
+        client
+            .fetch_json::<Value>("http://127.0.0.1/discovery")
+            .await
+            .is_err()
+    );
 }
 
 // ---------------------------------------------------------------------------

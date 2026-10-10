@@ -128,6 +128,19 @@ pub enum Error {
         source: Box<reqwest::Error>,
     },
 
+    /// DNS resolution for a guarded endpoint failed before a connection.
+    ///
+    /// This is transient: discovery must retry it instead of caching the
+    /// document as permanently absent. The endpoint URL stays out of this
+    /// error because it may contain credentials.
+    #[error("mcp {what} endpoint resolution failed: {detail}")]
+    EndpointResolution {
+        /// Purpose of the endpoint being resolved.
+        what: String,
+        /// Resolver or task failure, without the endpoint URL.
+        detail: String,
+    },
+
     /// An upstream registry did not answer within its time budget.
     ///
     /// Transient. A caller shows the catalog as unavailable for now rather
@@ -432,6 +445,7 @@ impl Error {
             Self::MissingRuntime { .. } => errors::MISSING_RUNTIME,
             Self::Http { .. } => errors::HTTP,
             Self::Transport { .. } => errors::TRANSPORT,
+            Self::EndpointResolution { .. } => errors::ENDPOINT_RESOLUTION,
             Self::RegistryTimeout { .. } => errors::REGISTRY_TIMEOUT,
             Self::UnsupportedProtocolVersion { .. } => errors::UNSUPPORTED_PROTOCOL_VERSION,
             Self::MalformedResponse { .. } => errors::MALFORMED_RESPONSE,

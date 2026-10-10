@@ -42,6 +42,8 @@ pub const MISSING_RUNTIME: &str = "ai.tinyhumans.tinymcp.Error.MissingRuntime";
 pub const HTTP: &str = "ai.tinyhumans.tinymcp.Error.Http";
 /// The transport failed: connection refused, timeout, TLS, DNS.
 pub const TRANSPORT: &str = "ai.tinyhumans.tinymcp.Error.Transport";
+/// DNS resolution for a guarded endpoint failed before a connection; retryable.
+pub const ENDPOINT_RESOLUTION: &str = "ai.tinyhumans.tinymcp.Error.EndpointResolution";
 /// A server negotiated a protocol version the client does not speak.
 pub const UNSUPPORTED_PROTOCOL_VERSION: &str =
     "ai.tinyhumans.tinymcp.Error.UnsupportedProtocolVersion";
@@ -100,6 +102,7 @@ pub const ALL: &[&str] = &[
     MISSING_RUNTIME,
     HTTP,
     TRANSPORT,
+    ENDPOINT_RESOLUTION,
     UNSUPPORTED_PROTOCOL_VERSION,
     MALFORMED_RESPONSE,
     RPC,

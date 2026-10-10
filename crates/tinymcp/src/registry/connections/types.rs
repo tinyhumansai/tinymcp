@@ -377,6 +377,9 @@ impl Connections {
         identity: &McpClientIdentityConfig,
         server: &InstalledServer,
     ) -> Result<ActiveClient> {
+        if store.is_catalog_server(&server.server_id)? {
+            crate::registry::ops::install::validate_catalog_command(&server.command, &server.args)?;
+        }
         let env: Vec<(String, String)> = store
             .load_env_values(&server.server_id)
             .unwrap_or_default()
@@ -428,10 +431,22 @@ impl Connections {
         // the one that gets sent.
         let auth = build_http_auth(&store.load_env_values(&server.server_id).unwrap_or_default());
 
-        let resolved = resolve_final_url(url)
-            .await
-            .unwrap_or_else(|| url.to_string());
-        let dial_url = credential_safe_dial_url(url, resolved);
+        let is_https = reqwest::Url::parse(url).is_ok_and(|endpoint| endpoint.scheme() == "https");
+        let public_addresses = if is_https {
+            Some(crate::registry::oauth::endpoint_guard::guard_endpoint(url, "MCP").await?)
+        } else {
+            None
+        };
+        let dial_url = if public_addresses.is_some() {
+            // Public endpoints are pinned and cannot redirect to an unchecked
+            // network address. Local HTTP servers retain their existing flow.
+            url.to_string()
+        } else {
+            let resolved = resolve_final_url(url)
+                .await
+                .unwrap_or_else(|| url.to_string());
+            credential_safe_dial_url(url, resolved)
+        };
         if dial_url != url {
             tracing::info!(
                 from = %crate::redact_endpoint(url),
@@ -440,12 +455,15 @@ impl Connections {
             );
         }
 
-        let client = McpHttpClient::builder(dial_url)
+        let mut builder = McpHttpClient::builder(dial_url)
             .timeout_secs(REMOTE_TIMEOUT_SECS)
             .auth(auth)
             .identity(identity.clone())
-            .proxy(proxy.cloned())
-            .build()?;
+            .proxy(proxy.cloned());
+        if let Some(addresses) = public_addresses {
+            builder = builder.pinned_public_endpoint(addresses);
+        }
+        let client = builder.build()?;
         client.initialize().await?;
 
         Ok(ActiveClient::Http(Box::new(client)))

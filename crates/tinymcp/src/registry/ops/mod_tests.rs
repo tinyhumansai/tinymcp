@@ -13,7 +13,7 @@ use serde_json::json;
 
 use super::install::{
     build_install_transport, collect_required_env_keys, pick_connection, resolve_command,
-    transport_kind,
+    transport_kind, validate_catalog_command,
 };
 use super::types::McpRegistry;
 use crate::Error;
@@ -236,6 +236,73 @@ fn a_package_connection_becomes_a_subprocess_install() {
     assert_eq!(kind, CommandKind::Node);
     assert_eq!(command, "npx");
     assert_eq!(args, ["-y", "com.vendor/server"]);
+}
+
+#[test]
+fn catalog_hosted_endpoints_refuse_unsafe_urls() {
+    for url in [
+        "http://8.8.8.8/mcp",
+        "https://user:secret@api.example.com/mcp",
+        "https://localhost/mcp",
+        "https://localhost./mcp",
+        "https://service.local./mcp",
+        "https://service.internal./mcp",
+        "https://service.internal/mcp",
+        "https://10.0.0.1/mcp",
+        "https://169.254.169.254/mcp",
+        "not a URL",
+    ] {
+        assert!(
+            build_install_transport("com.vendor/server", &connection("http", true, Some(url)))
+                .is_err(),
+            "{url} should be refused"
+        );
+    }
+}
+
+#[test]
+fn catalog_hosted_endpoints_accept_public_https_and_only_the_exact_loopback_fixture() {
+    for url in ["https://8.8.8.8/mcp", "https://api.example.com/mcp"] {
+        assert!(
+            build_install_transport("com.vendor/server", &connection("http", true, Some(url)))
+                .is_ok(),
+            "{url} should be accepted"
+        );
+    }
+    assert!(
+        build_install_transport(
+            "com.vendor/server",
+            &connection("http", true, Some("http://127.0.0.1:1234/mcp"))
+        )
+        .is_ok()
+    );
+    assert!(
+        build_install_transport(
+            "com.vendor/server",
+            &connection("http", true, Some("http://localhost:1234/mcp"))
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn catalog_subprocess_launchers_reject_shell_command_options() {
+    for launcher in ["npx", "uvx", "bunx"] {
+        validate_catalog_command(launcher, &["-y".into(), "safe-package".into()])
+            .expect("approved package runner");
+        for option in ["-c", "-c=echo", "-cecho", "-yc", "--call", "--call=echo"] {
+            assert!(
+                validate_catalog_command(launcher, &[option.into()]).is_err(),
+                "{launcher} {option} should be refused"
+            );
+        }
+    }
+    for launcher in ["sh", "bash", "python", "/usr/bin/npx"] {
+        assert!(
+            validate_catalog_command(launcher, &["safe-package".into()]).is_err(),
+            "{launcher} should be refused"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

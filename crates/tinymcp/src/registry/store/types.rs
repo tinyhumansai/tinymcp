@@ -122,20 +122,60 @@ impl Store {
     ///
     /// Returns [`Error::Store`] when the statement fails.
     pub fn insert_server_if_absent(&self, server: &InstalledServer) -> Result<bool> {
+        self.insert_server_if_absent_with_origin(server, false)
+    }
+
+    /// Inserts a validated catalog install with launch-time provenance.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] when the statement fails.
+    pub(crate) fn insert_catalog_server_if_absent(&self, server: &InstalledServer) -> Result<bool> {
+        self.insert_server_if_absent_with_origin(server, true)
+    }
+
+    fn insert_server_if_absent_with_origin(
+        &self,
+        server: &InstalledServer,
+        catalog_managed: bool,
+    ) -> Result<bool> {
         let columns = ServerColumns::encode(server)?;
+        let catalog_managed = i64::from(catalog_managed);
+        let mut parameters = columns.as_params(server);
+        parameters.push(&catalog_managed);
         let inserted = self
             .connection
             .lock()
             .execute(
                 &format!(
-                    "INSERT INTO mcp_servers ({SERVER_COLUMNS})
-                     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+                    "INSERT INTO mcp_servers ({SERVER_COLUMNS}, catalog_managed)
+                     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
                      WHERE NOT EXISTS (SELECT 1 FROM mcp_servers WHERE qualified_name = ?2)"
                 ),
-                columns.as_params(server).as_slice(),
+                parameters.as_slice(),
             )
             .map_err(|source| Error::store("inserting a server if absent", source))?;
         Ok(inserted > 0)
+    }
+
+    /// Whether this row was installed from catalog-supplied connection data.
+    /// Old rows and host-authored configuration default to false; their
+    /// provenance cannot be inferred safely from the command text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] when the lookup fails.
+    pub(crate) fn is_catalog_server(&self, server_id: &str) -> Result<bool> {
+        self.connection
+            .lock()
+            .query_row(
+                "SELECT catalog_managed FROM mcp_servers WHERE server_id = ?1",
+                params![server_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map(|flag| flag.unwrap_or(0) != 0)
+            .map_err(|source| Error::store("reading catalog provenance", source))
     }
 
     /// Every installed server, oldest install first.

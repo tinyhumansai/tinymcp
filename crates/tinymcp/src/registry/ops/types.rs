@@ -309,7 +309,7 @@ impl McpRegistry {
         };
 
         // Conditional on the name still being absent — see the note above.
-        if !self.store.insert_server_if_absent(&server)? {
+        if !self.store.insert_catalog_server_if_absent(&server)? {
             let winner = self
                 .store
                 .find_server_by_qualified_name(canonical)?
@@ -847,12 +847,23 @@ impl McpRegistry {
 
         let tools = if let Transport::HttpRemote { url } = transport {
             let auth = crate::registry::connections::build_http_auth(&env);
-            let client = crate::transport::http::McpHttpClient::builder(url)
+            // Registry facade tests use an ephemeral HTTP loopback server.
+            // Shipped builds always validate and pin catalog endpoints.
+            let fixture_endpoint = cfg!(test) && url.starts_with("http://127.0.0.1:");
+            let addresses = if fixture_endpoint {
+                None
+            } else {
+                Some(crate::registry::oauth::endpoint_guard::guard_endpoint(&url, "MCP").await?)
+            };
+            let mut builder = crate::transport::http::McpHttpClient::builder(url)
                 .timeout_secs(TEST_CONNECTION_TIMEOUT_SECS)
                 .auth(auth)
                 .identity(self.identity.clone())
-                .proxy(self.proxy.clone())
-                .build()?;
+                .proxy(self.proxy.clone());
+            if let Some(addresses) = addresses {
+                builder = builder.pinned_public_endpoint(addresses);
+            }
+            let client = builder.build()?;
             client.initialize().await?;
             let tools = client.list_tools().await?;
             // Closed rather than left open: a test must not leave a session

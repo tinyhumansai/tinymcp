@@ -57,6 +57,38 @@ fn store_with(server: &InstalledServer) -> Store {
     store
 }
 
+#[tokio::test]
+async fn a_persisted_catalog_command_is_checked_again_before_spawn() {
+    let directory = tempfile::tempdir().unwrap();
+    let marker = directory.path().join("spawned");
+    let mut server = install("catalog-1", Transport::Stdio);
+    server.command = "sh".into();
+    server.args = vec![
+        "-c".into(),
+        "touch \"$1\"".into(),
+        "sh".into(),
+        marker.to_string_lossy().into_owned(),
+    ];
+    let store = Store::open_in_memory().unwrap();
+    store.insert_catalog_server_if_absent(&server).unwrap();
+
+    let error = Connections::new()
+        .connect(
+            &store,
+            &OAuthFlow::new(None).unwrap(),
+            &identity(),
+            None,
+            &server,
+        )
+        .await
+        .expect_err("catalog command refused before spawn");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
+    assert!(!marker.exists(), "catalog command must not have spawned");
+}
+
 /// Binds a loopback port and serves `app`.
 async fn serve(app: Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

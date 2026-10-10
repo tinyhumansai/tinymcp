@@ -1,6 +1,7 @@
 //! Deciding how a server from a catalog will actually be run.
 
 use serde_json::Value;
+use std::net::IpAddr;
 
 use crate::error::{Error, Result};
 use tinymcp_bus::{CommandKind, RegistryConnection, RegistryServerDetail, Transport};
@@ -115,6 +116,43 @@ pub fn build_install_transport(
                 "the hosted connection for `{qualified_name}` declares no endpoint"
             )));
         }
+        let endpoint = reqwest::Url::parse(&url)
+            .map_err(|_| Error::malformed("hosted endpoint is not a valid URL"))?;
+        // The existing registry facade tests serve MCP on an ephemeral HTTP
+        // loopback port. This exception is absent from release builds.
+        let fixture_endpoint =
+            cfg!(test) && endpoint.scheme() == "http" && endpoint.host_str() == Some("127.0.0.1");
+        if (!fixture_endpoint && endpoint.scheme() != "https")
+            || endpoint.username() != ""
+            || endpoint.password().is_some()
+        {
+            return Err(Error::malformed(
+                "catalog hosted endpoints must use HTTPS without embedded credentials",
+            ));
+        }
+        let host = endpoint
+            .host_str()
+            .ok_or_else(|| Error::malformed("hosted endpoint has no host"))?;
+        let host = host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .trim_end_matches('.');
+        let local_domain = host.rsplit_once('.').is_some_and(|(_, suffix)| {
+            suffix.eq_ignore_ascii_case("localhost")
+                || suffix.eq_ignore_ascii_case("local")
+                || suffix.eq_ignore_ascii_case("internal")
+        });
+        if !fixture_endpoint
+            && (host.eq_ignore_ascii_case("localhost")
+                || local_domain
+                || host
+                    .parse::<IpAddr>()
+                    .is_ok_and(|ip| crate::registry::oauth::endpoint_guard::is_blocked_ip(&ip)))
+        {
+            return Err(Error::malformed(
+                "catalog hosted endpoint targets a local address",
+            ));
+        }
 
         return Ok((
             Transport::HttpRemote { url },
@@ -126,7 +164,27 @@ pub fn build_install_transport(
     }
 
     let (kind, command, args) = resolve_command(qualified_name, Some(connection));
+    validate_catalog_command(&command, &args)?;
     Ok((Transport::Stdio, kind, command, args))
+}
+
+/// Recheck persisted catalog commands at launch as well as at installation.
+pub(crate) fn validate_catalog_command(command: &str, args: &[String]) -> Result<()> {
+    if !matches!(command, "npx" | "uvx" | "bunx") {
+        return Err(Error::malformed(
+            "catalog subprocess launcher is not approved",
+        ));
+    }
+    if args.iter().any(|arg| {
+        (arg.starts_with('-') && !arg.starts_with("--") && arg.contains('c'))
+            || arg == "--call"
+            || arg.starts_with("--call=")
+    }) {
+        return Err(Error::malformed(
+            "catalog subprocess cannot request a shell command",
+        ));
+    }
+    Ok(())
 }
 
 /// Works out the command a subprocess install is launched with.

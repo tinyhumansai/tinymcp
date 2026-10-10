@@ -90,6 +90,8 @@ pub struct McpHttpClient {
     auth: McpAuthConfig,
     state: Mutex<SessionState>,
     discovery_http: reqwest::Client,
+    /// Pinned public HTTPS connections must screen every discovery target.
+    public_endpoint_only: bool,
     well_known: Mutex<Option<WellKnownOutcome>>,
 }
 
@@ -126,6 +128,7 @@ pub struct McpHttpClientBuilder {
     auth: McpAuthConfig,
     identity: McpClientIdentityConfig,
     proxy: Option<McpProxyConfig>,
+    pinned_addresses: Option<Vec<std::net::SocketAddr>>,
 }
 
 impl McpHttpClientBuilder {
@@ -138,6 +141,7 @@ impl McpHttpClientBuilder {
             auth: McpAuthConfig::None,
             identity: McpClientIdentityConfig::default(),
             proxy: None,
+            pinned_addresses: None,
         }
     }
 
@@ -177,14 +181,26 @@ impl McpHttpClientBuilder {
         self
     }
 
+    /// Pins a checked public endpoint and refuses every redirect. Catalog
+    /// endpoints use this after resolving and screening all DNS answers. A
+    /// configured proxy cannot preserve the approved address pin and causes
+    /// [`Self::build`] to fail closed.
+    #[must_use]
+    pub fn pinned_public_endpoint(mut self, addresses: Vec<std::net::SocketAddr>) -> Self {
+        self.pinned_addresses = Some(addresses);
+        self
+    }
+
     /// Builds the client.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ClientBuild`] when the underlying HTTP client cannot be
-    /// constructed — in practice a malformed proxy URL or an unusable TLS
-    /// configuration.
+    /// Returns [`Error::MalformedResponse`] if a pinned endpoint has no usable
+    /// host or a configured proxy would bypass its address pin. Returns
+    /// [`Error::ClientBuild`] when the underlying HTTP client cannot be
+    /// constructed, for example with an unusable TLS configuration.
     pub fn build(self) -> Result<McpHttpClient> {
+        let public_endpoint_only = self.pinned_addresses.is_some();
         let mut builder = reqwest::Client::builder()
             .timeout(self.timeout)
             .connect_timeout(CONNECT_TIMEOUT)
@@ -203,6 +219,50 @@ impl McpHttpClientBuilder {
             .timeout(DISCOVERY_BUDGET)
             .connect_timeout(CONNECT_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none());
+
+        if let Some(addresses) = self.pinned_addresses.as_ref() {
+            if self.proxy.is_some() {
+                return Err(Error::malformed(
+                    "a public MCP endpoint cannot use an unchecked proxy",
+                ));
+            }
+            let endpoint = reqwest::Url::parse(&self.endpoint)
+                .map_err(|_| Error::malformed("invalid pinned MCP endpoint"))?;
+            let host = endpoint
+                .host_str()
+                .ok_or_else(|| Error::malformed("pinned MCP endpoint has no host"))?;
+            let host = host.trim_start_matches('[').trim_end_matches(']');
+            let port = endpoint
+                .port_or_known_default()
+                .ok_or_else(|| Error::malformed("pinned MCP endpoint has no port"))?;
+            if endpoint.scheme() != "https"
+                || addresses.is_empty()
+                || addresses.iter().any(|address| {
+                    address.port() != port
+                        || crate::registry::oauth::endpoint_guard::is_blocked_ip(&address.ip())
+                })
+            {
+                return Err(Error::malformed(
+                    "pinned MCP endpoint has no approved addresses",
+                ));
+            }
+            if host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| addresses.iter().any(|address| address.ip() != ip))
+            {
+                return Err(Error::malformed(
+                    "pinned MCP address does not match endpoint",
+                ));
+            }
+            builder = builder
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none());
+            discovery_builder = discovery_builder.no_proxy();
+            if host.parse::<std::net::IpAddr>().is_err() {
+                builder = builder.resolve_to_addrs(host, addresses);
+                discovery_builder = discovery_builder.resolve_to_addrs(host, addresses);
+            }
+        }
 
         if let Some(proxy) = self.proxy.as_ref() {
             builder = apply_proxy(builder, proxy);
@@ -226,6 +286,7 @@ impl McpHttpClientBuilder {
             auth: self.auth,
             state: Mutex::new(SessionState::default()),
             discovery_http,
+            public_endpoint_only,
             well_known: Mutex::new(None),
         })
     }
@@ -948,13 +1009,27 @@ impl McpHttpClient {
         request
     }
 
-    /// Fetches and decodes a JSON document from an arbitrary URL.
+    /// Builds a no-redirect client pinned to each server-supplied discovery URL
+    /// when the MCP endpoint is restricted to public addresses.
+    async fn discovery_client_for(
+        &self,
+        url: &str,
+        default: &reqwest::Client,
+    ) -> Result<reqwest::Client> {
+        if self.public_endpoint_only {
+            crate::registry::oauth::endpoint_guard::guarded_client(url, "MCP discovery").await
+        } else {
+            Ok(default.clone())
+        }
+    }
+
+    /// Fetches and decodes a JSON document from a discovery URL.
     async fn fetch_json<T>(&self, url: &str) -> Result<T>
     where
         T: for<'de> Deserialize<'de>,
     {
-        let response = self
-            .http
+        let client = self.discovery_client_for(url, &self.http).await?;
+        let response = client
             .get(url)
             .send()
             .await
