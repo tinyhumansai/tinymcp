@@ -133,7 +133,10 @@ pub fn build_install_transport(
         let host = endpoint
             .host_str()
             .ok_or_else(|| Error::malformed("hosted endpoint has no host"))?;
-        let host = host.trim_start_matches('[').trim_end_matches(']');
+        let host = host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .trim_end_matches('.');
         let local_domain = host.rsplit_once('.').is_some_and(|(_, suffix)| {
             suffix.eq_ignore_ascii_case("localhost")
                 || suffix.eq_ignore_ascii_case("local")

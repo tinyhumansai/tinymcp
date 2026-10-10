@@ -26,7 +26,8 @@ use crate::error::{Error, Result};
 ///
 /// # Errors
 ///
-/// [`Error::MalformedResponse`] naming the endpoint and why it was refused.
+/// [`Error::MalformedResponse`] when the URL is unsafe, or
+/// [`Error::EndpointResolution`] when DNS resolution could not complete.
 pub(crate) async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAddr>> {
     let refuse = |why: String| Error::malformed(format!("{what} endpoint refused: {why}"));
     let url = Url::parse(raw).map_err(|error| refuse(format!("not a valid url: {error}")))?;
@@ -44,20 +45,38 @@ pub(crate) async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAd
     let addresses: Vec<SocketAddr> = if let Ok(ip) = host.parse::<IpAddr>() {
         vec![SocketAddr::new(ip, port)]
     } else {
-        tokio::task::spawn_blocking(move || {
+        let resolution = tokio::task::spawn_blocking(move || {
             (host.as_str(), port)
                 .to_socket_addrs()
                 .map(Iterator::collect::<Vec<_>>)
         })
         .await
-        .map_err(|error| refuse(format!("resolution did not finish: {error}")))?
-        .map_err(|error| refuse(format!("its host does not resolve: {error}")))?
+        .map_err(|error| Error::EndpointResolution {
+            what: what.to_string(),
+            detail: format!("resolution did not finish: {error}"),
+        })?;
+        checked_addresses(what, resolution)?
     };
-    if addresses.is_empty() {
-        return Err(refuse("its host does not resolve".to_string()));
-    }
     if addresses.iter().any(|addr| is_blocked_ip(&addr.ip())) {
         return Err(refuse("it resolves to a disallowed address".to_string()));
+    }
+    Ok(addresses)
+}
+
+/// Treat resolver outages and an empty DNS answer as retryable failures.
+fn checked_addresses(
+    what: &str,
+    addresses: std::io::Result<Vec<SocketAddr>>,
+) -> Result<Vec<SocketAddr>> {
+    let addresses = addresses.map_err(|error| Error::EndpointResolution {
+        what: what.to_string(),
+        detail: error.to_string(),
+    })?;
+    if addresses.is_empty() {
+        return Err(Error::EndpointResolution {
+            what: what.to_string(),
+            detail: "the host has no addresses".to_string(),
+        });
     }
     Ok(addresses)
 }
@@ -81,6 +100,7 @@ fn client_pinned_to(host: &str, addresses: &[SocketAddr]) -> Result<reqwest::Cli
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
+        .no_proxy()
         .redirect(reqwest::redirect::Policy::none());
     if host.parse::<IpAddr>().is_err() {
         builder = builder.resolve_to_addrs(host, addresses);

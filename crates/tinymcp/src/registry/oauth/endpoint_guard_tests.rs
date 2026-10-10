@@ -4,7 +4,26 @@
 
 use std::net::IpAddr;
 
-use super::{client_pinned_to, guard_endpoint, guarded_client, is_blocked_ip};
+use super::{checked_addresses, client_pinned_to, guard_endpoint, guarded_client, is_blocked_ip};
+use crate::Error;
+
+#[test]
+fn resolver_failures_and_empty_answers_remain_retryable() {
+    let failed = checked_addresses(
+        "MCP discovery",
+        Err(std::io::Error::other("temporary resolver failure")),
+    )
+    .unwrap_err();
+    assert!(matches!(failed, Error::EndpointResolution { .. }));
+    let empty = checked_addresses("MCP discovery", Ok(Vec::new())).unwrap_err();
+    assert!(matches!(empty, Error::EndpointResolution { .. }));
+    assert_eq!(
+        checked_addresses("MCP", Ok(vec!["8.8.8.8:443".parse().unwrap()]))
+            .unwrap()
+            .len(),
+        1
+    );
+}
 
 fn ip(raw: &str) -> IpAddr {
     raw.parse().unwrap()

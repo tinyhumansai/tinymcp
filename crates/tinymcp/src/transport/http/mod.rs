@@ -218,7 +218,10 @@ impl McpHttpClientBuilder {
             let host = endpoint
                 .host_str()
                 .ok_or_else(|| Error::malformed("pinned MCP endpoint has no host"))?;
-            builder = builder.redirect(reqwest::redirect::Policy::none());
+            builder = builder
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none());
+            discovery_builder = discovery_builder.no_proxy();
             if host.parse::<std::net::IpAddr>().is_err() {
                 builder = builder.resolve_to_addrs(host, addresses);
                 discovery_builder = discovery_builder.resolve_to_addrs(host, addresses);

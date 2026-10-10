@@ -22,6 +22,7 @@ use axum::{Json, Router};
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::{Value, json};
 
+use super::discovery::discovery_failure_is_transient;
 use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
 use super::{
@@ -30,6 +31,17 @@ use super::{
 };
 use crate::Error;
 use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig};
+
+#[test]
+fn only_endpoint_resolution_failures_retry_discovery() {
+    assert!(discovery_failure_is_transient(&Error::EndpointResolution {
+        what: "MCP discovery".into(),
+        detail: "temporary resolver failure".into(),
+    }));
+    assert!(!discovery_failure_is_transient(&Error::malformed(
+        "discovery endpoint targets a local address"
+    )));
+}
 
 #[test]
 fn rfc8414_metadata_url_places_issuer_path_after_well_known_segment() {
