@@ -50,6 +50,13 @@ jobs:
       - name: Test
         run: cargo test --all-features
 
+      # Integration tests compile the ordinary library without cfg(test), so
+      # feature-gated constructors cannot hide behind unit-test-only builds.
+      - name: Test library feature combinations
+        run: |
+          cargo test --package tinymcp --no-default-features --test library_feature_tests
+          cargo test --package tinymcp --no-default-features --features tools,ui,server-http --test library_feature_tests
+
       - name: Test default features
         run: cargo test
 

@@ -473,9 +473,8 @@ impl Error {
 
     /// Builds a [`Self::InvalidArgument`] from anything printable.
     ///
-    /// Only the `TinyBus` adapter (the `module` feature) raises this error, so the
-    /// constructor does not exist in a build without it.
-    #[cfg(any(feature = "module", test))]
+    /// Shared processing and protocol validation use this in library-only
+    /// builds as well as in the `TinyBus` adapter.
     pub(crate) fn invalid_argument(detail: impl std::fmt::Display) -> Self {
         Self::InvalidArgument {
             detail: detail.to_string(),
