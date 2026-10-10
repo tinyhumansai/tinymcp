@@ -387,6 +387,7 @@ fn a_rendered_result_keeps_its_error_flag_and_markdown() {
         ],
         is_error: true,
         markdown_formatted: Some("**t**".into()),
+        ..McpToolResult::default()
     });
     assert!(result.is_error);
     assert!(result.text().starts_with('t'));
@@ -633,6 +634,7 @@ fn oversized_text_json_and_markdown_results_are_elided() {
         ],
         is_error: false,
         markdown_formatted: Some("m".repeat(super::MAX_LLM_BLOCK_BYTES + 1)),
+        ..McpToolResult::default()
     });
 
     let tinytools::ToolContent::Text { text } = &result.content[0] else {
@@ -672,6 +674,7 @@ impl McpToolInvoker for Recording {
             content: vec![McpToolContent::Text { text: "ok".into() }],
             is_error: false,
             markdown_formatted: None,
+            ..McpToolResult::default()
         })
     }
 }

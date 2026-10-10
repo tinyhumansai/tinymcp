@@ -10,7 +10,7 @@ use tinytools::{PermissionLevel, Tool, ToolCategory, ToolExposure, ToolResult};
 
 use super::invoker::McpToolInvoker;
 use super::naming::legacy_tool_name;
-use super::result::tool_result;
+use super::result::tool_result_for;
 use super::schema::tool_parameters;
 use super::source::McpToolSource;
 
@@ -184,7 +184,7 @@ impl Tool for McpServerTool {
             .invoke(&self.server_id, &self.remote_name, arguments)
             .await
         {
-            Ok(result) => Ok(tool_result(result)),
+            Ok(result) => Ok(tool_result_for(&self.server_id, &self.remote_name, result)),
             // A server that is gone or refuses is an answer the model can act
             // on, not a crash of the turn.
             Err(error) => {

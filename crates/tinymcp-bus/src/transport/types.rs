@@ -62,6 +62,12 @@ pub struct McpRemoteTool {
     /// The JSON Schema describing the tool's arguments.
     #[serde(default, rename = "inputSchema")]
     pub input_schema: Value,
+    /// The tool's `_meta` object, verbatim.
+    ///
+    /// Carries extension data such as an MCP Apps `ui` resource reference.
+    /// Untrusted remote data; never place it in a model's context.
+    #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
 }
 
 impl McpRemoteTool {
@@ -82,6 +88,7 @@ impl McpRemoteTool {
             title: None,
             description: None,
             input_schema: Value::Null,
+            meta: None,
         }
     }
 
@@ -197,6 +204,79 @@ pub enum McpToolContent {
     },
 }
 
+/// The most bytes a single resource's contents may carry.
+///
+/// Applied to `resources/read` replies and to resources embedded in a tool
+/// result. A resource above it is refused (on read) or dropped (when
+/// embedded), never truncated: a cut-off HTML document renders as something
+/// other than what the server sent.
+pub const MAX_RESOURCE_BYTES: usize = 2 * 1024 * 1024;
+
+/// A resource a server advertises in `resources/list`.
+///
+/// Every text field is untrusted remote data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpResource {
+    /// The resource's URI, for example `ui://weather/card.html`.
+    pub uri: String,
+    /// The resource's programmatic name.
+    #[serde(default)]
+    pub name: String,
+    /// A human-readable label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// A human-readable summary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// The MIME type the server declares for it.
+    #[serde(default, rename = "mimeType", skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// The resource's `_meta` object, verbatim.
+    #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+}
+
+/// The contents of one resource, as `resources/read` returns them or as a
+/// tool result embeds them.
+///
+/// Exactly one of [`Self::text`] and [`Self::blob`] is normally present;
+/// both are kept verbatim, the blob still base64-encoded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpResourceContents {
+    /// The resource's URI.
+    pub uri: String,
+    /// The MIME type of these contents.
+    #[serde(default, rename = "mimeType", skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// Text contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Binary contents, base64-encoded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blob: Option<String>,
+    /// The contents' `_meta` object, verbatim.
+    #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+}
+
+impl McpResourceContents {
+    /// How many bytes of payload these contents carry: text plus blob.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tinymcp_bus::McpResourceContents;
+    /// let contents: McpResourceContents = serde_json::from_value(serde_json::json!({
+    ///     "uri": "ui://card", "text": "<p>hi</p>",
+    /// })).unwrap();
+    /// assert_eq!(contents.byte_len(), 9);
+    /// ```
+    #[must_use]
+    pub fn byte_len(&self) -> usize {
+        self.text.as_ref().map_or(0, String::len) + self.blob.as_ref().map_or(0, String::len)
+    }
+}
+
 /// A tool result rendered into the shape a caller consumes.
 ///
 /// This is the vocabulary a host's own tool layer speaks, produced from a
@@ -224,6 +304,23 @@ pub struct McpToolResult {
         skip_serializing_if = "Option::is_none"
     )]
     pub markdown_formatted: Option<String>,
+    /// The reply's `structuredContent`, verbatim.
+    ///
+    /// Host-facing only: no rendering method reads it, so it never changes
+    /// what a model sees.
+    #[serde(
+        default,
+        rename = "structuredContent",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub structured_content: Option<Value>,
+    /// The reply's `_meta` object, verbatim. Host-facing only.
+    #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+    /// Resources the reply embedded as `resource` content blocks, each at
+    /// most [`MAX_RESOURCE_BYTES`]. Host-facing only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<McpResourceContents>,
 }
 
 impl McpToolResult {
@@ -242,7 +339,7 @@ impl McpToolResult {
         Self {
             content: vec![McpToolContent::Text { text: text.into() }],
             is_error: false,
-            markdown_formatted: None,
+            ..Self::default()
         }
     }
 
@@ -261,7 +358,7 @@ impl McpToolResult {
                 text: message.into(),
             }],
             is_error: true,
-            markdown_formatted: None,
+            ..Self::default()
         }
     }
 
@@ -271,7 +368,7 @@ impl McpToolResult {
         Self {
             content: vec![McpToolContent::Json { data }],
             is_error: false,
-            markdown_formatted: None,
+            ..Self::default()
         }
     }
 

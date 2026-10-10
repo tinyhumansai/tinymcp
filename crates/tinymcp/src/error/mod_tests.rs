@@ -339,6 +339,11 @@ fn one_of_every_variant() -> Vec<Error> {
     errors.push(Error::ServerDisabled {
         server: "srv".into(),
     });
+    errors.push(Error::ResourceTooLarge {
+        uri: "ui://card".into(),
+        bytes: 3,
+        limit: 2,
+    });
     errors.push(Error::ClientBuild {
         source: Box::new(a_reqwest_error()),
     });

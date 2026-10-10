@@ -83,6 +83,8 @@ pub mod tinybus_module;
 #[cfg(feature = "tools")]
 pub mod tools;
 pub mod transport;
+#[cfg(feature = "ui")]
+pub mod ui;
 
 pub use audit::AuditStore;
 pub use config_servers::{
@@ -115,14 +117,14 @@ pub use tinymcp_bus::{
     AuthDetection, AuthKind, AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind,
     ConnStatus, ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields,
     HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, HttpHeader, INTERFACE, InstalledServer,
-    LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES, MAX_LIST_LIMIT, MAX_TITLE_BYTES,
-    MCP_CALL_RESULT_KIND, METHODS, McpAuthChallenge, McpAuthConfig, McpAuthHint,
-    McpAuthorizationContext, McpCallError, McpCallOutcome, McpClientConfig,
-    McpClientIdentityConfig, McpClientInfo, McpInitializeResult, McpProxyConfig,
-    McpRegistryAuthConfig, McpRemoteTool, McpServerConfig, McpServerToolResult, McpSseEvent,
-    McpTool, McpToolContent, McpToolResult, McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord,
-    OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection, RegistryFreshness,
-    RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
-    SUPPORTED_PROTOCOL_VERSIONS, SearchCuration, ServerDetail, ServerStatus, Transport, config,
-    is_compatible, names, sanitize, version,
+    LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES, MAX_LIST_LIMIT, MAX_RESOURCE_BYTES,
+    MAX_TITLE_BYTES, MCP_CALL_RESULT_KIND, MCP_RESULT_KIND, METHODS, McpAuthChallenge,
+    McpAuthConfig, McpAuthHint, McpAuthorizationContext, McpCallError, McpCallOutcome,
+    McpClientConfig, McpClientIdentityConfig, McpClientInfo, McpInitializeResult, McpProxyConfig,
+    McpRegistryAuthConfig, McpRemoteTool, McpResource, McpResourceContents, McpResultEnvelope,
+    McpServerConfig, McpServerToolResult, McpSseEvent, McpTool, McpToolContent, McpToolResult,
+    McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata,
+    RegistryConnection, RegistryFreshness, RegistryListResponse, RegistryPagination,
+    RegistryServerDetail, RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS, SearchCuration,
+    ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize, version,
 };

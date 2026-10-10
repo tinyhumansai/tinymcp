@@ -204,6 +204,20 @@ pub enum Error {
         server: String,
     },
 
+    /// A resource's contents exceeded the size this client will hold.
+    ///
+    /// Refused rather than truncated: a cut-off document renders as something
+    /// other than what the server sent.
+    #[error("mcp resource `{uri}` is {bytes} bytes, above the {limit}-byte limit")]
+    ResourceTooLarge {
+        /// The resource that was read.
+        uri: String,
+        /// How many bytes its contents carried.
+        bytes: usize,
+        /// The cap it exceeded.
+        limit: usize,
+    },
+
     /// A server is installed but turned off.
     ///
     /// Being off is a setting the user chose, not a failure, so it is neither a
@@ -426,6 +440,7 @@ impl Error {
             Self::AuthDiscovery { .. } => errors::AUTH_DISCOVERY,
             Self::ToolNotAllowed { .. } => errors::TOOL_NOT_ALLOWED,
             Self::NotConnected { .. } => errors::NOT_CONNECTED,
+            Self::ResourceTooLarge { .. } => errors::RESOURCE_TOO_LARGE,
             Self::ServerDisabled { .. } => errors::SERVER_DISABLED,
             Self::UnknownServer { .. } => errors::UNKNOWN_SERVER,
             Self::ClientBuild { .. } => errors::CLIENT_BUILD,

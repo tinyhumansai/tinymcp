@@ -205,6 +205,42 @@ Enable the `tools` feature to expose each server tool as a
 `tinytools` is a git dependency so a host that links another checkout of it can
 `[patch]` the two into one package.
 
+## UI presentation for hosts
+
+Enable the `ui` feature for `tinymcp::ui`, the rules that turn one answered
+tool call into what a host shows for it. The vocabulary (`McpUiPresentation`,
+`UiLink`, `LinkClass`, `UiResource`, `WidgetCallPolicy`, `UiRendering`) is in
+`tinymcp_bus::ui`, so every host reads and writes the same metadata.
+
+- **Widget template.** `resolve_presentation` takes a `UiCallView` (build one
+  with `view_from_raw_result` or `view_from_envelope`) and reads the tool's
+  `_meta.ui.resourceUri`, the legacy `ui/resourceUri`, or the Apps SDK
+  `openai/outputTemplate`; only `ui://` URIs count. A `ui://` HTML document the
+  result embedded comes back as `inline_document` (no template) or
+  `prefetched` (the template's own document) for the host to keep.
+- **Data.** Tool input, `structuredContent` and result `_meta` are carried
+  only up to `MAX_INPUT_BYTES`, `MAX_STRUCTURED_BYTES` and `MAX_META_BYTES`.
+- **Documents.** `resource_from_contents` accepts HTML up to
+  `MAX_WIDGET_BYTES` (text or base64 blob) and reduces declared CSP origins to
+  `https`.
+- **Links.** `classify_link` sorts a URL into `Web`, `Handoff` (`upi://`,
+  `phonepe://`, `intent://`, any other app scheme), `Image` (image extensions,
+  `/image/upload/` paths) or `Blocked` (`javascript:`, `data:`, `file:`, host
+  schemes). `extract_links` surfaces at most five web and handoff links.
+- **Widget tool calls.** `widget_call_policy` refuses calls from host-supplied
+  pages and to tools whose `_meta.ui.visibility` excludes `app`, runs a tool
+  annotated `readOnlyHint: true`, and asks the user for anything else.
+- **Rendering.** `rendering(renders_widgets, &presentation)` answers `Widget`,
+  `Links` or `Nothing`.
+
+**A host without a sandboxed web view** (a messaging or email channel) should
+not advertise `client_capabilities()` (the `io.modelcontextprotocol/ui`
+extension), so servers that follow the MCP Apps spec answer with text alone.
+Where a server attaches UI regardless, call `rendering(false, ..)` and render
+the classified links: a web link as a URL, a handoff link as a redirect or QR
+the user opens on their phone. Never forward an image or blocked link as an
+action.
+
 ## Browsing the catalogs
 
 `McpRegistry::registry_search` lists the official MCP registry, plus Smithery

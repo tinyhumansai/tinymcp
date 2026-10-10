@@ -35,3 +35,7 @@ pub use types::{McpRegistrySource, McpServerDefinition, McpServerRegistry, McpTr
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+#[cfg(test)]
+#[path = "mod_ui_tests.rs"]
+mod ui_test;

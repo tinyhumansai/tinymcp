@@ -7,6 +7,7 @@
 //! implementation.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// The serde default for a flag that is on unless the user turns it off.
@@ -238,6 +239,24 @@ pub struct McpClientIdentityConfig {
     /// Sent as `initialize.clientInfo.version`.
     #[serde(default = "default_client_version")]
     pub version: String,
+    /// Sent as `initialize.capabilities`, on every transport.
+    ///
+    /// An empty object by default. A host that supports a protocol extension
+    /// declares it here, for example
+    /// `{"extensions": {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}}}`.
+    #[serde(
+        default = "default_client_capabilities",
+        skip_serializing_if = "is_empty_object"
+    )]
+    pub capabilities: Value,
+}
+
+fn default_client_capabilities() -> Value {
+    Value::Object(serde_json::Map::new())
+}
+
+fn is_empty_object(value: &Value) -> bool {
+    value.as_object().is_some_and(serde_json::Map::is_empty)
 }
 
 fn default_client_name() -> String {
@@ -264,6 +283,7 @@ impl Default for McpClientIdentityConfig {
             name: default_client_name(),
             title: default_client_title(),
             version: default_client_version(),
+            capabilities: default_client_capabilities(),
         }
     }
 }

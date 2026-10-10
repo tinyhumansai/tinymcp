@@ -290,6 +290,7 @@ fn mixed_content_joins_with_newlines_in_order() {
         ],
         is_error: false,
         markdown_formatted: None,
+        ..McpToolResult::default()
     };
     assert_eq!(result.text(), "line1\nline3");
     assert_eq!(result.output(), "line1\n42\nline3");
@@ -485,4 +486,96 @@ fn the_streamable_http_header_names_are_pinned() {
     assert_eq!(HEADER_PROTOCOL_VERSION, "MCP-Protocol-Version");
     assert_eq!(HEADER_SESSION_ID, "Mcp-Session-Id");
     assert_eq!(crate::HEADER_SESSION_ID, HEADER_SESSION_ID);
+}
+
+// ---------------------------------------------------------------------------
+// Tool `_meta`, resources, and a result's host-facing parts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_tools_meta_is_decoded_from_its_wire_name() {
+    let tool: McpRemoteTool = serde_json::from_value(json!({
+        "name": "show_card",
+        "_meta": { "ui": { "resourceUri": "ui://card" } },
+    }))
+    .unwrap();
+
+    assert_eq!(
+        tool.meta,
+        Some(json!({ "ui": { "resourceUri": "ui://card" } }))
+    );
+    assert_eq!(
+        serde_json::to_value(&tool).unwrap()["_meta"],
+        tool.meta.unwrap()
+    );
+}
+
+#[test]
+fn a_tool_without_meta_serializes_without_the_member() {
+    let wire = serde_json::to_value(McpRemoteTool::new("plain")).unwrap();
+
+    assert!(wire.get("_meta").is_none(), "{wire}");
+}
+
+#[test]
+fn a_resource_listing_entry_keeps_its_wire_names() {
+    let resource: super::McpResource = serde_json::from_value(json!({
+        "uri": "ui://card",
+        "name": "card",
+        "mimeType": "text/html;profile=mcp-app",
+        "_meta": { "ui": { "prefersBorder": true } },
+    }))
+    .unwrap();
+
+    assert_eq!(
+        resource.mime_type.as_deref(),
+        Some("text/html;profile=mcp-app")
+    );
+    assert_eq!(resource.title, None);
+    let wire = serde_json::to_value(&resource).unwrap();
+    assert_eq!(wire["mimeType"], "text/html;profile=mcp-app");
+    assert!(wire.get("title").is_none());
+}
+
+#[test]
+fn resource_contents_count_text_and_blob_bytes() {
+    let contents: super::McpResourceContents = serde_json::from_value(json!({
+        "uri": "ui://card", "text": "abc", "blob": "AAAA",
+    }))
+    .unwrap();
+    assert_eq!(contents.byte_len(), 7);
+
+    let empty: super::McpResourceContents =
+        serde_json::from_value(json!({ "uri": "ui://card" })).unwrap();
+    assert_eq!(empty.byte_len(), 0);
+}
+
+#[test]
+fn a_results_host_facing_parts_use_the_protocols_names_and_never_render() {
+    let mut result = McpToolResult::success("shown");
+    result.structured_content = Some(json!({ "n": 1 }));
+    result.meta = Some(json!({ "k": "v" }));
+    result.resources =
+        vec![serde_json::from_value(json!({ "uri": "ui://a", "text": "<p>" })).unwrap()];
+
+    let wire = serde_json::to_value(&result).unwrap();
+    assert_eq!(wire["structuredContent"], json!({ "n": 1 }));
+    assert_eq!(wire["_meta"], json!({ "k": "v" }));
+    assert_eq!(wire["resources"][0]["uri"], "ui://a");
+    assert_eq!(
+        serde_json::from_value::<McpToolResult>(wire).unwrap(),
+        result
+    );
+
+    assert_eq!(result.text(), "shown");
+    assert_eq!(result.output(), "shown");
+    assert_eq!(result.output_for_llm(true), "shown");
+}
+
+#[test]
+fn a_result_without_host_facing_parts_keeps_its_old_wire_form() {
+    assert_eq!(
+        serde_json::to_value(McpToolResult::success("x")).unwrap(),
+        json!({ "content": [{ "type": "text", "text": "x" }], "is_error": false })
+    );
 }

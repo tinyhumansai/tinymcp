@@ -31,9 +31,10 @@ mod types;
 
 pub use types::{
     AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
-    LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
-    McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
-    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
+    LATEST_PROTOCOL_VERSION, MAX_RESOURCE_BYTES, McpAuthChallenge, McpAuthorizationContext,
+    McpClientInfo, McpInitializeResult, McpRemoteTool, McpResource, McpResourceContents,
+    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
+    SUPPORTED_PROTOCOL_VERSIONS,
 };
 
 #[cfg(test)]

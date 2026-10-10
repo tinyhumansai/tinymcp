@@ -12,7 +12,8 @@ use crate::transport::http::McpHttpClient;
 use crate::transport::stdio::McpStdioClient;
 use tinymcp_bus::{
     McpAuthConfig, McpAuthorizationContext, McpClientConfig, McpClientIdentityConfig,
-    McpInitializeResult, McpProxyConfig, McpRemoteTool, McpServerConfig, McpServerToolResult,
+    McpInitializeResult, McpProxyConfig, McpRemoteTool, McpResource, McpResourceContents,
+    McpServerConfig, McpServerToolResult,
 };
 
 /// Where a server in the static set came from.
@@ -181,6 +182,39 @@ impl McpTransportClient {
         match self {
             Self::Http(client) => client.call_tool(tool, arguments).await,
             Self::Stdio(client) => client.call_tool(tool, arguments).await,
+        }
+    }
+
+    /// A tool from the transport's last listing, without a round trip.
+    #[must_use]
+    pub fn cached_tool(&self, tool: &str) -> Option<McpRemoteTool> {
+        match self {
+            Self::Http(client) => client.cached_tool(tool),
+            Self::Stdio(client) => client.cached_tool(tool),
+        }
+    }
+
+    /// Lists the resources the server advertises.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever the underlying transport returns.
+    pub async fn list_resources(&self) -> Result<Vec<McpResource>> {
+        match self {
+            Self::Http(client) => client.list_resources().await,
+            Self::Stdio(client) => client.list_resources().await,
+        }
+    }
+
+    /// Reads one resource's contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever the underlying transport returns.
+    pub async fn read_resource(&self, uri: &str) -> Result<Vec<McpResourceContents>> {
+        match self {
+            Self::Http(client) => client.read_resource(uri).await,
+            Self::Stdio(client) => client.read_resource(uri).await,
         }
     }
 
@@ -448,6 +482,41 @@ impl McpServerRegistry {
         }
 
         definition.client.call_tool(tool, arguments).await
+    }
+
+    /// A listed tool's `_meta`, from the transport's last listing.
+    ///
+    /// No round trip. `None` when the server or tool is unknown, the tool is
+    /// not permitted, nothing has been listed yet, or the tool has no `_meta`.
+    #[must_use]
+    pub fn tool_meta(&self, server: &str, tool: &str) -> Option<Value> {
+        let definition = self.get(server)?;
+        if !definition.is_tool_allowed(tool) {
+            return None;
+        }
+        definition.client.cached_tool(tool)?.meta
+    }
+
+    /// Lists a server's resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnknownServer`] when `server` is not registered, plus
+    /// whatever the transport returns.
+    pub async fn list_resources(&self, server: &str) -> Result<Vec<McpResource>> {
+        self.require(server)?.client.list_resources().await
+    }
+
+    /// Reads one of a server's resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnknownServer`] when `server` is not registered,
+    /// [`Error::ResourceTooLarge`] when the contents exceed
+    /// [`tinymcp_bus::MAX_RESOURCE_BYTES`], plus whatever the transport
+    /// returns.
+    pub async fn read_resource(&self, server: &str, uri: &str) -> Result<Vec<McpResourceContents>> {
+        self.require(server)?.client.read_resource(uri).await
     }
 
     /// Performs a server's handshake.

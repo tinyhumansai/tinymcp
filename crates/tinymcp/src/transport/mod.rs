@@ -18,6 +18,9 @@
 //! logs, telemetry, and user interfaces alike.
 
 mod render;
+mod resources;
+#[cfg(test)]
+pub(crate) mod ui_fixture;
 pub use render::{redact_endpoint, render_tool_result};
 
 pub mod http;

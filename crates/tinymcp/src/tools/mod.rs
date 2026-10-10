@@ -44,7 +44,7 @@ use std::sync::Arc;
 
 pub use bridge::{ActGate, McpCallTool, McpListServersTool, McpListToolsTool};
 pub use invoker::McpToolInvoker;
-pub use result::{MAX_LLM_BLOCK_BYTES, tool_result};
+pub use result::{MAX_LLM_BLOCK_BYTES, tool_result, tool_result_for};
 pub use schema::tool_parameters;
 pub use scrub::{REDACTED, SecretScrubber};
 pub use source::{McpExposure, McpToolSource};
@@ -108,6 +108,9 @@ mod bridge_outcome_test;
 #[cfg(test)]
 #[path = "bridge_tests.rs"]
 mod bridge_test;
+#[cfg(test)]
+#[path = "envelope_tests.rs"]
+mod envelope_test;
 #[cfg(test)]
 #[path = "scrub_tests.rs"]
 mod scrub_test;

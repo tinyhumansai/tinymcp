@@ -2,7 +2,8 @@
 //!
 //! [`McpStdioClient`] spawns a server as a child process and speaks
 //! newline-delimited JSON-RPC over its standard input and output, per the MCP
-//! stdio transport.
+//! stdio transport: `initialize`, `tools/list`, `tools/call`,
+//! `resources/list` and `resources/read`.
 //!
 //! # One session, one child
 //!
@@ -27,6 +28,7 @@
 //! that is not JSON is skipped with a debug log rather than treated as a
 //! failure, because servers print to it anyway.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -38,10 +40,13 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Mutex;
 
 use crate::error::{Error, Result};
+use crate::transport::resources::{
+    MAX_RESOURCE_PAGES, list_params, parse_read_result, parse_resource_page,
+};
 use crate::transport::{render_tool_result, validate_protocol_version};
 use tinymcp_bus::{
     LATEST_PROTOCOL_VERSION, McpClientIdentityConfig, McpClientInfo, McpInitializeResult,
-    McpRemoteTool, McpServerToolResult,
+    McpRemoteTool, McpResource, McpResourceContents, McpServerToolResult,
 };
 
 pub mod spawn_env;
@@ -55,7 +60,9 @@ pub struct McpStdioClient {
     cwd: Option<PathBuf>,
     next_id: AtomicI64,
     client_info: McpClientInfo,
+    capabilities: Value,
     state: Mutex<Option<StdioSession>>,
+    cached_tools: parking_lot::Mutex<HashMap<String, McpRemoteTool>>,
 }
 
 /// A running child and the pipes to it.
@@ -86,8 +93,18 @@ impl McpStdioClient {
             cwd,
             next_id: AtomicI64::new(1),
             client_info: McpClientInfo::from(identity),
+            capabilities: identity.capabilities.clone(),
             state: Mutex::new(None),
+            cached_tools: parking_lot::Mutex::new(HashMap::new()),
         }
+    }
+
+    /// The same client sending `capabilities` in `initialize`, replacing
+    /// those the identity carried.
+    #[must_use]
+    pub fn with_capabilities(mut self, capabilities: Value) -> Self {
+        self.capabilities = capabilities;
+        self
     }
 
     /// The command this client spawns.
@@ -206,7 +223,7 @@ impl McpStdioClient {
                 "initialize",
                 json!({
                     "protocolVersion": LATEST_PROTOCOL_VERSION,
-                    "capabilities": {},
+                    "capabilities": self.capabilities,
                     "clientInfo": self.client_info,
                 }),
             )
@@ -255,8 +272,75 @@ impl McpStdioClient {
             .get("tools")
             .ok_or_else(|| Error::malformed("stdio tools/list reply has no `tools` member"))?;
 
-        serde_json::from_value(tools.clone())
-            .map_err(|error| Error::malformed(format!("stdio tools/list entries: {error}")))
+        let tools: Vec<McpRemoteTool> = serde_json::from_value(tools.clone())
+            .map_err(|error| Error::malformed(format!("stdio tools/list entries: {error}")))?;
+        *self.cached_tools.lock() = tools
+            .iter()
+            .map(|tool| (tool.name.clone(), tool.clone()))
+            .collect();
+        Ok(tools)
+    }
+
+    /// A tool from the last listing, without a round trip.
+    ///
+    /// `None` when the tool was not in it or nothing has been listed yet.
+    #[must_use]
+    pub fn cached_tool(&self, name: &str) -> Option<McpRemoteTool> {
+        self.cached_tools.lock().get(name).cloned()
+    }
+
+    /// Lists the resources the server advertises, following pagination up to
+    /// a bounded number of pages.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedResponse`] when a page has no `resources`
+    /// member, plus anything [`Self::initialize`] can return.
+    pub async fn list_resources(&self) -> Result<Vec<McpResource>> {
+        self.initialize().await?;
+
+        let mut state = self.state.lock().await;
+        let session = state
+            .as_mut()
+            .ok_or_else(|| Error::malformed("the stdio session is not initialized"))?;
+
+        let mut resources = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_RESOURCE_PAGES {
+            let response = self
+                .request(session, "resources/list", list_params(cursor.as_deref()))
+                .await?;
+            let (page, next) = parse_resource_page(&response)?;
+            resources.extend(page);
+            match next {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        tracing::debug!(command = %self.command, resources = resources.len(), "listed resources");
+        Ok(resources)
+    }
+
+    /// Reads one resource's contents, verbatim.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ResourceTooLarge`] when the contents exceed
+    /// [`tinymcp_bus::MAX_RESOURCE_BYTES`], [`Error::MalformedResponse`] when
+    /// the reply has no `contents`, plus anything [`Self::initialize`] can
+    /// return.
+    pub async fn read_resource(&self, uri: &str) -> Result<Vec<McpResourceContents>> {
+        self.initialize().await?;
+
+        let mut state = self.state.lock().await;
+        let session = state
+            .as_mut()
+            .ok_or_else(|| Error::malformed("the stdio session is not initialized"))?;
+
+        let response = self
+            .request(session, "resources/read", json!({ "uri": uri }))
+            .await?;
+        parse_read_result(uri, &response)
     }
 
     /// Calls `name` with `arguments`.
@@ -428,3 +512,7 @@ impl McpStdioClient {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+#[cfg(test)]
+#[path = "mod_ui_tests.rs"]
+mod ui_test;

@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use tinymcp_bus::McpToolResult;
+use tinymcp_bus::{MAX_RESOURCE_BYTES, McpResourceContents, McpToolResult};
 
 /// Reduces an endpoint to scheme and authority, or `<redacted>`.
 ///
@@ -60,6 +60,11 @@ pub fn redact_endpoint(raw: &str) -> String {
 /// call succeeded and the tool said no, and a caller that conflates the two
 /// reports a network problem for a bad argument.
 ///
+/// `structuredContent`, `_meta`, and embedded `resource` blocks are copied
+/// into the host-facing fields of [`McpToolResult`]. They never change the
+/// rendered text. An embedded resource above [`MAX_RESOURCE_BYTES`] is
+/// dropped.
+///
 /// # Examples
 ///
 /// ```
@@ -92,9 +97,47 @@ pub fn render_tool_result(result: &Value) -> McpToolResult {
         rendered = result.to_string();
     }
 
-    if is_error {
+    let mut rendered = if is_error {
         McpToolResult::error(rendered)
     } else {
         McpToolResult::success(rendered)
-    }
+    };
+    rendered.structured_content = result
+        .get("structuredContent")
+        .filter(|value| !value.is_null())
+        .cloned();
+    rendered.meta = result
+        .get("_meta")
+        .filter(|value| !value.is_null())
+        .cloned();
+    rendered.resources = embedded_resources(result);
+    rendered
 }
+
+/// The `resource` content blocks of a reply, each within
+/// [`MAX_RESOURCE_BYTES`].
+fn embedded_resources(result: &Value) -> Vec<McpResourceContents> {
+    let Some(content) = result.get("content").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    content
+        .iter()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("resource"))
+        .filter_map(|block| block.get("resource"))
+        .filter_map(|resource| serde_json::from_value::<McpResourceContents>(resource.clone()).ok())
+        .filter(|resource| {
+            let fits = resource.byte_len() <= MAX_RESOURCE_BYTES;
+            if !fits {
+                tracing::debug!(
+                    bytes = resource.byte_len(),
+                    "dropped an embedded resource above the size cap"
+                );
+            }
+            fits
+        })
+        .collect()
+}
+
+#[cfg(test)]
+#[path = "render_tests.rs"]
+mod test;

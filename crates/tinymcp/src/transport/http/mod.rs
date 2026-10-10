@@ -1,7 +1,8 @@
 //! The Streamable HTTP transport.
 //!
 //! [`McpHttpClient`] speaks MCP over HTTP: the `initialize` handshake and
-//! protocol-version negotiation, `tools/list` and `tools/call`, server-sent
+//! protocol-version negotiation, `tools/list` and `tools/call`,
+//! `resources/list` and `resources/read`, server-sent
 //! event draining, session lifecycle through `Mcp-Session-Id`, OAuth discovery
 //! from a `WWW-Authenticate` challenge or the server's well-known metadata, and
 //! a graceful `DELETE` on close.
@@ -48,6 +49,9 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use crate::error::{Error, Result};
+use crate::transport::resources::{
+    MAX_RESOURCE_PAGES, list_params, parse_read_result, parse_resource_page,
+};
 use crate::transport::{redact_endpoint, render_tool_result, validate_protocol_version};
 use discovery::{DISCOVERY_BUDGET, WellKnownOutcome};
 use headers::{
@@ -57,8 +61,8 @@ use sse::{first_complete_sse_data, parse_sse_events, parse_sse_message};
 use tinymcp_bus::{
     AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
     LATEST_PROTOCOL_VERSION, McpAuthConfig, McpAuthorizationContext, McpClientIdentityConfig,
-    McpClientInfo, McpInitializeResult, McpProxyConfig, McpRemoteTool, McpServerToolResult,
-    McpSseEvent, ProtectedResourceMetadata,
+    McpClientInfo, McpInitializeResult, McpProxyConfig, McpRemoteTool, McpResource,
+    McpResourceContents, McpServerToolResult, McpSseEvent, ProtectedResourceMetadata,
 };
 
 /// The `Mcp-Method` request header, which some servers route on.
@@ -82,6 +86,7 @@ pub struct McpHttpClient {
     http: reqwest::Client,
     next_id: AtomicI64,
     client_info: McpClientInfo,
+    capabilities: Value,
     auth: McpAuthConfig,
     state: Mutex<SessionState>,
     discovery_http: reqwest::Client,
@@ -157,6 +162,14 @@ impl McpHttpClientBuilder {
         self
     }
 
+    /// Sets the capabilities sent in `initialize`, replacing those the
+    /// identity carries.
+    #[must_use]
+    pub fn capabilities(mut self, capabilities: Value) -> Self {
+        self.identity.capabilities = capabilities;
+        self
+    }
+
     /// Routes outbound requests through a proxy the host already resolved.
     #[must_use]
     pub fn proxy(mut self, proxy: Option<McpProxyConfig>) -> Self {
@@ -209,6 +222,7 @@ impl McpHttpClientBuilder {
             http,
             next_id: AtomicI64::new(1),
             client_info: McpClientInfo::from(&self.identity),
+            capabilities: self.identity.capabilities,
             auth: self.auth,
             state: Mutex::new(SessionState::default()),
             discovery_http,
@@ -381,7 +395,7 @@ impl McpHttpClient {
             "method": "initialize",
             "params": {
                 "protocolVersion": LATEST_PROTOCOL_VERSION,
-                "capabilities": {},
+                "capabilities": self.capabilities,
                 "clientInfo": self.client_info,
             },
         });
@@ -517,6 +531,80 @@ impl McpHttpClient {
         Ok(McpServerToolResult::new(result, rendered))
     }
 
+    /// A tool from the last listing, without a round trip.
+    ///
+    /// `None` when the tool was not in it or nothing has been listed yet.
+    #[must_use]
+    pub fn cached_tool(&self, name: &str) -> Option<McpRemoteTool> {
+        self.state.lock().cached_tools.get(name).cloned()
+    }
+
+    /// Lists the resources the server advertises, following pagination.
+    ///
+    /// Stops after a bounded number of pages, so a server that never stops
+    /// handing out cursors cannot hold the caller forever.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedResponse`] when a page has no `resources`
+    /// member, plus anything [`Self::initialize`] can return.
+    pub async fn list_resources(&self) -> Result<Vec<McpResource>> {
+        self.initialize().await?;
+
+        let mut resources = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_RESOURCE_PAGES {
+            let result = self
+                .send_jsonrpc(
+                    "resources/list",
+                    list_params(cursor.as_deref()),
+                    RequestOptions::standard("resources/list", None, Vec::new()),
+                )
+                .await?
+                .result;
+            let (page, next) = parse_resource_page(&result)?;
+            resources.extend(page);
+            match next {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        tracing::debug!(
+            endpoint = %redact_endpoint(&self.endpoint),
+            resources = resources.len(),
+            "listed resources"
+        );
+        Ok(resources)
+    }
+
+    /// Reads one resource's contents, verbatim.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ResourceTooLarge`] when the contents exceed
+    /// [`tinymcp_bus::MAX_RESOURCE_BYTES`], [`Error::MalformedResponse`] when
+    /// the reply has no `contents`, plus anything [`Self::initialize`] can
+    /// return.
+    pub async fn read_resource(&self, uri: &str) -> Result<Vec<McpResourceContents>> {
+        self.initialize().await?;
+
+        let result = self
+            .send_jsonrpc(
+                "resources/read",
+                json!({ "uri": uri }),
+                RequestOptions::standard("resources/read", None, Vec::new()),
+            )
+            .await?
+            .result;
+        let contents = parse_read_result(uri, &result)?;
+        tracing::debug!(
+            endpoint = %redact_endpoint(&self.endpoint),
+            parts = contents.len(),
+            "read a resource"
+        );
+        Ok(contents)
+    }
+
     /// Discovers how to authorize to this server, if it demands authorization.
     ///
     /// Sends an unauthenticated `initialize` and reads the `WWW-Authenticate`
@@ -557,7 +645,7 @@ impl McpHttpClient {
             "method": "initialize",
             "params": {
                 "protocolVersion": LATEST_PROTOCOL_VERSION,
-                "capabilities": {},
+                "capabilities": self.capabilities,
                 "clientInfo": self.client_info,
             },
         });
@@ -1157,3 +1245,7 @@ fn fill_missing_metadata(
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+#[cfg(test)]
+#[path = "mod_ui_tests.rs"]
+mod ui_test;

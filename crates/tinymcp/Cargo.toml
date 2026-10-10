@@ -54,6 +54,8 @@ anyhow = { workspace = true, optional = true }
 # credential-looking query values, and matches their percent-encoded spellings.
 url = { workspace = true, optional = true }
 urlencoding = { workspace = true, optional = true }
+# Finding URLs in tool results, for the `ui` feature's link extraction.
+regex = { workspace = true, optional = true }
 
 [[example]]
 name = "verify_module"
@@ -97,6 +99,10 @@ server-http = ["dep:axum", "dep:tokio-stream", "tokio/net"]
 # deferred exposure, and an invoker seam a host wraps with its own policy.
 # Off by default so the loadable module does not link the tool vocabulary.
 tools = ["dep:tinytools", "dep:async-trait", "dep:anyhow", "dep:url", "dep:urlencoding"]
+# Tool-provided UI for hosts (`tinymcp::ui`): widget template resolution,
+# widget document checks, link classification, and the widget tool-call and
+# rendering policy. Off by default; a host that renders tool UI turns it on.
+ui = ["dep:url", "dep:regex"]
 
 [lints]
 workspace = true

@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::{McpResourceContents, McpToolResult};
+
 /// Why a tool call's `arguments` could not be read as an object.
 ///
 /// Each variant names what actually arrived, because the message is read by
@@ -141,10 +143,30 @@ impl McpCallOutcome {
 
     /// Reads an outcome out of a tool result's metadata.
     ///
-    /// `None` when `metadata` is not an object whose `kind` is
-    /// [`MCP_CALL_RESULT_KIND`], or does not decode as an outcome.
+    /// Accepts both shapes a call's metadata takes: a bare outcome whose
+    /// `kind` is [`MCP_CALL_RESULT_KIND`], and an [`McpResultEnvelope`]
+    /// (`kind` [`MCP_RESULT_KIND`]) carrying one under `outcome`.
+    ///
+    /// `None` when `metadata` is neither, or does not decode as an outcome.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tinymcp_bus::{McpCallOutcome, McpResultEnvelope, McpToolResult};
+    /// let outcome = McpCallOutcome::answered("docs", "search");
+    /// let envelope = McpResultEnvelope::new("docs", "search", &McpToolResult::success("ok"))
+    ///     .with_outcome(outcome.clone());
+    /// assert_eq!(McpCallOutcome::from_metadata(&envelope.to_metadata()), Some(outcome.clone()));
+    /// let bare = serde_json::to_value(&outcome).unwrap();
+    /// assert_eq!(McpCallOutcome::from_metadata(&bare), Some(outcome));
+    /// ```
     #[must_use]
     pub fn from_metadata(metadata: &Value) -> Option<Self> {
+        if metadata.get("kind").and_then(Value::as_str) == Some(MCP_RESULT_KIND) {
+            return metadata
+                .get("outcome")
+                .and_then(|outcome| serde_json::from_value(outcome.clone()).ok());
+        }
         serde_json::from_value(metadata.clone()).ok()
     }
 }
@@ -232,5 +254,115 @@ impl McpCallError {
             unauthorized: false,
             advertises_oauth: false,
         }
+    }
+}
+
+/// The `kind` discriminator an [`McpResultEnvelope`] carries.
+pub const MCP_RESULT_KIND: &str = "mcp_result";
+
+/// The host-only metadata attached to an answered MCP tool call.
+///
+/// Carries what the model-facing rendering drops — the reply's
+/// `structuredContent`, its `_meta`, and any embedded resources — so a host
+/// can render tool UI without re-calling the server. `outcome` is present
+/// when the call path classifies outcomes (`mcp_call_tool`), and is what
+/// [`McpCallOutcome::from_metadata`] reads.
+///
+/// Decoding rejects a payload whose `kind` is not [`MCP_RESULT_KIND`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "McpResultEnvelopeWire")]
+pub struct McpResultEnvelope {
+    /// Always [`MCP_RESULT_KIND`].
+    pub kind: String,
+    /// The server the call went to, as the caller addressed it.
+    pub server: String,
+    /// The tool's name on that server.
+    pub tool: String,
+    /// The reply's `structuredContent`, verbatim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_content: Option<Value>,
+    /// The reply's `_meta`, verbatim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+    /// Resources the reply embedded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<McpResourceContents>,
+    /// The call's classified outcome, when the call path reports one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<McpCallOutcome>,
+}
+
+impl McpResultEnvelope {
+    /// The envelope for `result`, returned by `tool` on `server`.
+    #[must_use]
+    pub fn new(server: impl Into<String>, tool: impl Into<String>, result: &McpToolResult) -> Self {
+        Self {
+            kind: MCP_RESULT_KIND.to_string(),
+            server: server.into(),
+            tool: tool.into(),
+            structured_content: result.structured_content.clone(),
+            meta: result.meta.clone(),
+            resources: result.resources.clone(),
+            outcome: None,
+        }
+    }
+
+    /// The same envelope carrying `outcome`.
+    #[must_use]
+    pub fn with_outcome(mut self, outcome: McpCallOutcome) -> Self {
+        self.outcome = Some(outcome);
+        self
+    }
+
+    /// The envelope as a tool result's metadata value.
+    #[must_use]
+    pub fn to_metadata(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
+
+    /// Reads an envelope out of a tool result's metadata.
+    ///
+    /// `None` when `metadata` is not an object whose `kind` is
+    /// [`MCP_RESULT_KIND`], or does not decode as an envelope.
+    #[must_use]
+    pub fn from_metadata(metadata: &Value) -> Option<Self> {
+        serde_json::from_value(metadata.clone()).ok()
+    }
+}
+
+#[derive(Deserialize)]
+struct McpResultEnvelopeWire {
+    kind: String,
+    server: String,
+    tool: String,
+    #[serde(default)]
+    structured_content: Option<Value>,
+    #[serde(default)]
+    meta: Option<Value>,
+    #[serde(default)]
+    resources: Vec<McpResourceContents>,
+    #[serde(default)]
+    outcome: Option<McpCallOutcome>,
+}
+
+impl TryFrom<McpResultEnvelopeWire> for McpResultEnvelope {
+    type Error = String;
+
+    fn try_from(wire: McpResultEnvelopeWire) -> Result<Self, Self::Error> {
+        if wire.kind != MCP_RESULT_KIND {
+            return Err(format!(
+                "expected kind `{MCP_RESULT_KIND}`, got `{}`",
+                wire.kind
+            ));
+        }
+        Ok(Self {
+            kind: wire.kind,
+            server: wire.server,
+            tool: wire.tool,
+            structured_content: wire.structured_content,
+            meta: wire.meta,
+            resources: wire.resources,
+            outcome: wire.outcome,
+        })
     }
 }

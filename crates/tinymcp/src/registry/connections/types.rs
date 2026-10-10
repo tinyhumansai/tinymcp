@@ -16,7 +16,7 @@ use crate::transport::http::McpHttpClient;
 use crate::transport::stdio::McpStdioClient;
 use tinymcp_bus::{
     ConnStatus, ConnectedServerOverview, InstalledServer, McpAuthConfig, McpClientIdentityConfig,
-    McpProxyConfig, McpServerToolResult, McpTool, Transport,
+    McpProxyConfig, McpResource, McpResourceContents, McpServerToolResult, McpTool, Transport,
 };
 
 /// The per-request timeout for a connected HTTP-remote server.
@@ -133,6 +133,22 @@ impl ActiveClient {
         }
     }
 
+    /// Lists the server's resources.
+    async fn list_resources(&self) -> Result<Vec<McpResource>> {
+        match self {
+            Self::Stdio(client) => client.list_resources().await,
+            Self::Http(client) => client.list_resources().await,
+        }
+    }
+
+    /// Reads one of the server's resources.
+    async fn read_resource(&self, uri: &str) -> Result<Vec<McpResourceContents>> {
+        match self {
+            Self::Stdio(client) => client.read_resource(uri).await,
+            Self::Http(client) => client.read_resource(uri).await,
+        }
+    }
+
     /// Ends the session.
     async fn close_session(&self) -> Result<()> {
         match self {
@@ -148,6 +164,8 @@ impl ActiveClient {
 struct Connection {
     client: ActiveClient,
     tools: RwLock<Vec<McpTool>>,
+    /// Each listed tool's `_meta`, by tool name, for tools that sent one.
+    tool_meta: HashMap<String, Value>,
     qualified_name: String,
     display_name: String,
     description: Option<String>,
@@ -287,9 +305,12 @@ impl Connections {
             }
         };
 
-        let tools: Vec<McpTool> = client
-            .list_tools()
-            .await?
+        let remote_tools = client.list_tools().await?;
+        let tool_meta: HashMap<String, Value> = remote_tools
+            .iter()
+            .filter_map(|remote| Some((remote.name.clone(), remote.meta.clone()?)))
+            .collect();
+        let tools: Vec<McpTool> = remote_tools
             .into_iter()
             .map(|remote| McpTool {
                 name: remote.name,
@@ -306,6 +327,7 @@ impl Connections {
         let connection = Arc::new(Connection {
             client,
             tools: RwLock::new(tools.clone()),
+            tool_meta,
             qualified_name: server.qualified_name.clone(),
             display_name: server.display_name.clone(),
             description: server.description.clone(),
@@ -587,6 +609,53 @@ impl Connections {
         Some(self.get(server_id).await?.tools_snapshot().await)
     }
 
+    /// One connected tool's `_meta`, as the server listed it at connect.
+    ///
+    /// No round trip. `None` when the server is not connected, the tool is
+    /// unknown, or it sent no `_meta`.
+    pub async fn tool_meta(&self, server_id: &str, tool: &str) -> Option<Value> {
+        self.get(server_id).await?.tool_meta.get(tool).cloned()
+    }
+
+    /// Every connected tool's `_meta` on one server, by tool name.
+    ///
+    /// `None` when the server is not connected. Tools that sent no `_meta`
+    /// are absent from the map.
+    pub async fn tool_metas(&self, server_id: &str) -> Option<HashMap<String, Value>> {
+        Some(self.get(server_id).await?.tool_meta.clone())
+    }
+
+    /// Lists a connected server's resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotConnected`] when the server has no live connection,
+    /// plus whatever the transport returns.
+    pub async fn list_resources(&self, server_id: &str) -> Result<Vec<McpResource>> {
+        self.require(server_id).await?.client.list_resources().await
+    }
+
+    /// Reads one resource of a connected server, verbatim.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotConnected`] when the server has no live connection,
+    /// [`Error::ResourceTooLarge`] when the contents exceed
+    /// [`tinymcp_bus::MAX_RESOURCE_BYTES`], plus whatever the transport
+    /// returns.
+    pub async fn read_resource(
+        &self,
+        server_id: &str,
+        uri: &str,
+    ) -> Result<Vec<McpResourceContents>> {
+        tracing::debug!(server_id, "reading a resource");
+        self.require(server_id)
+            .await?
+            .client
+            .read_resource(uri)
+            .await
+    }
+
     /// Every connected server's identity and tools.
     ///
     /// Sorted by qualified name. A caller rendering this into a prompt would
@@ -669,6 +738,15 @@ impl Connections {
     /// How many servers are connected.
     pub async fn connected_count(&self) -> usize {
         self.live.read().await.len()
+    }
+
+    /// One connection, or [`Error::NotConnected`].
+    async fn require(&self, server_id: &str) -> Result<Arc<Connection>> {
+        self.get(server_id)
+            .await
+            .ok_or_else(|| Error::NotConnected {
+                server: server_id.to_string(),
+            })
     }
 
     /// One connection, cloned out from under the lock.

@@ -47,3 +47,7 @@ pub use types::{Connections, ProbeOutcome, REMOTE_REQUEST_TIMEOUT};
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+#[cfg(test)]
+#[path = "mod_ui_tests.rs"]
+mod ui_test;

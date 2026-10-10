@@ -12,7 +12,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 use tinymcp_bus::{
-    MCP_CALL_RESULT_KIND, McpAuthConfig, McpCallOutcome, McpClientConfig, McpServerConfig, errors,
+    MCP_CALL_RESULT_KIND, MCP_RESULT_KIND, McpAuthConfig, McpCallOutcome, McpClientConfig,
+    McpServerConfig, errors,
 };
 use tinytools::{Tool, ToolResult};
 
@@ -148,6 +149,10 @@ async fn an_answered_call_reports_ok_with_no_error() {
     );
     assert_eq!(
         result.metadata.as_ref().unwrap()["kind"],
+        json!(MCP_RESULT_KIND)
+    );
+    assert_eq!(
+        result.metadata.as_ref().unwrap()["outcome"]["kind"],
         json!(MCP_CALL_RESULT_KIND)
     );
 }

@@ -12,11 +12,13 @@
 //!
 //! Every result [`McpCallTool`] returns once the act gate has allowed the call
 //! and it has a server, a tool and an `arguments` value carries a
-//! [`McpCallOutcome`] as its metadata. A call missing one of those, or refused
-//! by the gate, fails before any result exists and carries none. The outcome
-//! says whether the server answered and, when it did not, the error's wire
-//! name and whether it was a 401 that advertised OAuth. The model never sees it; a host reads it to meter calls
-//! and to surface failures without parsing the result text.
+//! [`McpCallOutcome`] in its metadata: inside an [`McpResultEnvelope`] when the
+//! server answered, bare when it did not. [`McpCallOutcome::from_metadata`]
+//! reads both. A call missing one of those, or refused by the gate, fails
+//! before any result exists and carries none. The outcome says whether the
+//! server answered and, when it did not, the error's wire name and whether it
+//! was a 401 that advertised OAuth. The model never sees it; a host reads it
+//! to meter calls and to surface failures without parsing the result text.
 
 // The tool names and descriptions are fixed strings, and the rendered Markdown
 // is built a line at a time; both are clearer as written.
@@ -26,7 +28,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tinymcp_bus::{McpAuthConfig, McpCallError, McpCallOutcome};
+use tinymcp_bus::{McpAuthConfig, McpCallError, McpCallOutcome, McpResultEnvelope};
 use tinytools::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 
 use super::naming::disambiguated_tool_name;
@@ -379,10 +381,13 @@ impl Tool for McpCallTool {
         if options.prefer_markdown && result.markdown_formatted.is_none() {
             result.markdown_formatted = Some(result.output());
         }
-        Ok(with_outcome(
-            scrubber.scrub_result(super::tool_result(result)),
-            &outcome,
-        ))
+        let envelope = scrubbed_envelope(
+            &scrubber,
+            McpResultEnvelope::new(&server, &tool, &result).with_outcome(outcome),
+        );
+        let mut mapped = scrubber.scrub_result(super::tool_result(result));
+        mapped.metadata = Some(envelope.to_metadata());
+        Ok(mapped)
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
@@ -395,6 +400,28 @@ impl Tool for McpCallTool {
 fn with_outcome(mut result: ToolResult, outcome: &McpCallOutcome) -> ToolResult {
     result.metadata = serde_json::to_value(outcome).ok();
     result
+}
+
+/// `envelope` with every known secret replaced in the server-supplied parts.
+pub(super) fn scrubbed_envelope(
+    scrubber: &SecretScrubber,
+    mut envelope: McpResultEnvelope,
+) -> McpResultEnvelope {
+    if let Some(structured) = envelope.structured_content.as_mut() {
+        scrubber.scrub_value(structured);
+    }
+    if let Some(meta) = envelope.meta.as_mut() {
+        scrubber.scrub_value(meta);
+    }
+    for resource in &mut envelope.resources {
+        if let Some(text) = resource.text.as_mut() {
+            *text = scrubber.scrub(text);
+        }
+        if let Some(meta) = resource.meta.as_mut() {
+            scrubber.scrub_value(meta);
+        }
+    }
+    envelope
 }
 
 /// The host-facing classification of a failed call.

@@ -12,8 +12,11 @@
 /// 1.1 added agent tools; 1.2 added registry and directory members; 1.3 added
 /// the structured call outcome and the credential-store error name; 1.4 added
 /// the search page's freshness, including answers from the local catalog index,
-/// and the registry-timeout error name.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 4);
+/// and the registry-timeout error name; 1.5 added tool `_meta`, client
+/// capabilities, resource payloads, the result envelope, and the
+/// resource-too-large error name; 1.6 added the tool UI presentation
+/// vocabulary.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 6);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.
@@ -27,7 +30,7 @@ pub const CONTRACT_VERSION: (u32, u32) = (1, 4);
 /// ```
 /// # use tinymcp_bus::{is_compatible, CONTRACT_VERSION};
 /// assert!(is_compatible(CONTRACT_VERSION));
-/// assert!(is_compatible((1, 4)));
+/// assert!(is_compatible((1, 7)));
 /// assert!(!is_compatible((2, 0)));
 /// ```
 #[must_use]

@@ -14,7 +14,10 @@
 //! [`McpCallOutcome`] is what a forwarded call reports back to the host, beside
 //! the text the model reads: which server and tool, whether the server
 //! answered, and the classified error when it did not. It travels as a tool
-//! result's metadata tagged with [`MCP_CALL_RESULT_KIND`].
+//! result's metadata tagged with [`MCP_CALL_RESULT_KIND`], or nested under
+//! `outcome` in an [`McpResultEnvelope`] (tagged [`MCP_RESULT_KIND`]) when the
+//! server answered. The envelope also carries what the model-facing rendering
+//! drops: `structuredContent`, `_meta`, and embedded resources.
 //!
 //! # Why this is in the contract crate
 //!
@@ -37,9 +40,14 @@ mod types;
 pub use arguments::normalize_tool_arguments;
 pub use registry_tools::{RegistryTool, registry_tool_specs};
 pub use types::{
-    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, McpCallError, McpCallOutcome,
+    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, MCP_RESULT_KIND, McpCallError,
+    McpCallOutcome, McpResultEnvelope,
 };
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+#[cfg(test)]
+#[path = "mod_envelope_tests.rs"]
+mod envelope_test;

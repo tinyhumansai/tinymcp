@@ -1,7 +1,7 @@
 //! Converting a rendered MCP result into a `tinytools` result.
 
 use serde_json::{Value, json};
-use tinymcp_bus::{McpToolContent, McpToolResult};
+use tinymcp_bus::{McpResultEnvelope, McpToolContent, McpToolResult};
 use tinytools::{ToolContent, ToolResult};
 
 /// The most a content block may serialize to before its payload is elided.
@@ -37,6 +37,21 @@ pub fn tool_result(result: McpToolResult) -> ToolResult {
         markdown_formatted: result.markdown_formatted.map(bound_text),
         ..ToolResult::default()
     }
+}
+
+/// Maps a rendered MCP result onto [`ToolResult`], as [`tool_result`] does,
+/// and attaches an [`McpResultEnvelope`] for `tool` on `server` as its
+/// host-only metadata.
+///
+/// The model-facing content is exactly what [`tool_result`] produces; the
+/// envelope carries the reply's `structuredContent`, `_meta` and embedded
+/// resources for a host that renders tool UI.
+#[must_use]
+pub fn tool_result_for(server: &str, tool: &str, result: McpToolResult) -> ToolResult {
+    let envelope = McpResultEnvelope::new(server, tool, &result);
+    let mut mapped = tool_result(result);
+    mapped.metadata = Some(envelope.to_metadata());
+    mapped
 }
 
 /// An unrecognized block, carried as bounded JSON.

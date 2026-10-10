@@ -28,6 +28,8 @@
 //! - [`agent_tools`] — the tool specs a host exposes to a model, the
 //!   normalization every forwarded call's `arguments` goes through, and the
 //!   structured outcome a forwarded call reports to the host.
+//! - [`ui`] — tool-provided UI: the presentation a host renders for one
+//!   tool call, its widget document, and classified links.
 //! - [`version`] — [`CONTRACT_VERSION`] and the [`is_compatible`] bind rule.
 //!
 //! # What is deliberately not here
@@ -127,11 +129,12 @@ pub mod names;
 pub mod registry;
 pub mod sanitize;
 pub mod transport;
+pub mod ui;
 pub mod version;
 
 pub use agent_tools::{
-    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, McpCallError, McpCallOutcome,
-    RegistryTool, normalize_tool_arguments, registry_tool_specs,
+    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, MCP_RESULT_KIND, McpCallError,
+    McpCallOutcome, McpResultEnvelope, RegistryTool, normalize_tool_arguments, registry_tool_specs,
 };
 pub use audit::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,
@@ -158,8 +161,13 @@ pub use sanitize::{
 };
 pub use transport::{
     AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
-    LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
-    McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
-    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
+    LATEST_PROTOCOL_VERSION, MAX_RESOURCE_BYTES, McpAuthChallenge, McpAuthorizationContext,
+    McpClientInfo, McpInitializeResult, McpRemoteTool, McpResource, McpResourceContents,
+    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
+    SUPPORTED_PROTOCOL_VERSIONS,
+};
+pub use ui::{
+    LinkClass, MCP_APP_MIME, MCP_APPS_EXTENSION, MCP_UI_KIND, McpUiPresentation, UiCsp, UiFlavor,
+    UiLink, UiLinkKind, UiRendering, UiResource, WidgetCallPolicy,
 };
 pub use version::{CONTRACT_VERSION, is_compatible};

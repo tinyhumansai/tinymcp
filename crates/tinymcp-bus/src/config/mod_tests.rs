@@ -324,3 +324,37 @@ fn a_proxy_round_trips_every_field() {
     let decoded: McpProxyConfig = serde_json::from_value(encoded).expect("proxy decodes");
     assert_eq!(decoded, proxy);
 }
+
+// ---------------------------------------------------------------------------
+// Client capabilities
+// ---------------------------------------------------------------------------
+
+#[test]
+fn client_capabilities_default_to_an_empty_object_left_off_the_wire() {
+    let identity = McpClientIdentityConfig::default();
+    assert_eq!(identity.capabilities, json!({}));
+
+    let wire = serde_json::to_value(&identity).unwrap();
+    assert!(wire.get("capabilities").is_none(), "{wire}");
+
+    let decoded: McpClientIdentityConfig = serde_json::from_value(json!({})).unwrap();
+    assert_eq!(decoded.capabilities, json!({}));
+}
+
+#[test]
+fn configured_client_capabilities_round_trip() {
+    let capabilities = json!({
+        "extensions": { "io.modelcontextprotocol/ui": { "mimeTypes": ["text/html;profile=mcp-app"] } }
+    });
+    let identity = McpClientIdentityConfig {
+        capabilities: capabilities.clone(),
+        ..McpClientIdentityConfig::default()
+    };
+
+    let wire = serde_json::to_value(&identity).unwrap();
+    assert_eq!(wire["capabilities"], capabilities);
+    assert_eq!(
+        serde_json::from_value::<McpClientIdentityConfig>(wire).unwrap(),
+        identity
+    );
+}

@@ -71,6 +71,8 @@ anyhow = "1"
 url = "2"
 # Percent-encoded spellings of a secret, for the same scrubber.
 urlencoding = "2.1"
+# URL extraction from tool results in the `ui` feature.
+regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
 # The Streamable HTTP transport. `rustls-tls` by default so a build needs no
 # system OpenSSL; `stream` is load-bearing rather than convenience — the SSE
 # reader consumes the response body incrementally so a server that holds its

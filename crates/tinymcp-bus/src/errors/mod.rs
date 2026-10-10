@@ -57,6 +57,8 @@ pub const AUTH_DISCOVERY: &str = "ai.tinyhumans.tinymcp.Error.AuthDiscovery";
 pub const TOOL_NOT_ALLOWED: &str = "ai.tinyhumans.tinymcp.Error.ToolNotAllowed";
 /// A server is installed but has no live connection.
 pub const NOT_CONNECTED: &str = "ai.tinyhumans.tinymcp.Error.NotConnected";
+/// A resource's contents exceeded the size the client will hold.
+pub const RESOURCE_TOO_LARGE: &str = "ai.tinyhumans.tinymcp.Error.ResourceTooLarge";
 /// A server is installed but turned off by the user.
 pub const SERVER_DISABLED: &str = "ai.tinyhumans.tinymcp.Error.ServerDisabled";
 /// A named server is not configured or not installed.
@@ -119,6 +121,7 @@ pub const ALL: &[&str] = &[
     CONFIG_DOC,
     INVALID_ARGUMENTS,
     REGISTRY_TIMEOUT,
+    RESOURCE_TOO_LARGE,
 ];
 
 #[cfg(test)]
