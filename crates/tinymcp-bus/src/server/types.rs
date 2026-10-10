@@ -66,6 +66,9 @@ pub enum ServerHostCall {
         /// String-valued MCP prompt arguments.
         arguments: Map<String, Value>,
     },
+    /// A newer host requested an operation this module does not support.
+    #[serde(other)]
+    Unsupported,
 }
 
 /// A host's result after applying its own policy and domain operations.
@@ -126,6 +129,9 @@ pub enum ServerOperationState {
         /// Stable module-owned failure description.
         message: String,
     },
+    /// A newer module reported an operation state this host does not know.
+    #[serde(other)]
+    Unknown,
 }
 
 impl std::fmt::Debug for ServerHostCall {
@@ -136,6 +142,7 @@ impl std::fmt::Debug for ServerHostCall {
             Self::ReadResource { .. } => "ReadResource",
             Self::ListPrompts { .. } => "ListPrompts",
             Self::GetPrompt { .. } => "GetPrompt",
+            Self::Unsupported => "Unsupported",
         };
         f.debug_struct(kind).finish_non_exhaustive()
     }

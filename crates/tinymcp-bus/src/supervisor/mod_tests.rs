@@ -53,7 +53,7 @@ fn ordered_observations_and_loss_counts_round_trip() {
         "parked",
     ];
     for (event, kind) in events.iter().zip(expected) {
-        assert_eq!(event.server(), &server);
+        assert_eq!(event.server(), Some(&server));
         assert_eq!(event.kind(), kind);
     }
     let batch = SupervisorBatch {
@@ -113,4 +113,30 @@ fn server_reference_keeps_host_routing_identity() {
     assert_eq!(reference.server_id, "id");
     assert_eq!(reference.qualified_name, "@test/server");
     assert_eq!(reference.display_name, "Server");
+}
+
+#[test]
+fn newer_supervisor_variants_decode_as_unknown() {
+    let probe = serde_json::json!({"future_probe": {"after": {"secs": 1, "nanos": 0}}});
+    assert_eq!(
+        serde_json::from_value::<ProbeOutcome>(probe).unwrap(),
+        ProbeOutcome::Unknown
+    );
+
+    let event = serde_json::json!({"future_event": {"server_id": "id"}});
+    let event = serde_json::from_value::<SupervisorEvent>(event).unwrap();
+    assert_eq!(event, SupervisorEvent::Unknown);
+    assert_eq!(event.server(), None);
+    assert_eq!(event.kind(), "unknown");
+}
+
+#[test]
+fn malformed_known_supervisor_variants_are_still_rejected() {
+    assert!(serde_json::from_value::<ProbeOutcome>(serde_json::json!({"Alive": {}})).is_err());
+    assert!(
+        serde_json::from_value::<SupervisorEvent>(serde_json::json!({
+            "ProbeAnswered": {}
+        }))
+        .is_err()
+    );
 }
