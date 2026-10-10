@@ -30,34 +30,44 @@ impl HostSecrets {
 }
 
 impl OAuthCredentialStore for HostSecrets {
-    async fn remote_url(&self, _server_id: &str) -> crate::Result<Option<String>> {
-        Ok(self.url.clone())
+    fn remote_url(
+        &self,
+        _server_id: &str,
+    ) -> impl std::future::Future<Output = crate::Result<Option<String>>> + Send {
+        std::future::poll_fn(move |_| std::task::Poll::Ready(Ok(self.url.clone())))
     }
 
-    async fn load_credentials(&self, server_id: &str) -> crate::Result<BTreeMap<String, String>> {
-        Ok(self
-            .values
-            .lock()
-            .get(server_id)
-            .cloned()
-            .unwrap_or_default())
+    fn load_credentials(
+        &self,
+        server_id: &str,
+    ) -> impl std::future::Future<Output = crate::Result<BTreeMap<String, String>>> + Send {
+        std::future::poll_fn(move |_| {
+            std::task::Poll::Ready(Ok(self
+                .values
+                .lock()
+                .get(server_id)
+                .cloned()
+                .unwrap_or_default()))
+        })
     }
 
-    async fn store_credentials(
+    fn store_credentials(
         &self,
         server_id: &str,
         credentials: &BTreeMap<String, String>,
-    ) -> crate::Result<()> {
-        if self.refuse_writes.load(Ordering::SeqCst) {
-            return Err(Error::CredentialStore {
-                action: format!("writing credentials for {server_id}"),
-                detail: "the vault is sealed".into(),
-            });
-        }
-        self.values
-            .lock()
-            .insert(server_id.to_string(), credentials.clone());
-        Ok(())
+    ) -> impl std::future::Future<Output = crate::Result<()>> + Send {
+        std::future::poll_fn(move |_| {
+            if self.refuse_writes.load(Ordering::SeqCst) {
+                return std::task::Poll::Ready(Err(Error::CredentialStore {
+                    action: format!("writing credentials for {server_id}"),
+                    detail: "the vault is sealed".into(),
+                }));
+            }
+            self.values
+                .lock()
+                .insert(server_id.to_string(), credentials.clone());
+            std::task::Poll::Ready(Ok(()))
+        })
     }
 }
 

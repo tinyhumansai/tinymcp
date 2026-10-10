@@ -173,8 +173,7 @@ impl ServerSessions {
         bounded(&headers)?;
         let operation_sequence = validate_id(&input.operation_id)?.as_u128();
         if serde_json::from_str::<Value>(&input.line)
-            .ok()
-            .is_some_and(|value| value.as_array().is_some_and(|items| items.len() > 256))
+            .is_ok_and(|value| value.as_array().is_some_and(|items| items.len() > 256))
         {
             return Err(invalid("server batch exceeds item limit"));
         }

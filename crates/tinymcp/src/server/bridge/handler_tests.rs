@@ -24,7 +24,7 @@ async fn callback_channel_faults_are_internal_errors() {
             .await
             .is_err()
     );
-    assert!(handler.list_tools(&ctx).await.is_empty());
+    assert_eq!(handler.list_tools(&ctx).await, Vec::<ServerToolSpec>::new());
     assert!(
         handler
             .call_tool(&ctx, &"x".repeat(super::super::MAX_BYTES), Map::new())
