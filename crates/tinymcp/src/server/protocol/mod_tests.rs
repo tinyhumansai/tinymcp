@@ -223,12 +223,12 @@ async fn a_batch_answers_its_requests_in_order_as_one_array_line() {
 }
 
 #[tokio::test]
-async fn a_batch_of_one_request_answers_a_bare_object_line() {
+async fn a_batch_of_one_request_keeps_array_framing() {
     assert_eq!(
         line(r#"[{"jsonrpc":"2.0","id":9,"method":"ping"}]"#)
             .await
             .as_deref(),
-        Some(r#"{"id":9,"jsonrpc":"2.0","result":{}}"#)
+        Some(r#"[{"id":9,"jsonrpc":"2.0","result":{}}]"#)
     );
 }
 
@@ -486,6 +486,64 @@ async fn bounded_framing_matches_library_shapes_and_charges_envelope_punctuation
 
 struct CountingResources {
     calls: std::sync::atomic::AtomicUsize,
+}
+
+struct CountingCalls {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl crate::server::McpServerHandler for CountingCalls {
+    fn server_info(&self) -> crate::server::ServerInfo {
+        DEMO.server_info()
+    }
+
+    fn list_tools<'a>(
+        &'a self,
+        ctx: &'a crate::server::RequestContext,
+    ) -> futures_util::future::BoxFuture<'a, Vec<crate::server::ServerToolSpec>> {
+        DEMO.list_tools(ctx)
+    }
+
+    fn call_tool<'a>(
+        &'a self,
+        _ctx: &'a crate::server::RequestContext,
+        _name: &'a str,
+        _arguments: serde_json::Map<String, Value>,
+    ) -> futures_util::future::BoxFuture<'a, Result<Value, crate::server::ToolCallError>> {
+        Box::pin(async move {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(json!({"ok": true}))
+        })
+    }
+}
+
+#[tokio::test]
+async fn bounded_batch_does_not_dispatch_after_framing_budget_is_exhausted() {
+    use std::sync::atomic::Ordering;
+
+    let handler = CountingCalls {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    };
+    let first = r#"{"id":1,"jsonrpc":"2.0","result":{}}"#;
+    let limit = first.len() + 2;
+    let input = json!([
+        {"jsonrpc":"2.0","id":1,"method":"ping"},
+        {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"side_effect"}}
+    ])
+    .to_string();
+
+    assert!(
+        super::handle_line_bounded(
+            &handler,
+            &mut ClientSession::new("fixture"),
+            &RequestHeaders::new(),
+            &input,
+            limit,
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(handler.calls.load(Ordering::SeqCst), 0);
 }
 impl crate::server::McpServerHandler for CountingResources {
     fn server_info(&self) -> crate::server::ServerInfo {

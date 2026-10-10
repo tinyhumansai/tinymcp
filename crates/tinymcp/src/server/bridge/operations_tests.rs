@@ -375,3 +375,21 @@ async fn admission_window_allows_reordered_opens_and_close_only_retires_its_iden
     assert!(state.active.is_empty());
     assert!(state.reserved.len() <= ADMISSION_WINDOW as usize);
 }
+
+#[tokio::test]
+async fn closing_an_unknown_uuid_does_not_advance_the_admission_window() {
+    let sessions = ServerSessions::default();
+    sessions
+        .close(&uuid::Uuid::from_u128(u128::MAX).to_string())
+        .await
+        .unwrap();
+
+    let first = ServerSessionConfig {
+        session_id: uuid::Uuid::from_u128(1).to_string(),
+        ..config()
+    };
+    assert_eq!(
+        sessions.open(first).await.unwrap(),
+        uuid::Uuid::from_u128(1).to_string()
+    );
+}
