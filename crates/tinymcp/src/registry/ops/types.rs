@@ -309,7 +309,7 @@ impl McpRegistry {
         };
 
         // Conditional on the name still being absent — see the note above.
-        if !self.store.insert_server_if_absent(&server)? {
+        if !self.store.insert_catalog_server_if_absent(&server)? {
             let winner = self
                 .store
                 .find_server_by_qualified_name(canonical)?

@@ -355,6 +355,9 @@ impl Connections {
         identity: &McpClientIdentityConfig,
         server: &InstalledServer,
     ) -> Result<ActiveClient> {
+        if store.is_catalog_server(&server.server_id)? {
+            crate::registry::ops::install::validate_catalog_command(&server.command, &server.args)?;
+        }
         let env: Vec<(String, String)> = store
             .load_env_values(&server.server_id)
             .unwrap_or_default()

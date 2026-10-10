@@ -1117,6 +1117,29 @@ fn a_pinned_endpoint_requires_a_valid_host() {
     );
 }
 
+#[test]
+fn a_pinned_endpoint_rejects_empty_private_mismatched_and_wrong_port_addresses() {
+    for addresses in [
+        vec![],
+        vec!["127.0.0.1:443".parse().unwrap()],
+        vec!["8.8.8.8:80".parse().unwrap()],
+        vec!["1.1.1.1:443".parse().unwrap()],
+    ] {
+        assert!(
+            McpHttpClient::builder("https://8.8.8.8/mcp")
+                .pinned_public_endpoint(addresses)
+                .build()
+                .is_err()
+        );
+    }
+    assert!(
+        McpHttpClient::builder("http://8.8.8.8/mcp")
+            .pinned_public_endpoint(vec!["8.8.8.8:80".parse().unwrap()])
+            .build()
+            .is_err()
+    );
+}
+
 #[tokio::test]
 async fn pinned_discovery_refuses_unvetted_urls_before_fetching() {
     let client = McpHttpClient::builder("https://8.8.8.8/mcp")

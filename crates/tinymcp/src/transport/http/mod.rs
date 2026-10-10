@@ -218,6 +218,29 @@ impl McpHttpClientBuilder {
             let host = endpoint
                 .host_str()
                 .ok_or_else(|| Error::malformed("pinned MCP endpoint has no host"))?;
+            let host = host.trim_start_matches('[').trim_end_matches(']');
+            let port = endpoint
+                .port_or_known_default()
+                .ok_or_else(|| Error::malformed("pinned MCP endpoint has no port"))?;
+            if endpoint.scheme() != "https"
+                || addresses.is_empty()
+                || addresses.iter().any(|address| {
+                    address.port() != port
+                        || crate::registry::oauth::endpoint_guard::is_blocked_ip(&address.ip())
+                })
+            {
+                return Err(Error::malformed(
+                    "pinned MCP endpoint has no approved addresses",
+                ));
+            }
+            if host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| addresses.iter().any(|address| address.ip() != ip))
+            {
+                return Err(Error::malformed(
+                    "pinned MCP address does not match endpoint",
+                ));
+            }
             builder = builder
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none());

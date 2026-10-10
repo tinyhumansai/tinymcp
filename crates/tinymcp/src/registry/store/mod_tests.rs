@@ -284,6 +284,22 @@ fn installing_if_absent_deduplicates_on_the_qualified_name() {
 }
 
 #[test]
+fn catalog_provenance_is_saved_only_for_catalog_installs() {
+    let (_directory, store) = store();
+    store.insert_server(&stdio_server("user-1")).unwrap();
+    assert!(!store.is_catalog_server("user-1").unwrap());
+    assert!(
+        store
+            .insert_catalog_server_if_absent(&InstalledServer {
+                qualified_name: "@catalog/server".into(),
+                ..stdio_server("catalog-1")
+            })
+            .unwrap()
+    );
+    assert!(store.is_catalog_server("catalog-1").unwrap());
+}
+
+#[test]
 fn a_lookup_by_qualified_name_returns_the_earliest_install() {
     let (_directory, store) = store();
     store
@@ -626,12 +642,21 @@ fn an_older_database_gains_the_columns_it_is_missing() {
 
     let columns =
         store.with_connection(|connection| schema::columns_of(connection, "mcp_servers").unwrap());
-    for column in ["transport", "deployment_url", "enabled"] {
+    for column in ["transport", "deployment_url", "enabled", "catalog_managed"] {
         assert!(
             columns.iter().any(|name| name == column),
             "missing {column}"
         );
     }
+}
+
+#[test]
+fn legacy_installs_keep_unknown_catalog_provenance() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("mcp_clients.db");
+    write_pre_migration_database(&path);
+    let store = Store::open_file(&path).unwrap();
+    assert!(!store.is_catalog_server("legacy-1").unwrap());
 }
 
 #[test]

@@ -290,7 +290,7 @@ fn catalog_subprocess_launchers_reject_shell_command_options() {
     for launcher in ["npx", "uvx", "bunx"] {
         validate_catalog_command(launcher, &["-y".into(), "safe-package".into()])
             .expect("approved package runner");
-        for option in ["-c", "-c=echo", "-cecho", "--call", "--call=echo"] {
+        for option in ["-c", "-c=echo", "-cecho", "-yc", "--call", "--call=echo"] {
             assert!(
                 validate_catalog_command(launcher, &[option.into()]).is_err(),
                 "{launcher} {option} should be refused"

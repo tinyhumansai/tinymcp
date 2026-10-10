@@ -94,6 +94,10 @@ const ADDITIVE_COLUMNS: &[(&str, &str)] = &[
         "enabled",
         "ALTER TABLE mcp_servers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
     ),
+    (
+        "catalog_managed",
+        "ALTER TABLE mcp_servers ADD COLUMN catalog_managed INTEGER NOT NULL DEFAULT 0",
+    ),
 ];
 
 /// Adds any column this file does not have yet.

@@ -177,7 +177,11 @@ pub(crate) fn validate_catalog_command(command: &str, args: &[String]) -> Result
     }
     if args
         .iter()
-        .any(|arg| arg.starts_with("-c") || arg == "--call" || arg.starts_with("--call="))
+        .any(|arg| {
+            (arg.starts_with('-') && !arg.starts_with("--") && arg.contains('c'))
+                || arg == "--call"
+                || arg.starts_with("--call=")
+        })
     {
         return Err(Error::malformed(
             "catalog subprocess cannot request a shell command",
