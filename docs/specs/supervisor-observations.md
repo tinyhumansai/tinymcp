@@ -5,6 +5,8 @@ and returning SupervisorBatch. Existing methods keep their arities and wire
 forms. ServerRef, ProbeOutcome, SupervisorEvent and TickReport are serialized
 contract vocabulary; the implementation re-exports the same types for library
 compatibility. Reconnection, probes, backoff and parking stay in the module.
+Older compatible hosts decode an unknown future observation or probe outcome
+as `Unknown` and may ignore it; malformed known variants still fail decoding.
 
 Each registry object owns one queue consumed by its host adapter. Background
 maintenance records events in observation order, including a drop followed by

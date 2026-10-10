@@ -373,8 +373,7 @@ fence retired retries. The bridge bounds session counts, batch counts, input and
 aggregate replies, and response construction. See [the operation contract](crates/tinymcp/src/server/bridge/README.md).
 
 Existing stdio/HTTP library entrypoints remain available. Compiled-module listener
-entrypoints and moving the legacy server declaration/error types into the pure
-contract are subsequent migration slices; the new bridge does not add host framing.
+entrypoints are a subsequent migration slice; the new bridge does not add host framing.
 
 Contract 1.9 moves shared server declarations, headers and errors into the pure
 bus vocabulary and adds four bounded metadata preparation operations. Generic

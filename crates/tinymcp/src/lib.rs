@@ -133,7 +133,12 @@ pub use tinymcp_bus::{
 
 pub use tinymcp_bus::{
     ServerCallback, ServerHostCall, ServerHostReply, ServerInput, ServerOperationRef,
-    ServerOperationSnapshot, ServerOperationState, ServerSessionConfig,
+    ServerOperationSnapshot, ServerOperationState, ServerSessionConfig, SupervisorBatch,
+};
+
+pub use tinymcp_bus::processing::{
+    DisplayRemoteToolRequest, MAX_PROCESSING_BYTES, RemoteToolDisplay, RenderToolOutputRequest,
+    TextTransform, ToolOutputFormat, TransformTextRequest,
 };
 
 pub use agent_tools::{normalize_tool_arguments, registry_tool_specs};

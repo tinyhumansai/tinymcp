@@ -38,8 +38,10 @@ session. Session identifiers are UUID-encoded integer counters, never random UUI
 use `Uuid::from_u128(counter)` and increment the counter for every reservation
 within one registry object. A rolling 4096-position admission window permits
 concurrent opens to arrive out of order. Close retires only its identifier,
-including before open; older-than-window identifiers are expired and never
-admitted. Active retries are recognized even after their window expires.
+including before open when it is inside the current admission window; distant
+unknown identifiers do not advance that window. Older-than-window identifiers
+are expired and never admitted. Active retries are recognized even after their
+window expires.
 Keep unresolved acquisitions within that window; if one expires, explicitly
 close its known identifier and acquire a new counter. Counters must not wrap or
 restart while the registry remains alive. Only the 32 active sessions, at most

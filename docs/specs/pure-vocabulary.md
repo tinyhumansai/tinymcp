@@ -34,6 +34,15 @@ module calls. This is a necessary pre-1.0 Rust source API break requiring a mino
 package release; the release workflow owns package versioning. Fixed
 RegistryTool::spec and registry_tool_specs remain in the bus unchanged.
 
+Callers migrating from the previous source API should use
+`tinymcp::normalize_tool_arguments` instead of the bus-root helper,
+`tinymcp::sanitize::{sanitize_for_llm, strip_control_chars,
+strip_instruction_fences, truncate_utf8_safe}` (or TinyTools directly) instead
+of bus sanitizers, and import `McpRemoteToolExt` / `McpToolResultExt` for the
+display and rendering methods. The DTOs themselves retain their serde wire
+forms; only executable helpers move to the implementation or their owner
+library.
+
 ## Additive contract 1.9 operations
 
 All four members take one argument; existing member arities stay unchanged.
