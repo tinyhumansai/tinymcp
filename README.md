@@ -349,3 +349,11 @@ Since `--all-features` includes `static-link`, its `cdylib` has Rust-addressable
 entries rather than exported C ABI symbols; run `verify_module` against a
 default-feature build. The static entry test covers the all-features mode,
 while `verify_module` parses and checks the generated manifest in dynamic mode.
+
+## Supervisor observations
+
+Contract 1.7 exposes ordered supervisor observations through
+`DrainSupervisorEvents(limit)`. Each registry object retains a bounded queue;
+the host drains it once and decides which events warrant a user notification.
+The module keeps ownership of probes and reconnection. See the
+[supervisor observation contract](docs/specs/supervisor-observations.md).

@@ -553,6 +553,21 @@ impl McpService {
             .map_err(|error| Self::failed(&error))
     }
 
+    /// `(limit)` — drains observations for this registry object, once.
+    async fn drain_supervisor_events(
+        &self,
+        limit: usize,
+    ) -> tinybus::Result<tinymcp_bus::SupervisorBatch> {
+        std::future::ready(()).await;
+        if !(1..=256).contains(&limit) {
+            return Err(tinybus::Error::failed("invalid supervisor drain limit"));
+        }
+        match &self.maintenance {
+            Some(maintenance) => maintenance.drain(limit),
+            None => Ok(tinymcp_bus::SupervisorBatch::default()),
+        }
+    }
+
     // -- directories ----------------------------------------------------------
 
     /// `(data_dir)` — returns the object path serving that directory.

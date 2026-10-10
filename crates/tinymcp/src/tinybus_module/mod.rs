@@ -123,6 +123,7 @@ export_module! {
         "StaticCallTool",
         "AuditRecordWrite",
         "AuditListWrites",
+        "DrainSupervisorEvents",
         "Open",
     ],
     signals = [],

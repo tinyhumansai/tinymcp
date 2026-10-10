@@ -128,6 +128,7 @@ pub mod method;
 pub mod names;
 pub mod registry;
 pub mod sanitize;
+pub mod supervisor;
 pub mod transport;
 pub mod ui;
 pub mod version;
@@ -171,3 +172,5 @@ pub use ui::{
     UiLink, UiLinkKind, UiRendering, UiResource, WidgetCallPolicy,
 };
 pub use version::{CONTRACT_VERSION, is_compatible};
+
+pub use supervisor::{ProbeOutcome, ServerRef, SupervisorBatch, SupervisorEvent, TickReport};

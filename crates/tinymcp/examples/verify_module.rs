@@ -80,6 +80,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
+    let observations: tinymcp_bus::SupervisorBatch = proxy
+        .call(names::methods::DRAIN_SUPERVISOR_EVENTS, (16_usize,))
+        .await?;
+    if !observations.events.is_empty() || observations.dropped != 0 {
+        return Err(io::Error::other("fresh registry reported supervisor observations").into());
+    }
+
     println!(
         "verified {} as TinyBus module `{}`, serving {} members on {}",
         module.display(),

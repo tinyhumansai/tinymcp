@@ -1347,3 +1347,38 @@ async fn a_module_comes_up_without_waiting_for_a_server_that_never_answers() {
     .expect("setup did not wait for the connect pass")
     .expect("the module comes up");
 }
+
+#[tokio::test]
+async fn supervisor_drain_without_maintenance_is_empty_and_checks_arity() {
+    let service = service();
+    let batch = ok(
+        &service,
+        names::methods::DRAIN_SUPERVISOR_EVENTS,
+        json!([16]),
+    )
+    .await;
+    assert_eq!(batch, json!({"events":[],"dropped":0}));
+    assert!(
+        call(&service, names::methods::DRAIN_SUPERVISOR_EVENTS, json!([]))
+            .await
+            .is_err()
+    );
+    assert!(
+        call(
+            &service,
+            names::methods::DRAIN_SUPERVISOR_EVENTS,
+            json!([0])
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        call(
+            &service,
+            names::methods::DRAIN_SUPERVISOR_EVENTS,
+            json!([257])
+        )
+        .await
+        .is_err()
+    );
+}

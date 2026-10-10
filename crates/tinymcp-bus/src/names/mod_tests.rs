@@ -95,6 +95,7 @@ fn the_method_table_holds_every_declared_member() {
             methods::STATIC_CALL_TOOL,
             methods::AUDIT_RECORD_WRITE,
             methods::AUDIT_LIST_WRITES,
+            methods::DRAIN_SUPERVISOR_EVENTS,
             methods::OPEN,
         ]
     );

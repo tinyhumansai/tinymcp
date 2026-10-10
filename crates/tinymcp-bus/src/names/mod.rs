@@ -137,6 +137,9 @@ pub mod methods {
     /// Lists recorded writes.
     pub const AUDIT_LIST_WRITES: &str = "AuditListWrites";
 
+    /// Drains ordered supervisor observations with a caller-supplied limit.
+    pub const DRAIN_SUPERVISOR_EVENTS: &str = "DrainSupervisorEvents";
+
     // -- Directories --------------------------------------------------------
 
     /// Opens a data directory as its own object and returns the object path
@@ -188,6 +191,7 @@ pub const METHODS: &[&str] = &[
     // Audit
     methods::AUDIT_RECORD_WRITE,
     methods::AUDIT_LIST_WRITES,
+    methods::DRAIN_SUPERVISOR_EVENTS,
     // Directories
     methods::OPEN,
 ];

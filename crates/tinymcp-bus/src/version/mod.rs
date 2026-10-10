@@ -15,8 +15,8 @@
 /// and the registry-timeout error name; 1.5 added tool `_meta`, client
 /// capabilities, resource payloads, the result envelope, and the
 /// resource-too-large error name; 1.6 added the tool UI presentation
-/// vocabulary.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 6);
+/// vocabulary; 1.7 adds serialized supervisor observations and their drain member.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 7);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.
