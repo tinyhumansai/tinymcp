@@ -79,7 +79,7 @@ impl ToolCallError {
 }
 
 /// Who this server says it is in the `initialize` result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ServerInfo {
     /// `serverInfo.name`.
     pub name: String,
@@ -110,7 +110,8 @@ impl ServerInfo {
 }
 
 /// One tool as `tools/list` advertises it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerToolSpec {
     /// The name a client calls it by.
     pub name: String,
@@ -174,7 +175,8 @@ impl ServerToolSpec {
 }
 
 /// One resource as `resources/list` advertises it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResourceSpec {
     /// The URI a client reads it by.
     pub uri: String,
@@ -237,7 +239,7 @@ impl ResourceSpec {
 /// and a context is exactly the kind of value that ends up in a log line.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct RequestHeaders {
-    entries: BTreeMap<String, String>,
+    pub(super) entries: BTreeMap<String, String>,
 }
 
 impl RequestHeaders {
@@ -328,6 +330,14 @@ pub trait McpServerHandler: Send + Sync {
     /// The tools `tools/list` advertises, in order.
     fn list_tools<'a>(&'a self, ctx: &'a RequestContext) -> BoxFuture<'a, Vec<ServerToolSpec>>;
 
+    /// Lists tools while preserving a host callback failure as a protocol error.
+    fn list_tools_result<'a>(
+        &'a self,
+        ctx: &'a RequestContext,
+    ) -> BoxFuture<'a, Result<Vec<ServerToolSpec>, ToolCallError>> {
+        Box::pin(async move { Ok(self.list_tools(ctx).await) })
+    }
+
     /// Runs one tool. `arguments` has already been read as an object: absent
     /// arguments arrive empty, and a JSON-encoded object arrives decoded.
     ///
@@ -340,6 +350,42 @@ pub trait McpServerHandler: Send + Sync {
         name: &'a str,
         arguments: Map<String, Value>,
     ) -> BoxFuture<'a, Result<Value, ToolCallError>>;
+
+    /// Whether this handler advertises host-owned prompts.
+    fn supports_prompts(&self) -> bool {
+        false
+    }
+
+    /// The prompts this client may discover. Empty by default.
+    fn list_prompts<'a>(
+        &'a self,
+        _ctx: &'a RequestContext,
+    ) -> BoxFuture<'a, Result<Value, ToolCallError>> {
+        Box::pin(async { Ok(json!({ "prompts": [] })) })
+    }
+
+    /// Resolves a prompt using host-owned policy and domain dispatch.
+    fn get_prompt<'a>(
+        &'a self,
+        _ctx: &'a RequestContext,
+        name: &'a str,
+        _arguments: Map<String, Value>,
+    ) -> BoxFuture<'a, Result<Value, ToolCallError>> {
+        Box::pin(async move {
+            Err(ToolCallError::InvalidParams(format!(
+                "unknown prompt `{name}`"
+            )))
+        })
+    }
+
+    /// Reads a resource with the caller's provenance and transport headers.
+    fn read_resource_context<'a>(
+        &'a self,
+        _ctx: &'a RequestContext,
+        uri: &'a str,
+    ) -> BoxFuture<'a, Result<Value, ToolCallError>> {
+        self.read_resource(uri)
+    }
 
     /// The resources `resources/list` advertises. None by default.
     fn list_resources(&self) -> Vec<ResourceSpec> {

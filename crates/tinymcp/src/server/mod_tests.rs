@@ -193,3 +193,21 @@ async fn a_handler_without_resources_lists_none_and_reads_none() {
         .expect_err("no tools");
     assert_eq!(err.message(), "no tool `x`");
 }
+
+#[tokio::test]
+async fn prompt_defaults_preserve_existing_handlers_and_reject_unknown_prompts() {
+    let handler = Minimal;
+    let ctx = RequestContext::new("mcp", RequestHeaders::new());
+    assert!(!handler.supports_prompts());
+    assert_eq!(
+        handler.list_prompts(&ctx).await.unwrap(),
+        json!({"prompts":[]})
+    );
+    assert_eq!(
+        handler
+            .get_prompt(&ctx, "missing", Map::new())
+            .await
+            .unwrap_err(),
+        ToolCallError::InvalidParams("unknown prompt `missing`".into())
+    );
+}

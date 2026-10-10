@@ -30,6 +30,7 @@
 //!   structured outcome a forwarded call reports to the host.
 //! - [`ui`] — tool-provided UI: the presentation a host renders for one
 //!   tool call, its widget document, and classified links.
+//! - [`server`] — opaque server-session declarations, host callbacks and operation states.
 //! - [`version`] — [`CONTRACT_VERSION`] and the [`is_compatible`] bind rule.
 //!
 //! # What is deliberately not here
@@ -128,6 +129,7 @@ pub mod method;
 pub mod names;
 pub mod registry;
 pub mod sanitize;
+pub mod server;
 pub mod supervisor;
 pub mod transport;
 pub mod ui;
@@ -174,3 +176,8 @@ pub use ui::{
 pub use version::{CONTRACT_VERSION, is_compatible};
 
 pub use supervisor::{ProbeOutcome, ServerRef, SupervisorBatch, SupervisorEvent, TickReport};
+
+pub use server::{
+    ServerCallback, ServerHostCall, ServerHostReply, ServerInput, ServerOperationRef,
+    ServerOperationSnapshot, ServerOperationState, ServerSessionConfig,
+};

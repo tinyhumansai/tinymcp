@@ -87,6 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(io::Error::other("fresh registry reported supervisor observations").into());
     }
 
+    verify_server_protocol(&proxy).await?;
+
     println!(
         "verified {} as TinyBus module `{}`, serving {} members on {}",
         module.display(),
@@ -110,4 +112,127 @@ fn module_argument() -> Result<PathBuf, io::Error> {
                 "usage: cargo run -p tinymcp --example verify_module -- <module-path>",
             )
         })
+}
+
+/// Proves server operations and host callbacks cross the actual compiled ABI.
+async fn verify_server_protocol(proxy: &tinybus::Proxy) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::{Map, Value, json};
+    use tinymcp_bus::{
+        ServerHostReply, ServerInput, ServerOperationSnapshot, ServerOperationState,
+        ServerSessionConfig,
+    };
+    let config = ServerSessionConfig {
+        session_id: "b966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+        info: json!({"name":"artifact-fixture", "version":"1"}),
+        source_type_prefix: "mcp".into(),
+        resources: Vec::new(),
+    };
+    let session: String = proxy.call(names::methods::SERVER_OPEN, (config,)).await?;
+    let line = json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"fixture"}})
+        .to_string();
+    let input = ServerInput {
+        operation_id: "c966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+        line,
+    };
+    let (): () = proxy
+        .call(
+            names::methods::SERVER_SUBMIT,
+            (&session, Map::<String, Value>::new(), input),
+        )
+        .await?;
+    tokio::time::timeout(CLAIM_TIMEOUT, async {
+        loop {
+            let snapshot: ServerOperationSnapshot =
+                proxy.call(names::methods::SERVER_POLL, (&session,)).await?;
+            match snapshot.state {
+                ServerOperationState::Pending => tokio::task::yield_now().await,
+                ServerOperationState::Callback { callback } => {
+                    let (): () = proxy
+                        .call(
+                            names::methods::SERVER_COMPLETE,
+                            (
+                                &session,
+                                callback.id,
+                                ServerHostReply::Success {
+                                    value: json!({"content":[]}),
+                                },
+                            ),
+                        )
+                        .await?;
+                }
+                ServerOperationState::Complete {
+                    response: Some(response),
+                } => {
+                    let value: Value = serde_json::from_str(&response)
+                        .map_err(|_| tinybus::Error::failed("invalid protocol response"))?;
+                    if value["result"]["content"] != json!([]) {
+                        return Err(tinybus::Error::failed("wrong host callback response"));
+                    }
+                    break;
+                }
+                _ => {
+                    return Err(tinybus::Error::failed(
+                        "unexpected protocol operation state",
+                    ));
+                }
+            }
+        }
+        tinybus::Result::Ok(())
+    })
+    .await??;
+    verify_server_cancellation(proxy, &session).await?;
+    Ok(())
+}
+
+/// Verifies operation-specific cancellation, close and shutdown through the ABI.
+async fn verify_server_cancellation(
+    proxy: &tinybus::Proxy,
+    session: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::{Map, Value, json};
+    use tinymcp_bus::{
+        ServerInput, ServerOperationRef, ServerOperationSnapshot, ServerOperationState,
+    };
+    let (): () = proxy
+        .call(
+            names::methods::SERVER_SUBMIT,
+            (
+                &session,
+                Map::<String, Value>::new(),
+                ServerInput {
+                    operation_id: "d966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+                    line: json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}).to_string(),
+                },
+            ),
+        )
+        .await?;
+    let (): () = proxy
+        .call(
+            names::methods::SERVER_CANCEL,
+            (ServerOperationRef {
+                session_id: session.to_owned(),
+                operation_id: "d966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+            },),
+        )
+        .await?;
+    let snapshot: ServerOperationSnapshot =
+        proxy.call(names::methods::SERVER_POLL, (&session,)).await?;
+    if snapshot.state != ServerOperationState::Cancelled {
+        return Err(io::Error::other("cancellation did not finish").into());
+    }
+    let (): () = proxy
+        .call(names::methods::SERVER_CLOSE, (&session,))
+        .await?;
+    if proxy
+        .call::<ServerOperationSnapshot>(names::methods::SERVER_POLL, (&session,))
+        .await
+        .is_ok()
+    {
+        return Err(io::Error::other("closed session remained usable").into());
+    }
+    let closed: usize = proxy.call(names::methods::SERVER_SHUTDOWN, ()).await?;
+    if closed != 0 {
+        return Err(io::Error::other("server shutdown retained sessions").into());
+    }
+    Ok(())
 }

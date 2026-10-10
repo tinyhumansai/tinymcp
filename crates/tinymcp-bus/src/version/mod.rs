@@ -15,8 +15,9 @@
 /// and the registry-timeout error name; 1.5 added tool `_meta`, client
 /// capabilities, resource payloads, the result envelope, and the
 /// resource-too-large error name; 1.6 added the tool UI presentation
-/// vocabulary; 1.7 adds serialized supervisor observations and their drain member.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 7);
+/// vocabulary; 1.7 added serialized supervisor observations and their drain member;
+/// 1.8 adds module-owned server sessions and host callback operations.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 8);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.
@@ -30,7 +31,7 @@ pub const CONTRACT_VERSION: (u32, u32) = (1, 7);
 /// ```
 /// # use tinymcp_bus::{is_compatible, CONTRACT_VERSION};
 /// assert!(is_compatible(CONTRACT_VERSION));
-/// assert!(is_compatible((1, 7)));
+/// assert!(is_compatible((1, 8)));
 /// assert!(!is_compatible((2, 0)));
 /// ```
 #[must_use]

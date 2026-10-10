@@ -182,14 +182,27 @@ async fn handle_request(
                 request_id,
                 session.source_type()
             );
-            success_response(id, initialize_result(&handler.server_info(), &params))
+            let mut result = initialize_result(&handler.server_info(), &params);
+            if handler.supports_prompts() {
+                result["capabilities"]["prompts"] = json!({});
+            }
+            success_response(id, result)
         }
         "ping" => success_response(id, json!({})),
         "tools/list" => {
             let ctx = RequestContext::new(session.source_type(), headers.clone());
-            let tools = handler
-                .list_tools(&ctx)
-                .await
+            let tools = match handler.list_tools_result(&ctx).await {
+                Ok(tools) => tools,
+                Err(error) => {
+                    return error_response(
+                        id,
+                        error.code(),
+                        error.jsonrpc_message(),
+                        Some(json!(error.message())),
+                    );
+                }
+            };
+            let tools = tools
                 .iter()
                 .map(super::ServerToolSpec::to_json)
                 .collect::<Vec<_>>();
@@ -214,7 +227,16 @@ async fn handle_request(
         }
         "resources/read" => {
             tracing::debug!("[mcp_server] resources/read request id={request_id}");
-            read_resource(handler, id, &params).await
+            let ctx = RequestContext::new(session.source_type(), headers.clone());
+            read_resource(handler, &ctx, id, &params).await
+        }
+        "prompts/list" if handler.supports_prompts() => {
+            let ctx = RequestContext::new(session.source_type(), headers.clone());
+            handler_response(id, handler.list_prompts(&ctx).await)
+        }
+        "prompts/get" if handler.supports_prompts() => {
+            let ctx = RequestContext::new(session.source_type(), headers.clone());
+            get_prompt(handler, &ctx, id, params).await
         }
         "tools/call" => {
             let ctx = RequestContext::new(session.source_type(), headers.clone());
@@ -229,7 +251,48 @@ async fn handle_request(
     }
 }
 
-async fn read_resource(handler: &dyn McpServerHandler, id: Value, params: &Value) -> Value {
+async fn get_prompt(
+    handler: &dyn McpServerHandler,
+    ctx: &RequestContext,
+    id: Value,
+    params: Value,
+) -> Value {
+    let Some(name) = params
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    else {
+        return error_response(
+            id,
+            INVALID_PARAMS,
+            "Invalid params",
+            Some(json!("prompts/get requires a non-empty name")),
+        );
+    };
+    let arguments = match params.get("arguments") {
+        None => Map::new(),
+        Some(Value::Object(arguments)) if arguments.values().all(Value::is_string) => {
+            arguments.clone()
+        }
+        _ => {
+            return error_response(
+                id,
+                INVALID_PARAMS,
+                "Invalid params",
+                Some(json!("prompt arguments must be a string-valued object")),
+            );
+        }
+    };
+    handler_response(id, handler.get_prompt(ctx, name, arguments).await)
+}
+
+async fn read_resource(
+    handler: &dyn McpServerHandler,
+    ctx: &RequestContext,
+    id: Value,
+    params: &Value,
+) -> Value {
     let Some(uri) = params
         .get("uri")
         .and_then(Value::as_str)
@@ -245,7 +308,7 @@ async fn read_resource(handler: &dyn McpServerHandler, id: Value, params: &Value
             )),
         );
     };
-    match handler.read_resource(uri).await {
+    match handler.read_resource_context(ctx, uri).await {
         Ok(result) => success_response(id, result),
         Err(err) => {
             tracing::debug!(
@@ -323,6 +386,18 @@ async fn call_tool(
                 Some(json!(err.message())),
             )
         }
+    }
+}
+
+fn handler_response(id: Value, result: Result<Value, super::ToolCallError>) -> Value {
+    match result {
+        Ok(value) => success_response(id, value),
+        Err(error) => error_response(
+            id,
+            error.code(),
+            error.jsonrpc_message(),
+            Some(json!(error.message())),
+        ),
     }
 }
 

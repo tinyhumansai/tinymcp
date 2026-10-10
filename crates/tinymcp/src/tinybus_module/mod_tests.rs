@@ -1382,3 +1382,106 @@ async fn supervisor_drain_without_maintenance_is_empty_and_checks_arity() {
         .is_err()
     );
 }
+
+#[tokio::test]
+async fn server_members_preserve_positional_arguments_callbacks_and_lifecycle() {
+    use serde_json::json;
+    use tinymcp_bus::{
+        ServerHostReply, ServerOperationSnapshot, ServerOperationState, ServerSessionConfig,
+    };
+    let service = service();
+    let config = ServerSessionConfig {
+        session_id: uuid::Uuid::new_v4().to_string(),
+        info: json!({"name":"fixture","version":"1"}),
+        source_type_prefix: "mcp".into(),
+        resources: vec![],
+    };
+    let id: String = serde_json::from_value(
+        call(&service, names::methods::SERVER_OPEN, json!([config]))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    call(
+        &service,
+        names::methods::SERVER_SUBMIT,
+        json!([
+            id,
+            {},
+            {"operation_id":uuid::Uuid::new_v4().to_string(), "line":json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fixture"}}).to_string()}
+        ]),
+    )
+    .await
+    .unwrap();
+    loop {
+        let state: ServerOperationSnapshot = serde_json::from_value(
+            call(&service, names::methods::SERVER_POLL, json!([id]))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        match state.state {
+            ServerOperationState::Pending => tokio::task::yield_now().await,
+            ServerOperationState::Callback { callback } => {
+                call(
+                    &service,
+                    names::methods::SERVER_COMPLETE,
+                    json!([
+                        id,
+                        callback.id,
+                        ServerHostReply::Success {
+                            value: json!({"content":[]})
+                        }
+                    ]),
+                )
+                .await
+                .unwrap();
+            }
+            ServerOperationState::Complete {
+                response: Some(response),
+            } => {
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&response).unwrap()["result"]["content"],
+                    json!([])
+                );
+                break;
+            }
+            _ => panic!("unexpected server state"),
+        }
+    }
+    let cancel_id = uuid::Uuid::new_v4().to_string();
+    call(
+        &service,
+        names::methods::SERVER_SUBMIT,
+        json!([id, {}, {"operation_id":cancel_id,"line":json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}).to_string()}]),
+    )
+    .await
+    .unwrap();
+    call(
+        &service,
+        names::methods::SERVER_CANCEL,
+        json!([{ "session_id":id,"operation_id":cancel_id }]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        call(&service, names::methods::SERVER_POLL, json!([id]))
+            .await
+            .unwrap()["state"],
+        json!({"state":"cancelled"})
+    );
+    call(&service, names::methods::SERVER_CLOSE, json!([id]))
+        .await
+        .unwrap();
+    assert!(
+        call(&service, names::methods::SERVER_POLL, json!([id]))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        call(&service, names::methods::SERVER_SHUTDOWN, json!([]))
+            .await
+            .unwrap(),
+        0
+    );
+}
