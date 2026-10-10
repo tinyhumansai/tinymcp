@@ -1,6 +1,7 @@
 //! Supervisor observation vocabulary. Reconnect behavior lives in the module.
 use crate::InstalledServer;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::time::Duration;
 
 /// What a liveness probe observed.
@@ -15,7 +16,7 @@ use std::time::Duration;
 /// mean the server would have failed a real call. Collapsing the two lets a
 /// supervisor tear down a working session and then report a drop that never
 /// happened.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub enum ProbeOutcome {
     /// The server answered inside the probe window.
@@ -39,6 +40,44 @@ pub enum ProbeOutcome {
         /// The window that elapsed without an answer.
         after: Duration,
     },
+    /// An outcome added by a newer compatible contract version.
+    Unknown,
+}
+
+#[derive(Deserialize)]
+enum KnownProbeOutcome {
+    Alive { elapsed: Duration },
+    Missing,
+    Broken { error: String, elapsed: Duration },
+    TimedOut { after: Duration },
+}
+
+impl<'de> Deserialize<'de> for ProbeOutcome {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        let known = match &value {
+            Value::String(name) => name == "Missing",
+            Value::Object(fields) if fields.len() == 1 => fields
+                .keys()
+                .next()
+                .is_some_and(|name| matches!(name.as_str(), "Alive" | "Broken" | "TimedOut")),
+            _ => false,
+        };
+        if !known {
+            return Ok(Self::Unknown);
+        }
+        match serde_json::from_value::<KnownProbeOutcome>(value)
+            .map_err(<D::Error as serde::de::Error>::custom)?
+        {
+            KnownProbeOutcome::Alive { elapsed } => Ok(Self::Alive { elapsed }),
+            KnownProbeOutcome::Missing => Ok(Self::Missing),
+            KnownProbeOutcome::Broken { error, elapsed } => Ok(Self::Broken { error, elapsed }),
+            KnownProbeOutcome::TimedOut { after } => Ok(Self::TimedOut { after }),
+        }
+    }
 }
 
 impl ProbeOutcome {
@@ -56,6 +95,7 @@ impl ProbeOutcome {
             Self::Missing => "missing",
             Self::Broken { .. } => "broken",
             Self::TimedOut { .. } => "timed_out",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -89,7 +129,7 @@ impl From<&InstalledServer> for ServerRef {
 ///
 /// Non-exhaustive: a host matches with a wildcard, so a later cycle step can
 /// report itself without breaking the hosts that do not care about it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub enum SupervisorEvent {
     /// A connected server answered its liveness probe.
@@ -166,19 +206,130 @@ pub enum SupervisorEvent {
         /// What the attempt reported, already rendered.
         error: String,
     },
+    /// An observation added by a newer compatible contract version.
+    Unknown,
+}
+
+#[derive(Deserialize)]
+enum KnownSupervisorEvent {
+    ProbeAnswered {
+        server: ServerRef,
+        elapsed: Duration,
+    },
+    ProbeTimedOut {
+        server: ServerRef,
+        after: Duration,
+        consecutive: u32,
+        teardown_after: u32,
+    },
+    TransportDropped {
+        server: ServerRef,
+        outcome: ProbeOutcome,
+        consecutive_timeouts: u32,
+    },
+    Reconnected {
+        server: ServerRef,
+        tools: usize,
+        after_failures: u32,
+    },
+    ReconnectFailed {
+        server: ServerRef,
+        error: String,
+        failures: u32,
+        retry_in: Duration,
+    },
+    Parked {
+        server: ServerRef,
+        error: String,
+    },
+}
+
+impl<'de> Deserialize<'de> for SupervisorEvent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        let known = value.as_object().is_some_and(|fields| {
+            fields.len() == 1
+                && fields.keys().next().is_some_and(|name| {
+                    matches!(
+                        name.as_str(),
+                        "ProbeAnswered"
+                            | "ProbeTimedOut"
+                            | "TransportDropped"
+                            | "Reconnected"
+                            | "ReconnectFailed"
+                            | "Parked"
+                    )
+                })
+        });
+        if !known {
+            return Ok(Self::Unknown);
+        }
+        match serde_json::from_value::<KnownSupervisorEvent>(value)
+            .map_err(<D::Error as serde::de::Error>::custom)?
+        {
+            KnownSupervisorEvent::ProbeAnswered { server, elapsed } => {
+                Ok(Self::ProbeAnswered { server, elapsed })
+            }
+            KnownSupervisorEvent::ProbeTimedOut {
+                server,
+                after,
+                consecutive,
+                teardown_after,
+            } => Ok(Self::ProbeTimedOut {
+                server,
+                after,
+                consecutive,
+                teardown_after,
+            }),
+            KnownSupervisorEvent::TransportDropped {
+                server,
+                outcome,
+                consecutive_timeouts,
+            } => Ok(Self::TransportDropped {
+                server,
+                outcome,
+                consecutive_timeouts,
+            }),
+            KnownSupervisorEvent::Reconnected {
+                server,
+                tools,
+                after_failures,
+            } => Ok(Self::Reconnected {
+                server,
+                tools,
+                after_failures,
+            }),
+            KnownSupervisorEvent::ReconnectFailed {
+                server,
+                error,
+                failures,
+                retry_in,
+            } => Ok(Self::ReconnectFailed {
+                server,
+                error,
+                failures,
+                retry_in,
+            }),
+            KnownSupervisorEvent::Parked { server, error } => Ok(Self::Parked { server, error }),
+        }
+    }
 }
 
 impl SupervisorEvent {
-    /// The server this event is about.
+    /// The server this event is about, if this version knows the event kind.
     #[must_use]
-    pub fn server(&self) -> &ServerRef {
+    pub fn server(&self) -> Option<&ServerRef> {
         match self {
             Self::ProbeAnswered { server, .. }
             | Self::ProbeTimedOut { server, .. }
             | Self::TransportDropped { server, .. }
             | Self::Reconnected { server, .. }
             | Self::ReconnectFailed { server, .. }
-            | Self::Parked { server, .. } => server,
+            | Self::Parked { server, .. } => Some(server),
+            Self::Unknown => None,
         }
     }
 
@@ -192,6 +343,7 @@ impl SupervisorEvent {
             Self::Reconnected { .. } => "reconnected",
             Self::ReconnectFailed { .. } => "reconnect_failed",
             Self::Parked { .. } => "parked",
+            Self::Unknown => "unknown",
         }
     }
 }

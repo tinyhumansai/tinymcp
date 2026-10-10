@@ -82,6 +82,7 @@ pub struct ServerInfo {
     pub version: String,
     /// Top-level `instructions`: guidance a client may show its model. Omitted
     /// from the result when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
 }
 
@@ -111,6 +112,7 @@ pub struct ServerToolSpec {
     /// The name a client calls it by.
     pub name: String,
     /// A display title. Omitted when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// What the tool does, for the model choosing it.
     pub description: String,
@@ -118,6 +120,7 @@ pub struct ServerToolSpec {
     pub input_schema: Value,
     /// MCP tool annotations (`readOnlyHint`, `destructiveHint`, …). Omitted
     /// when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub annotations: Option<Value>,
 }
 
@@ -162,8 +165,10 @@ pub struct ResourceSpec {
     /// A display name.
     pub name: String,
     /// What it holds. Omitted when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Its media type. Omitted when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
 }
 
