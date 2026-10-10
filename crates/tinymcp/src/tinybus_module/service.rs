@@ -636,6 +636,39 @@ impl McpService {
         Ok(self.server_sessions.shutdown().await)
     }
 
+    /// `(request)` — bounded shared lexical text processing.
+    async fn transform_text(
+        &self,
+        request: tinymcp_bus::TransformTextRequest,
+    ) -> tinybus::Result<String> {
+        std::future::ready(()).await;
+        crate::processing::transform_text(&request).map_err(|error| Self::failed(&error))
+    }
+    /// `(arguments)` — tolerant argument decoding owned by the module.
+    async fn normalize_tool_arguments(
+        &self,
+        arguments: Option<Value>,
+    ) -> tinybus::Result<serde_json::Map<String, Value>> {
+        std::future::ready(()).await;
+        crate::processing::normalize_arguments(arguments).map_err(|error| Self::failed(&error))
+    }
+    /// `(tool)` — sanitized remote title/description metadata.
+    async fn display_remote_tool(
+        &self,
+        tool: tinymcp_bus::DisplayRemoteToolRequest,
+    ) -> tinybus::Result<tinymcp_bus::RemoteToolDisplay> {
+        std::future::ready(()).await;
+        crate::processing::display_remote_tool(&tool).map_err(|error| Self::failed(&error))
+    }
+    /// `(request)` — bounded tool output projection.
+    async fn render_tool_output(
+        &self,
+        request: tinymcp_bus::RenderToolOutputRequest,
+    ) -> tinybus::Result<String> {
+        std::future::ready(()).await;
+        crate::processing::render_tool_output(&request).map_err(|error| Self::failed(&error))
+    }
+
     // -- directories ----------------------------------------------------------
 
     /// `(data_dir)` — returns the object path serving that directory.

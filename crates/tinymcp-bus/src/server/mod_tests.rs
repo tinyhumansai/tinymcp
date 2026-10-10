@@ -82,3 +82,47 @@ fn callback_debug_never_contains_headers_arguments_or_resource_names() {
         );
     }
 }
+
+#[test]
+fn shared_server_declarations_headers_context_and_errors_pin_wire_forms() {
+    let info = ServerInfo::new("fixture", "1");
+    assert_eq!(
+        serde_json::to_value(&info).unwrap(),
+        serde_json::json!({"name":"fixture","version":"1","instructions":null})
+    );
+    let tool = ServerToolSpec::new("echo", "echo", serde_json::json!({}));
+    let wire = serde_json::json!({"name":"echo","title":null,"description":"echo","inputSchema":{},"annotations":null});
+    assert_eq!(serde_json::to_value(&tool).unwrap(), wire);
+    assert_eq!(
+        serde_json::from_value::<ServerToolSpec>(wire).unwrap(),
+        tool
+    );
+    let resource = ResourceSpec::new("fixture://info", "info");
+    assert_eq!(
+        serde_json::to_value(resource).unwrap(),
+        serde_json::json!({"uri":"fixture://info","name":"info","description":null,"mimeType":null})
+    );
+    let headers = RequestHeaders {
+        entries: std::collections::BTreeMap::from([(
+            "authorization".into(),
+            "fixture-secret".into(),
+        )]),
+    };
+    assert!(!format!("{headers:?}").contains("fixture-secret"));
+    let ctx = RequestContext::new("mcp", headers);
+    let wire =
+        serde_json::json!({"source_type":"mcp","headers":{"authorization":"fixture-secret"}});
+    assert_eq!(serde_json::to_value(&ctx).unwrap(), wire);
+    assert_eq!(serde_json::from_value::<RequestContext>(wire).unwrap(), ctx);
+    for error in [
+        ToolCallError::InvalidParams("denied".into()),
+        ToolCallError::Internal("failed".into()),
+        ToolCallError::ResourceNotFound("missing".into()),
+    ] {
+        assert_eq!(
+            serde_json::from_value::<ToolCallError>(serde_json::to_value(&error).unwrap()).unwrap(),
+            error
+        );
+        assert_eq!(error.to_string(), error.message());
+    }
+}

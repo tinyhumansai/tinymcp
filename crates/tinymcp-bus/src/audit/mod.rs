@@ -21,7 +21,7 @@
 //! server, so an untruncated message turns one bad response into an
 //! arbitrarily large row.
 //!
-//! [`McpWriteListQuery`] carries `resolved_*` accessors that apply those
+//! The implementation resolves [`McpWriteListQuery`] and applies those
 //! bounds, along with the rule that a blank filter means "no filter" rather
 //! than "match nothing". They live on the query rather than in the store
 //! because they are part of what the query *means*, and a second caller
@@ -33,7 +33,3 @@ pub use types::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,
     NewMcpWriteRecord,
 };
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod test;

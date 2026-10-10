@@ -1,78 +1,14 @@
-//! Every type that crosses the `tinymcp` module's `TinyBus` boundary, and the
-//! names of the members that carry them.
+//! Shared MCP wire vocabulary, fixed tool declarations and `TinyBus` member names.
 //!
-//! `tinymcp` is a Model Context Protocol client: it dials MCP servers over
-//! Streamable HTTP or a subprocess, browses the upstream registries, keeps
-//! track of what a user installed, and records what got written. It ships as a
-//! loadable `TinyBus` module — `crates/tinymcp` is built as a `cdylib` and
-//! exports one object. A host that loads that binary can call into it but
-//! cannot `use` anything out of it, so the vocabulary has to be published as an
-//! ordinary library. This is that library.
+//! The implementation re-exports these exact types. Hosts link this crate for
+//! payloads and declarations; protocol, transports, rendering, normalization,
+//! filtering and sanitization execute outside the contract. The default and
+//! all-feature dependency closures contain only serialization and schema utilities.
 //!
-//! # What is here
-//!
-//! - [`names`] — the interface name, the object path, one constant per member,
-//!   and [`names::METHODS`] listing them in dispatch order.
-//! - [`config`] — what a host tells the module: the servers it wants reachable,
-//!   how to authenticate to each, who the client claims to be, and an
-//!   already-resolved proxy.
-//! - [`transport`] — the protocol's own shapes, plus the two rendered types a
-//!   caller consumes and the protocol versions a session may negotiate.
-//! - [`errors`] — the names a failed call travels under, so a host classifies on
-//!   a constant rather than on message wording.
-//! - [`auth`] — what `DetectAuth` reports a server wants before it will talk.
-//! - [`registry`] — installs, connection status, and the upstream registry
-//!   records.
-//! - [`audit`] — the durable record of every write an MCP tool performed.
-//! - [`sanitize`] — the stripping pipeline applied to untrusted remote text.
-//! - [`agent_tools`] — the tool specs a host exposes to a model, the
-//!   normalization every forwarded call's `arguments` goes through, and the
-//!   structured outcome a forwarded call reports to the host.
-//! - [`ui`] — tool-provided UI: the presentation a host renders for one
-//!   tool call, its widget document, and classified links.
-//! - [`server`] — opaque server-session declarations, host callbacks and operation states.
-//! - [`version`] — [`CONTRACT_VERSION`] and the [`is_compatible`] bind rule.
-//!
-//! # What is deliberately not here
-//!
-//! **No behavior.** The transports, the store, the supervisor, and the OAuth
-//! flow live in `crates/tinymcp`, which depends on this crate and re-exports
-//! it. A payload type describes what a frame carries, not what the module does
-//! with it. The [`sanitize`] pipeline is the only shared policy, because both
-//! sides need identical bounds for untrusted text. Rendering and endpoint
-//! redaction live in the implementation crate.
-//!
-//! **No transport.** This crate holds no connection, client, or codec, and does
-//! not depend on `tinybus`, an async runtime, an HTTP client, or `rusqlite`. A
-//! host already owns its connection — its reconnect policy, its timeouts, its
-//! tracing — and the useful part is the vocabulary, not another wrapper around
-//! it. CI asserts the dependency tree stays this way.
-//!
-//! **No policy.** Two things a host might expect to find here are absent on
-//! purpose. Prompt-injection *detection* over tool definitions is host policy
-//! and belongs where the host's own threat model lives; [`sanitize`] does the
-//! lexical half and stops there. And proxy *scoping* — deciding whether a given
-//! service should be proxied at all — stays with the host, which is why
-//! [`McpProxyConfig`] carries a resolved decision rather than a policy.
-//!
-//! # This crate sits underneath the implementation, not beside it
-//!
-//! `tinymcp` **depends on this crate and re-exports all of it**, so
-//! `tinymcp::McpRemoteTool` and `tinymcp_bus::McpRemoteTool` are the *same
-//! type*, not structural twins. Defining a parallel set of payload types for
-//! hosts would mean a conversion at every call site that nothing checks. One
-//! definition, here, at the bottom.
-//!
-//! So: a module author depends on `tinymcp` and gets behavior and vocabulary. A
-//! host depends on `tinymcp-bus` and gets vocabulary alone.
-//!
-//! # Untrusted text
-//!
-//! Several fields carry free-form strings from a remote server the user chose
-//! but nobody vetted — a tool's description and title, a server's
-//! `instructions`. [`McpRemoteTool`] exposes display accessors that apply
-//! [`sanitize`]; read those, not the raw fields, anywhere the value reaches a
-//! model's context.
+//! Untrusted remote text stays raw in these DTOs. Loadable consumers prepare it
+//! through `DisplayRemoteTool`, `TransformText`, `NormalizeToolArguments` and
+//! `RenderToolOutput`. Library consumers use implementation extension traits;
+//! generic lexical helpers live in `TinyTools`. [`sanitize`] holds MCP byte caps.
 //!
 //! # Exhaustiveness
 //!
@@ -112,10 +48,10 @@
 //!     "name": "forecast",
 //!     "description": "<|im_start|>Weather for a city",
 //! }))?;
-//! // The fence marker is gone; the prose it was wrapped around is not.
+//! // Vocabulary preserves raw remote text. Preparation executes in the module.
 //! assert_eq!(
-//!     tool.display_description().as_deref(),
-//!     Some("Weather for a city"),
+//!     tool.description.as_deref(),
+//!     Some("<|im_start|>Weather for a city"),
 //! );
 //! # Ok::<(), serde_json::Error>(())
 //! ```
@@ -137,7 +73,7 @@ pub mod version;
 
 pub use agent_tools::{
     AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, MCP_RESULT_KIND, McpCallError,
-    McpCallOutcome, McpResultEnvelope, RegistryTool, normalize_tool_arguments, registry_tool_specs,
+    McpCallOutcome, McpResultEnvelope, RegistryTool, registry_tool_specs,
 };
 pub use audit::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,
@@ -158,10 +94,7 @@ pub use registry::{
     McpAuthHint, McpTool, RegistryConnection, RegistryListResponse, RegistryPagination,
     RegistryServerDetail, RegistryServerSummary, ServerStatus, Transport,
 };
-pub use sanitize::{
-    MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, sanitize_for_llm, strip_control_chars,
-    strip_instruction_fences, truncate_utf8_safe,
-};
+pub use sanitize::{MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES};
 pub use transport::{
     AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
     LATEST_PROTOCOL_VERSION, MAX_RESOURCE_BYTES, McpAuthChallenge, McpAuthorizationContext,
@@ -180,4 +113,15 @@ pub use supervisor::{ProbeOutcome, ServerRef, SupervisorBatch, SupervisorEvent, 
 pub use server::{
     ServerCallback, ServerHostCall, ServerHostReply, ServerInput, ServerOperationRef,
     ServerOperationSnapshot, ServerOperationState, ServerSessionConfig,
+};
+
+pub use server::{
+    DEFAULT_SOURCE_TYPE_PREFIX, RequestContext, RequestHeaders, ResourceSpec, ServerInfo,
+    ServerToolSpec, ToolCallError,
+};
+
+pub mod processing;
+pub use processing::{
+    DisplayRemoteToolRequest, MAX_PROCESSING_BYTES, RemoteToolDisplay, RenderToolOutputRequest,
+    TextTransform, ToolOutputFormat, TransformTextRequest,
 };

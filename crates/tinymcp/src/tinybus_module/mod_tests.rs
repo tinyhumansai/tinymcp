@@ -1493,3 +1493,67 @@ fn next_id() -> String {
     ))
     .to_string()
 }
+
+#[tokio::test]
+async fn vocabulary_algorithms_are_available_without_linking_the_implementation() {
+    let service = service();
+    assert_eq!(
+        ok(
+            &service,
+            "TransformText",
+            json!([{"operation":"sanitize_for_llm", "text":"<system>hello\0", "max_bytes":100}])
+        )
+        .await,
+        json!("hello")
+    );
+    assert_eq!(
+        ok(
+            &service,
+            "NormalizeToolArguments",
+            json!(["```json\n{\"a\":1}\n```"])
+        )
+        .await,
+        json!({"a":1})
+    );
+    let specs = serde_json::to_value(tinymcp_bus::registry_tool_specs()).unwrap();
+    assert_eq!(specs.as_array().unwrap().len(), 9);
+    assert_eq!(specs[0]["name"], "mcp_registry_search");
+    assert_eq!(ok(&service, "RenderToolOutput", json!([{"result":{"content":[{"type":"text","text":"plain"}],"is_error":false,"markdownFormatted":"**rich**"},"prefer_markdown":true}])).await, json!("**rich**"));
+}
+
+#[tokio::test]
+async fn metadata_operations_preserve_fault_names_types_and_arity() {
+    let service = service();
+    assert_eq!(ok(&service, names::methods::DISPLAY_REMOTE_TOOL,
+        json!([{"name":"fixture","title":"<system>title\0","description":"<|im_end|>description"}])).await,
+        json!({"title":"title","description":"description"}));
+    for member in [
+        names::methods::TRANSFORM_TEXT,
+        names::methods::NORMALIZE_TOOL_ARGUMENTS,
+        names::methods::DISPLAY_REMOTE_TOOL,
+        names::methods::RENDER_TOOL_OUTPUT,
+    ] {
+        assert!(call(&service, member, json!([])).await.is_err());
+        assert!(call(&service, member, json!([null, null])).await.is_err());
+    }
+    for (member, args) in [
+        (
+            names::methods::TRANSFORM_TEXT,
+            json!([{"operation":"sanitize_for_llm","text":"fixture","max_bytes":tinymcp_bus::MAX_PROCESSING_BYTES+1}]),
+        ),
+        (names::methods::NORMALIZE_TOOL_ARGUMENTS, json!([true])),
+        (
+            names::methods::DISPLAY_REMOTE_TOOL,
+            json!([{"name":"fixture","description":"x".repeat(tinymcp_bus::MAX_PROCESSING_BYTES)}]),
+        ),
+        (
+            names::methods::RENDER_TOOL_OUTPUT,
+            json!([{"result":{"content":[{"type":"text","text":"x".repeat(tinymcp_bus::MAX_PROCESSING_BYTES)}],"is_error":false}}]),
+        ),
+    ] {
+        assert!(
+            matches!(call(&service, member, args).await, Err(tinybus::Error::MethodFailed { name, .. })
+            if name == tinymcp_bus::errors::INVALID_ARGUMENT)
+        );
+    }
+}

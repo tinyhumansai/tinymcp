@@ -1,6 +1,7 @@
 //! Replayable operations, acquisition reservations and joined cancellation.
 
 use super::handler::{CallbackHandler, WaitingCallback};
+use crate::RequestHeadersExt;
 use crate::server::{ClientSession, RequestHeaders};
 use crate::{Error, Result};
 use serde_json::{Map, Value};

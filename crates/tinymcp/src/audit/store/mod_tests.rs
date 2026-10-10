@@ -9,6 +9,7 @@
 
 use super::types::AuditStore;
 use crate::Error;
+use crate::McpWriteListQueryExt;
 use serde_json::json;
 use tinymcp_bus::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery,

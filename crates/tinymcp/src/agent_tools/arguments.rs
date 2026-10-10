@@ -13,7 +13,7 @@
 
 use serde_json::{Map, Value};
 
-use super::types::ArgsError;
+use tinymcp_bus::ArgsError;
 
 /// The opening of a markdown code fence.
 const FENCE: &str = "```";
@@ -40,7 +40,7 @@ const FENCE: &str = "```";
 ///
 /// ```
 /// # use serde_json::json;
-/// # use tinymcp_bus::agent_tools::normalize_tool_arguments;
+/// # use tinymcp::agent_tools::normalize_tool_arguments;
 /// let decoded = normalize_tool_arguments(json!("{\"city\":\"Paris\"}")).unwrap();
 /// assert_eq!(decoded["city"], "Paris");
 /// assert!(normalize_tool_arguments(None).unwrap().is_empty());

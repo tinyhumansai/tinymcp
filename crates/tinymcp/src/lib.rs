@@ -55,7 +55,7 @@
 //! # Example
 //!
 //! ```
-//! use tinymcp::{redact_endpoint, render_tool_result};
+//! use tinymcp::{redact_endpoint, render_tool_result, McpToolResultExt};
 //!
 //! // An endpoint is never logged raw.
 //! assert_eq!(
@@ -71,9 +71,11 @@
 //! assert_eq!(rendered.text(), "sunny, 21C");
 //! ```
 
+pub mod agent_tools;
 pub mod audit;
 pub mod config_servers;
 mod error;
+pub mod processing;
 pub mod registry;
 pub mod server;
 #[cfg(all(feature = "module", not(feature = "static-link")))]
@@ -126,10 +128,19 @@ pub use tinymcp_bus::{
     McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata,
     RegistryConnection, RegistryFreshness, RegistryListResponse, RegistryPagination,
     RegistryServerDetail, RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS, SearchCuration,
-    ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize, version,
+    ServerDetail, ServerStatus, Transport, config, is_compatible, names, version,
 };
 
 pub use tinymcp_bus::{
     ServerCallback, ServerHostCall, ServerHostReply, ServerInput, ServerOperationRef,
     ServerOperationSnapshot, ServerOperationState, ServerSessionConfig,
 };
+
+pub use agent_tools::{normalize_tool_arguments, registry_tool_specs};
+pub use audit::McpWriteListQueryExt;
+pub use registry::{CommandKindExt, McpRegistryAuthConfigExt, TransportExt};
+pub use server::{RequestContextExt, RequestHeadersExt, ResourceSpecExt, ServerToolSpecExt};
+pub use transport::{McpRemoteToolExt, McpToolResultExt};
+
+/// Shared lexical helpers and MCP presentation caps.
+pub mod sanitize;

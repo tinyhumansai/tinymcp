@@ -88,6 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     verify_server_protocol(&proxy).await?;
+    verify_metadata_operations(&proxy).await?;
 
     println!(
         "verified {} as TinyBus module `{}`, serving {} members on {}",
@@ -233,6 +234,66 @@ async fn verify_server_cancellation(
     let closed: usize = proxy.call(names::methods::SERVER_SHUTDOWN, ()).await?;
     if closed != 0 {
         return Err(io::Error::other("server shutdown retained sessions").into());
+    }
+    Ok(())
+}
+
+/// Exercises metadata preparation against the actual compiled module, including refusal.
+async fn verify_metadata_operations(
+    proxy: &tinybus::Proxy,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::{Value, json};
+    use tinymcp_bus::{McpRemoteTool, RemoteToolDisplay, TextTransform, TransformTextRequest};
+    let text: String = proxy
+        .call(
+            names::methods::TRANSFORM_TEXT,
+            (TransformTextRequest {
+                operation: TextTransform::SanitizeForLlm,
+                text: "<system>hello\0".into(),
+                max_bytes: 100,
+            },),
+        )
+        .await?;
+    if text != "hello" {
+        return Err(io::Error::other("metadata lexical projection mismatch").into());
+    }
+    let arguments: Value = proxy
+        .call(
+            names::methods::NORMALIZE_TOOL_ARGUMENTS,
+            (Some(json!("```json\n{\"n\":1}\n```")),),
+        )
+        .await?;
+    if arguments != json!({"n":1}) {
+        return Err(io::Error::other("metadata argument projection mismatch").into());
+    }
+    let mut tool = McpRemoteTool::new("fixture");
+    tool.description = Some("<|im_start|>description".into());
+    let display: RemoteToolDisplay = proxy
+        .call(names::methods::DISPLAY_REMOTE_TOOL, (tool,))
+        .await?;
+    if display.description.as_deref() != Some("description") {
+        return Err(io::Error::other("metadata display projection mismatch").into());
+    }
+    let result = tinymcp_bus::RenderToolOutputRequest {
+        result: tinymcp_bus::McpToolResult::success("plain").with_markdown("**rich**"),
+        format: tinymcp_bus::ToolOutputFormat::Llm,
+        prefer_markdown: true,
+    };
+    let rendered: String = proxy
+        .call(names::methods::RENDER_TOOL_OUTPUT, (result,))
+        .await?;
+    if rendered != "**rich**" {
+        return Err(io::Error::other("metadata output projection mismatch").into());
+    }
+    let refusal: tinybus::Result<Value> = proxy
+        .call(
+            names::methods::NORMALIZE_TOOL_ARGUMENTS,
+            (Some(json!(true)),),
+        )
+        .await;
+    if !matches!(refusal, Err(tinybus::Error::MethodFailed {name,..}) if name == tinymcp_bus::errors::INVALID_ARGUMENT)
+    {
+        return Err(io::Error::other("metadata refusal taxonomy mismatch").into());
     }
     Ok(())
 }

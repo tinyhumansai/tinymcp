@@ -2,6 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use crate::McpToolResultExt;
 use serde_json::{Value, json};
 use tinymcp_bus::MAX_RESOURCE_BYTES;
 

@@ -14,12 +14,12 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use super::{
+use serde_json::json;
+use tinymcp_bus::registry::{
     ChatTurn, CommandKind, ConnStatus, ConnectedServerOverview, InstalledServer, McpAuthHint,
     McpTool, RegistryConnection, RegistryListResponse, RegistryServerDetail, RegistryServerSummary,
     ServerStatus, Transport,
 };
-use serde_json::json;
 
 /// A fully populated stdio install, for tests that need one.
 fn an_installed_server() -> InstalledServer {
@@ -622,3 +622,5 @@ fn a_chat_turn_round_trips() {
     );
     assert_eq!(serde_json::from_value::<ChatTurn>(encoded).unwrap(), turn);
 }
+
+use super::{CommandKindExt, TransportExt};

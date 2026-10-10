@@ -7,10 +7,10 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use super::{
+use serde_json::json;
+use tinymcp_bus::audit::{
     DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord,
 };
-use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // Records
@@ -209,3 +209,5 @@ fn a_query_round_trips_every_field() {
         query
     );
 }
+
+use super::McpWriteListQueryExt;

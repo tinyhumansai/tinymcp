@@ -41,7 +41,3 @@ pub use types::{
     McpAuthHint, McpTool, RegistryConnection, RegistryListResponse, RegistryPagination,
     RegistryServerDetail, RegistryServerSummary, ServerStatus, Transport,
 };
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod test;

@@ -10,6 +10,7 @@
 
 use super::validate_protocol_version;
 use crate::Error;
+use crate::McpToolResultExt;
 use tinymcp_bus::{LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS};
 
 // ---------------------------------------------------------------------------

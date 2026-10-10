@@ -1,5 +1,7 @@
 //! The registry facade and its operations.
 
+use crate::normalize_tool_arguments;
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,7 +18,7 @@ use tinymcp_bus::{
     AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
     InstalledServer, McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool,
     RegistryFreshness, RegistrySearchPage, RegistryServerDetail, RegistrySettings, SearchCuration,
-    ToolCallOutcome, Transport, UpdateEnvOutcome, UpdateEnvStatus, normalize_tool_arguments,
+    ToolCallOutcome, Transport, UpdateEnvOutcome, UpdateEnvStatus,
 };
 
 /// The separator a source-routed name uses.

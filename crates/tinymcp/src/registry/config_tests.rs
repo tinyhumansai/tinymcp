@@ -8,11 +8,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use super::{
+use serde_json::json;
+use tinymcp_bus::config::{
     HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpProxyConfig,
     McpRegistryAuthConfig, McpServerConfig,
 };
-use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // McpAuthConfig — the tagged enum, where a wire-form mistake is most likely
@@ -358,3 +358,5 @@ fn configured_client_capabilities_round_trip() {
         identity
     );
 }
+
+use super::McpRegistryAuthConfigExt;

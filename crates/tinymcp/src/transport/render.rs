@@ -73,6 +73,7 @@ pub fn redact_endpoint(raw: &str) -> String {
 ///     "content": [{ "type": "text", "text": "sunny" }],
 /// }));
 /// assert!(!rendered.is_error);
+/// # use tinymcp::McpToolResultExt;
 /// assert_eq!(rendered.text(), "sunny");
 /// ```
 #[must_use]

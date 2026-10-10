@@ -50,3 +50,11 @@ pub(crate) fn validate_protocol_version(version: &str) -> Result<()> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+mod result_output;
+mod tool_display;
+pub use result_output::McpToolResultExt;
+pub use tool_display::McpRemoteToolExt;
+#[cfg(test)]
+#[path = "payload_tests.rs"]
+mod payload_test;

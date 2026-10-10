@@ -1,5 +1,6 @@
 //! The audit store and its two operations.
 
+use crate::McpWriteListQueryExt;
 use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;

@@ -24,6 +24,8 @@
 // is built a line at a time; both are clearer as written.
 #![allow(clippy::format_push_string, clippy::unnecessary_literal_bound)]
 
+use crate::{McpRemoteToolExt, McpToolResultExt};
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -322,7 +324,7 @@ impl Tool for McpCallTool {
             match args
                 .get("arguments")
                 .cloned()
-                .and_then(|arguments| tinymcp_bus::normalize_tool_arguments(arguments).ok())
+                .and_then(|arguments| crate::normalize_tool_arguments(arguments).ok())
             {
                 Some(arguments) => call.with_arguments(Value::Object(arguments)),
                 None => call,
@@ -346,7 +348,7 @@ impl Tool for McpCallTool {
             .ok_or_else(|| anyhow::anyhow!("missing required `arguments` object"))?;
         // An object JSON-encoded into a string is decoded; anything that
         // cannot hold one is refused naming what arrived.
-        let arguments = match tinymcp_bus::normalize_tool_arguments(arguments) {
+        let arguments = match crate::normalize_tool_arguments(arguments) {
             Ok(arguments) => Value::Object(arguments),
             Err(error) => {
                 let outcome = McpCallOutcome::failed(

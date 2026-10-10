@@ -19,6 +19,7 @@
 //! Anything else is `-32601 Method not found`. A message without an `id` is a
 //! notification and is never answered.
 
+use crate::{ResourceSpecExt, ServerToolSpecExt};
 use serde_json::{Map, Value, json};
 use tinymcp_bus::{LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS};
 
@@ -527,7 +528,7 @@ fn parse_tool_call_params(params: &Value) -> Result<(String, Map<String, Value>)
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .ok_or_else(|| "tools/call params.name must be a non-empty string".to_string())?;
-    let arguments = tinymcp_bus::normalize_tool_arguments(object.get("arguments").cloned())
+    let arguments = crate::normalize_tool_arguments(object.get("arguments").cloned())
         .map_err(|error| format!("tools/call params.arguments: {error}"))?;
     Ok((name.to_string(), arguments))
 }

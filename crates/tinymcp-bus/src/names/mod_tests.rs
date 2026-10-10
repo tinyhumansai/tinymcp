@@ -103,6 +103,10 @@ fn the_method_table_holds_every_declared_member() {
             methods::SERVER_CANCEL,
             methods::SERVER_CLOSE,
             methods::SERVER_SHUTDOWN,
+            methods::TRANSFORM_TEXT,
+            methods::NORMALIZE_TOOL_ARGUMENTS,
+            methods::DISPLAY_REMOTE_TOOL,
+            methods::RENDER_TOOL_OUTPUT,
             methods::OPEN,
         ]
     );

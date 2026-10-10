@@ -31,7 +31,3 @@ pub use types::{
     HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpProxyConfig,
     McpRegistryAuthConfig, McpServerConfig,
 };
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod test;

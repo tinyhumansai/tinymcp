@@ -23,6 +23,7 @@
 //!
 //! [`RequestContext::header`]: crate::server::RequestContext::header
 
+use crate::RequestHeadersExt;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::Write as _;

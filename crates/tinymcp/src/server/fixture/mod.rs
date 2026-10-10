@@ -8,6 +8,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use crate::RequestContextExt;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
 
