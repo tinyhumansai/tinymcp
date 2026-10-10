@@ -9,13 +9,13 @@ use tinymcp_bus::{
 
 fn input(line: String) -> ServerInput {
     ServerInput {
-        operation_id: uuid::Uuid::new_v4().to_string(),
+        operation_id: next_id(),
         line,
     }
 }
 fn config() -> ServerSessionConfig {
     ServerSessionConfig {
-        session_id: uuid::Uuid::new_v4().to_string(),
+        session_id: next_id(),
         info: json!({"name":"host", "version":"1"}),
         source_type_prefix: "mcp".into(),
         resources: vec![json!({"uri":"host://info", "name":"info"})],
@@ -512,4 +512,12 @@ async fn cancel(sessions: &ServerSessions, id: &str) -> crate::Result<()> {
         .await
         .map_or_else(|_| String::new(), |state| state.operation_id);
     sessions.cancel(id, &operation_id).await
+}
+
+fn next_id() -> String {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    uuid::Uuid::from_u128(u128::from(
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+    ))
+    .to_string()
 }

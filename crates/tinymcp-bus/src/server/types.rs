@@ -6,7 +6,8 @@ use serde_json::{Map, Value};
 /// Host-owned declarations frozen for one server session.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ServerSessionConfig {
-    /// Caller-generated UUID, known before acquisition so lost replies remain cancellable.
+    /// Caller-generated nonzero UUID-encoded integer counter, known before acquisition.
+    /// Counters increase per registry; a 4096-counter window allows reordered opens.
     pub session_id: String,
     /// Server identity, version and optional instructions.
     pub info: Value,
@@ -143,7 +144,7 @@ impl std::fmt::Debug for ServerHostCall {
 /// Input identity known before submission, allowing side-effect-safe retries.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ServerInput {
-    /// Caller-generated UUID, never reused within this session.
+    /// Caller-generated nonzero UUID-encoded integer counter, increasing strictly per session.
     pub operation_id: String,
     /// One newline-delimited MCP message or batch.
     pub line: String,

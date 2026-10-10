@@ -365,10 +365,12 @@ Contract 1.8 adds `ServerOpen`, `ServerSubmit`, `ServerPoll`, `ServerComplete`,
 `ServerCancel`, `ServerClose` and `ServerShutdown`. The module owns MCP framing,
 negotiation, provenance and method validation; typed callbacks return validated
 tool, resource and prompt operations to the host for approvals and domain dispatch.
-Session identifiers are caller-known UUIDs, so a lost acquisition reply can still
-be recovered or cancelled. Close records non-reusable reservations and joins active
-workers. The bridge bounds session counts, batch counts, input and callback bytes,
-and aggregate replies. See [the operation contract](crates/tinymcp/src/server/bridge/README.md).
+Session identifiers are caller-known UUID-encoded counters, so a lost acquisition
+reply can still be recovered or cancelled. A bounded rolling admission window
+permits concurrent reordered opens and retires closed identifiers without lifetime
+exhaustion. Close joins active workers; per-session operation high-water marks
+fence retired retries. The bridge bounds session counts, batch counts, input and callback bytes,
+aggregate replies, and response construction. See [the operation contract](crates/tinymcp/src/server/bridge/README.md).
 
 Existing stdio/HTTP library entrypoints remain available. Compiled-module listener
 entrypoints and moving the legacy server declaration/error types into the pure

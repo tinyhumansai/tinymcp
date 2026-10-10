@@ -60,6 +60,86 @@ pub async fn handle_line(
     }
 }
 
+/// Compiled-module framing with a budget charged before retaining each response.
+/// Stops dispatch immediately when an envelope (including batch punctuation)
+/// exceeds the budget. Library transports retain their existing unbounded API.
+pub(crate) async fn handle_line_bounded(
+    handler: &dyn McpServerHandler,
+    session: &mut ClientSession,
+    headers: &RequestHeaders,
+    line: &str,
+    limit: usize,
+) -> Result<Option<String>, ()> {
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        let response = handle_line(handler, session, headers, line).await;
+        return if response.as_ref().is_some_and(|line| line.len() > limit) {
+            Err(())
+        } else {
+            Ok(response)
+        };
+    };
+    let empty_batch = value.as_array().is_some_and(Vec::is_empty);
+    let items = match value {
+        Value::Array(items) if !items.is_empty() => items,
+        other => vec![other],
+    };
+    let mut output = LimitedOutput {
+        bytes: Vec::new(),
+        limit,
+    };
+    let mut count = 0;
+    for item in items {
+        let response = if empty_batch {
+            Some(error_response(
+                Value::Null,
+                INVALID_REQUEST,
+                "Invalid Request",
+                Some(json!("batch must not be empty")),
+            ))
+        } else {
+            handle_single_message(handler, session, headers, item).await
+        };
+        if let Some(response) = response {
+            if count == 1 {
+                std::io::Write::write_all(&mut output, b"[").map_err(|_| ())?;
+                output.bytes.rotate_right(1);
+            }
+            if count > 0 {
+                std::io::Write::write_all(&mut output, b",").map_err(|_| ())?;
+            }
+            serde_json::to_writer(&mut output, &response).map_err(|_| ())?;
+            count += 1;
+            if count > 1 && output.bytes.len() == limit {
+                return Err(());
+            }
+        }
+    }
+    if count == 0 {
+        return Ok(None);
+    }
+    if count > 1 {
+        std::io::Write::write_all(&mut output, b"]").map_err(|_| ())?;
+    }
+    String::from_utf8(output.bytes).map(Some).map_err(|_| ())
+}
+
+struct LimitedOutput {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+impl std::io::Write for LimitedOutput {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+            return Err(std::io::Error::other("server output exceeds byte limit"));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Answers one parsed JSON-RPC message or batch.
 ///
 /// Returns one response per request, in order; notifications contribute

@@ -1391,7 +1391,7 @@ async fn server_members_preserve_positional_arguments_callbacks_and_lifecycle() 
     };
     let service = service();
     let config = ServerSessionConfig {
-        session_id: uuid::Uuid::new_v4().to_string(),
+        session_id: next_id(),
         info: json!({"name":"fixture","version":"1"}),
         source_type_prefix: "mcp".into(),
         resources: vec![],
@@ -1408,7 +1408,7 @@ async fn server_members_preserve_positional_arguments_callbacks_and_lifecycle() 
         json!([
             id,
             {},
-            {"operation_id":uuid::Uuid::new_v4().to_string(), "line":json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fixture"}}).to_string()}
+            {"operation_id":next_id(), "line":json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fixture"}}).to_string()}
         ]),
     )
     .await
@@ -1449,7 +1449,7 @@ async fn server_members_preserve_positional_arguments_callbacks_and_lifecycle() 
             _ => panic!("unexpected server state"),
         }
     }
-    let cancel_id = uuid::Uuid::new_v4().to_string();
+    let cancel_id = next_id();
     call(
         &service,
         names::methods::SERVER_SUBMIT,
@@ -1484,4 +1484,12 @@ async fn server_members_preserve_positional_arguments_callbacks_and_lifecycle() 
             .unwrap(),
         0
     );
+}
+
+fn next_id() -> String {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    uuid::Uuid::from_u128(u128::from(
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+    ))
+    .to_string()
 }

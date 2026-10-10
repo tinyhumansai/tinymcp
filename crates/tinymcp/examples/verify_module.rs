@@ -122,7 +122,7 @@ async fn verify_server_protocol(proxy: &tinybus::Proxy) -> Result<(), Box<dyn st
         ServerSessionConfig,
     };
     let config = ServerSessionConfig {
-        session_id: "b966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+        session_id: "00000000-0000-0000-0000-000000000001".into(),
         info: json!({"name":"artifact-fixture", "version":"1"}),
         source_type_prefix: "mcp".into(),
         resources: Vec::new(),
@@ -131,7 +131,7 @@ async fn verify_server_protocol(proxy: &tinybus::Proxy) -> Result<(), Box<dyn st
     let line = json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"fixture"}})
         .to_string();
     let input = ServerInput {
-        operation_id: "c966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+        operation_id: "00000000-0000-0000-0000-000000000001".into(),
         line,
     };
     let (): () = proxy
@@ -200,7 +200,7 @@ async fn verify_server_cancellation(
                 &session,
                 Map::<String, Value>::new(),
                 ServerInput {
-                    operation_id: "d966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+                    operation_id: "00000000-0000-0000-0000-000000000002".into(),
                     line: json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}).to_string(),
                 },
             ),
@@ -211,7 +211,7 @@ async fn verify_server_cancellation(
             names::methods::SERVER_CANCEL,
             (ServerOperationRef {
                 session_id: session.to_owned(),
-                operation_id: "d966b034-c7fd-4015-88a7-2d59a9a6b6e9".into(),
+                operation_id: "00000000-0000-0000-0000-000000000002".into(),
             },),
         )
         .await?;

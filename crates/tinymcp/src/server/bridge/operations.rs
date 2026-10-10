@@ -1,7 +1,7 @@
 //! Replayable operations, acquisition reservations and joined cancellation.
 
 use super::handler::{CallbackHandler, WaitingCallback};
-use crate::server::{ClientSession, RequestHeaders, handle_line};
+use crate::server::{ClientSession, RequestHeaders};
 use crate::{Error, Result};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 struct Operation {
     input: ServerInput,
     headers: RequestHeaders,
-    task: Option<JoinHandle<Option<String>>>,
+    task: Option<JoinHandle<std::result::Result<Option<String>, ()>>>,
     receiver: mpsc::Receiver<WaitingCallback>,
     waiting: Option<WaitingCallback>,
     terminal: Option<ServerOperationState>,
@@ -35,16 +35,10 @@ impl Operation {
             && let Some(task) = self.task.take()
         {
             self.terminal = Some(match task.await {
-                Ok(response)
-                    if response
-                        .as_ref()
-                        .is_some_and(|line| line.len() > super::MAX_BYTES) =>
-                {
-                    ServerOperationState::Failed {
-                        message: "server output exceeds byte limit".into(),
-                    }
-                }
-                Ok(response) => ServerOperationState::Complete { response },
+                Ok(Err(())) => ServerOperationState::Failed {
+                    message: "server output exceeds byte limit".into(),
+                },
+                Ok(Ok(response)) => ServerOperationState::Complete { response },
                 Err(_) => ServerOperationState::Failed {
                     message: "server operation stopped".into(),
                 },
@@ -66,13 +60,38 @@ struct Session {
     client: Arc<Mutex<ClientSession>>,
     config: ServerSessionConfig,
     operation: Option<Operation>,
-    used_operations: HashSet<String>,
+    operation_sequence: u128,
 }
 
-/// One registry object's bounded server sessions and non-reusable reservations.
+const ADMISSION_WINDOW: u128 = 4096;
+
+#[derive(Default)]
+struct Registry {
+    active: HashMap<String, Session>,
+    reserved: HashSet<u128>,
+    sequence: u128,
+}
+impl Registry {
+    fn reserve(&mut self, sequence: u128) -> Result<()> {
+        if sequence <= self.sequence.saturating_sub(ADMISSION_WINDOW)
+            || self.reserved.contains(&sequence)
+        {
+            return Err(invalid(
+                "server session identifier already reserved or expired",
+            ));
+        }
+        self.sequence = self.sequence.max(sequence);
+        let floor = self.sequence.saturating_sub(ADMISSION_WINDOW);
+        self.reserved.retain(|id| *id > floor);
+        self.reserved.insert(sequence);
+        Ok(())
+    }
+}
+
+/// One registry object's bounded active sessions and rolling admission window.
 #[derive(Default)]
 pub struct ServerSessions {
-    sessions: Mutex<HashMap<String, Option<Session>>>,
+    sessions: Mutex<Registry>,
 }
 impl std::fmt::Debug for ServerSessions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -82,9 +101,12 @@ impl std::fmt::Debug for ServerSessions {
 fn invalid(message: &str) -> Error {
     Error::invalid_argument(message)
 }
-fn validate_id(id: &str) -> Result<()> {
-    uuid::Uuid::parse_str(id).map_err(|_| invalid("invalid server identifier"))?;
-    Ok(())
+fn validate_id(id: &str) -> Result<uuid::Uuid> {
+    let id = uuid::Uuid::parse_str(id).map_err(|_| invalid("invalid server identifier"))?;
+    if id.is_nil() {
+        return Err(invalid("invalid server identifier"));
+    }
+    Ok(id)
 }
 fn bounded<T: serde::Serialize>(value: &T) -> Result<usize> {
     let bytes = serde_json::to_vec(value)
@@ -100,7 +122,7 @@ impl ServerSessions {
     ///
     /// # Errors
     /// Rejects invalid declarations, conflicting IDs, more than 32 active sessions,
-    /// oversized payloads or more than 4096 lifetime reservations per object.
+    /// oversized payloads or retired/out-of-window reservation identifiers.
     pub async fn open(&self, config: ServerSessionConfig) -> Result<String> {
         bounded(&config)?;
         let _: crate::server::ServerInfo = serde_json::from_value(config.info.clone())
@@ -111,34 +133,28 @@ impl ServerSessions {
         if config.source_type_prefix.trim().is_empty() {
             return Err(invalid("empty server provenance prefix"));
         }
-        validate_id(&config.session_id)?;
+        let identifier = validate_id(&config.session_id)?;
+        let id = identifier.to_string();
         let mut sessions = self.sessions.lock().await;
-        if let Some(existing) = sessions.get(&config.session_id) {
-            return match existing {
-                Some(session) if session.config == config => Ok(config.session_id),
-                _ => Err(invalid("server session identifier already reserved")),
+        if let Some(existing) = sessions.active.get(&id) {
+            return if existing.config == config {
+                Ok(id)
+            } else {
+                Err(invalid("server session identifier already reserved"))
             };
         }
-        if sessions.len() >= 4096 {
-            return Err(invalid("server reservation limit reached"));
-        }
-        if sessions
-            .values()
-            .filter(|session| session.is_some())
-            .count()
-            >= 32
-        {
+        if sessions.active.len() >= 32 {
             return Err(invalid("server session limit reached"));
         }
-        let id = config.session_id.clone();
-        sessions.insert(
+        sessions.reserve(identifier.as_u128())?;
+        sessions.active.insert(
             id.clone(),
-            Some(Session {
+            Session {
                 client: Arc::new(Mutex::new(ClientSession::new(&config.source_type_prefix))),
                 config,
                 operation: None,
-                used_operations: HashSet::new(),
-            }),
+                operation_sequence: 0,
+            },
         );
         Ok(id)
     }
@@ -146,7 +162,7 @@ impl ServerSessions {
     ///
     /// # Errors
     /// Rejects closed sessions, concurrent operations, conflicting/retired IDs,
-    /// invalid headers, byte limits and over 4096 operations in one session.
+    /// invalid headers, byte limits and non-increasing operation identifiers.
     pub async fn submit(
         &self,
         id: &str,
@@ -155,7 +171,7 @@ impl ServerSessions {
     ) -> Result<()> {
         bounded(&input)?;
         bounded(&headers)?;
-        validate_id(&input.operation_id)?;
+        let operation_sequence = validate_id(&input.operation_id)?.as_u128();
         if serde_json::from_str::<Value>(&input.line)
             .ok()
             .is_some_and(|value| value.as_array().is_some_and(|items| items.len() > 256))
@@ -173,8 +189,8 @@ impl ServerSessions {
         }
         let mut sessions = self.sessions.lock().await;
         let session = sessions
-            .get_mut(id)
-            .and_then(Option::as_mut)
+            .active
+            .get_mut(&validate_id(id)?.to_string())
             .ok_or_else(|| invalid("unknown server session"))?;
         if let Some(operation) = &session.operation {
             if operation.input.operation_id == input.operation_id {
@@ -188,11 +204,8 @@ impl ServerSessions {
                 return Err(invalid("server session already has an operation"));
             }
         }
-        if session.used_operations.contains(&input.operation_id) {
+        if operation_sequence <= session.operation_sequence {
             return Err(invalid("server operation identifier already used"));
-        }
-        if session.used_operations.len() >= 4096 {
-            return Err(invalid("server operation limit reached"));
         }
         let (sender, receiver) = mpsc::channel(1);
         let handler = Arc::new(CallbackHandler {
@@ -208,9 +221,16 @@ impl ServerSessions {
         let task_headers = request_headers.clone();
         let task = tokio::spawn(async move {
             let mut client = client.lock().await;
-            handle_line(&handler, &mut client, &task_headers, &line).await
+            crate::server::protocol::handle_line_bounded(
+                &handler,
+                &mut client,
+                &task_headers,
+                &line,
+                super::MAX_BYTES,
+            )
+            .await
         });
-        session.used_operations.insert(input.operation_id.clone());
+        session.operation_sequence = operation_sequence;
         session.operation = Some(Operation {
             input,
             headers: request_headers,
@@ -229,8 +249,8 @@ impl ServerSessions {
     pub async fn poll(&self, id: &str) -> Result<ServerOperationSnapshot> {
         let mut sessions = self.sessions.lock().await;
         let operation = sessions
-            .get_mut(id)
-            .and_then(Option::as_mut)
+            .active
+            .get_mut(&validate_id(id)?.to_string())
             .ok_or_else(|| invalid("unknown server session"))?
             .operation
             .as_mut()
@@ -267,8 +287,8 @@ impl ServerSessions {
         let bytes = bounded(&reply)?;
         let mut sessions = self.sessions.lock().await;
         let operation = sessions
-            .get_mut(id)
-            .and_then(Option::as_mut)
+            .active
+            .get_mut(&validate_id(id)?.to_string())
             .ok_or_else(|| invalid("unknown server session"))?
             .operation
             .as_mut()
@@ -303,8 +323,8 @@ impl ServerSessions {
     pub async fn cancel(&self, id: &str, operation_id: &str) -> Result<()> {
         let mut sessions = self.sessions.lock().await;
         let operation = sessions
-            .get_mut(id)
-            .and_then(Option::as_mut)
+            .active
+            .get_mut(&validate_id(id)?.to_string())
             .ok_or_else(|| invalid("unknown server session"))?
             .operation
             .as_mut()
@@ -322,30 +342,25 @@ impl ServerSessions {
     /// Closes a caller-known reservation, including one whose open is still queued.
     ///
     /// # Errors
-    /// Rejects malformed identifiers or the lifetime reservation limit.
+    /// Rejects malformed identifiers. Retired identifiers are already closed.
     pub async fn close(&self, id: &str) -> Result<()> {
-        validate_id(id)?;
+        let identifier = validate_id(id)?;
         let mut sessions = self.sessions.lock().await;
-        if !sessions.contains_key(id) && sessions.len() >= 4096 {
-            return Err(invalid("server reservation limit reached"));
-        }
-        if let Some(mut session) = sessions.insert(id.into(), None).flatten()
+        let _ = sessions.reserve(identifier.as_u128());
+        if let Some(mut session) = sessions.active.remove(&identifier.to_string())
             && let Some(mut operation) = session.operation.take()
         {
             operation.stop().await;
         }
         Ok(())
     }
-    /// Closes and joins all sessions on this object, retaining closed reservations.
+    /// Closes and joins all sessions on this object, retaining bounded retry fencing.
     pub async fn shutdown(&self) -> usize {
         let mut sessions = self.sessions.lock().await;
-        let mut count = 0;
-        for entry in sessions.values_mut() {
-            if let Some(mut session) = entry.take() {
-                count += 1;
-                if let Some(mut operation) = session.operation.take() {
-                    operation.stop().await;
-                }
+        let count = sessions.active.len();
+        for (_, mut session) in sessions.active.drain() {
+            if let Some(mut operation) = session.operation.take() {
+                operation.stop().await;
             }
         }
         count

@@ -14,12 +14,18 @@ identical submissions idempotent; retired IDs cannot execute again. Terminal
 observations remain until a new operation acknowledges them. Cancellation targets
 both session and operation so delayed requests cannot cancel a successor. Cancellation drops the protocol future and
 all callback waiters. Close drops the entire session; shutdown closes every
-session owned by that registry object. Caller-generated UUID handles are known before acquisition and never reused.
-Idempotent open recovers lost replies. Close records tombstones before acquisition
+session owned by that registry object. Caller-generated nonzero UUID-encoded counters are known before acquisition and never reused.
+The session admission window permits concurrent out-of-order delivery within
+4096 counters, preserving active retries outside the window. Operation counters
+increase strictly per session; one high-water mark rejects retired operations
+without lifetime exhaustion.
+Idempotent open recovers lost replies. A bounded rolling UUID-counter admission window fences closed acquisitions
 and waits for cancelled workers; late opens cannot resurrect them. Callback polls
 redeliver the same outstanding identifier until completion; hosts deduplicate
 execution by that identifier.
-Counts and serialized input, declaration and reply bytes are bounded. Invalid
+Counts and serialized input, declaration and reply bytes are bounded. Output
+budgets are charged during construction, including envelopes and punctuation,
+and stop batch dispatch before retaining further responses. Invalid
 completions retain the waiter so a host can correct them; cancellation removes it.
 
 This slice exposes protocol operations. Existing stdio and HTTP library entry
