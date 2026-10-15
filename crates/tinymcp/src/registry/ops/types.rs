@@ -912,6 +912,7 @@ impl McpRegistry {
                 description: tool.description,
                 input_schema: tool.input_schema,
                 meta: tool.meta,
+                annotations: tool.annotations,
             })
             .collect())
     }

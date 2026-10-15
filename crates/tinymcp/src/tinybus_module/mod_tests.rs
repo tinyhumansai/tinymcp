@@ -1935,6 +1935,7 @@ async fn the_cached_overview_replays_persisted_tools_without_dialling() {
                 description: Some("cached".into()),
                 input_schema: json!({"type": "object"}),
                 meta: None,
+                annotations: None,
             }],
         )
         .unwrap();

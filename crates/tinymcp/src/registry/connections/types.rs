@@ -262,6 +262,7 @@ impl Connections {
                 description: remote.description,
                 input_schema: remote.input_schema,
                 meta: remote.meta,
+                annotations: remote.annotations,
             })
             .collect();
 

@@ -72,6 +72,7 @@ fn processing_requests_pin_enum_tags_and_optional_render_defaults() {
             description: Some("Read the forecast".into()),
             input_schema: json!({"type":"object"}),
             meta: None,
+            annotations: None,
         }],
     };
     let wire = serde_json::to_value(&scrub).unwrap();
