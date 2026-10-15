@@ -61,6 +61,14 @@ pub struct McpRemoteTool {
     /// Untrusted remote data; never place it in a model's context.
     #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
     pub meta: Option<Value>,
+    /// The tool's `annotations` object, verbatim: behaviour hints such as
+    /// `readOnlyHint` and `destructiveHint`.
+    ///
+    /// Hints, not guarantees: a server may mislabel a tool. A host may use
+    /// them to decide what to ask the user before calling, never to skip a
+    /// check it would make anyway. Untrusted remote data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<Value>,
 }
 
 impl McpRemoteTool {
@@ -82,7 +90,30 @@ impl McpRemoteTool {
             description: None,
             input_schema: Value::Null,
             meta: None,
+            annotations: None,
         }
+    }
+
+    /// Whether the server marks the tool as changing nothing
+    /// (`annotations.readOnlyHint` is `true`). A tool without the hint is not
+    /// read-only, as the protocol's default says.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tinymcp_bus::McpRemoteTool;
+    /// let mut tool = McpRemoteTool::new("forecast");
+    /// assert!(!tool.is_read_only());
+    /// tool.annotations = Some(serde_json::json!({"readOnlyHint": true}));
+    /// assert!(tool.is_read_only());
+    /// ```
+    #[must_use]
+    pub fn is_read_only(&self) -> bool {
+        self.annotations
+            .as_ref()
+            .and_then(|annotations| annotations.get("readOnlyHint"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
     }
 }
 

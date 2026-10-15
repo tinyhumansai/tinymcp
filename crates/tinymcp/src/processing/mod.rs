@@ -204,6 +204,9 @@ pub fn scrub_static_tools(
         if let Some(meta) = &mut tool.meta {
             scrubber.scrub_value(meta);
         }
+        if let Some(annotations) = &mut tool.annotations {
+            scrubber.scrub_value(annotations);
+        }
     }
     Ok(tools)
 }

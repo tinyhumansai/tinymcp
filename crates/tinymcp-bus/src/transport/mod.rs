@@ -36,3 +36,7 @@ pub use types::{
     McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
     SUPPORTED_PROTOCOL_VERSIONS,
 };
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

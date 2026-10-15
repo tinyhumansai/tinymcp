@@ -34,8 +34,8 @@
 /// (`require_identifier`, `ServerDetail::server_json`, `explain_not_connected`) that
 /// hosts previously copied; no member was added or removed. 1.24 adds tool
 /// `_meta` on `McpTool` and the `ReadResource` and `StaticReadResource`
-/// members.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 24);
+/// members. 1.25 adds the optional `annotations` on `McpRemoteTool`.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 25);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.

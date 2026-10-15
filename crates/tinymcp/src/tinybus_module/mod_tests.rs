@@ -1498,7 +1498,11 @@ async fn static_tool_metadata_redacts_configured_credentials_before_bus_return()
                 "title": "Forecast for mcp-static-metadata-secret-731",
                 "description": "Echoed mcp-static-metadata-secret-731",
                 "inputSchema": {"type": "object", "description": "mcp-static-metadata-secret-731"},
-                "_meta": {"credential": "mcp-static-metadata-secret-731"}
+                "_meta": {"credential": "mcp-static-metadata-secret-731"},
+                "annotations": {
+                    "title": "Forecast mcp-static-metadata-secret-731",
+                    "readOnlyHint": true
+                }
             }]
         }]),
     )
@@ -1510,6 +1514,8 @@ async fn static_tool_metadata_redacts_configured_credentials_before_bus_return()
     assert_eq!(tools[0]["description"], "Echoed [redacted]");
     assert_eq!(tools[0]["inputSchema"]["description"], "[redacted]");
     assert_eq!(tools[0]["_meta"]["credential"], "[redacted]");
+    assert_eq!(tools[0]["annotations"]["title"], "Forecast [redacted]");
+    assert_eq!(tools[0]["annotations"]["readOnlyHint"], true);
 }
 
 #[tokio::test]
