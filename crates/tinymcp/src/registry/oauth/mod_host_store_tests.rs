@@ -114,9 +114,16 @@ async fn the_server_a_pending_state_belongs_to_can_be_read_before_completing() {
         .unwrap();
     let state = authorize_param(&url, "state").unwrap();
 
-    assert_eq!(flow.pending_server(&state).as_deref(), Some(TENANT_SERVER));
-    assert_eq!(flow.pending_count(), 1, "peeking does not consume");
-    assert_eq!(flow.pending_server("never-issued"), None);
+    assert_eq!(
+        flow.pending_server(&state).await.unwrap().as_deref(),
+        Some(TENANT_SERVER)
+    );
+    assert_eq!(
+        flow.pending_count().await.unwrap(),
+        1,
+        "peeking does not consume"
+    );
+    assert_eq!(flow.pending_server("never-issued").await.unwrap(), None);
 }
 
 #[tokio::test]
@@ -291,7 +298,7 @@ async fn a_guarded_flow_refuses_an_internal_authorization_server() {
 
     assert!(error.to_string().contains("https"), "{error}");
     assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
-    assert_eq!(flow.pending_count(), 0);
+    assert_eq!(flow.pending_count().await.unwrap(), 0);
 }
 
 #[tokio::test]
@@ -356,4 +363,137 @@ async fn desktop_flow_keeps_the_default_clients() {
             .expect("desktop flow skips public endpoint checks")
             .is_none()
     );
+}
+
+// ---------------------------------------------------------------------------
+// Several instances sharing one pending store
+// ---------------------------------------------------------------------------
+
+/// A host running several instances behind one callback URL: the redirect
+/// lands on whichever instance the load balancer picks, so the one that
+/// completes is not the one that began.
+#[tokio::test]
+async fn a_sign_in_begun_on_one_instance_completes_on_another_sharing_its_store() {
+    let (endpoint, authority) = authority_with_challenge().await;
+    let host = HostSecrets::remote(&endpoint);
+    let shared: Arc<dyn PendingAuthorizationStore> = Arc::new(MemoryPendingStore::new());
+    let first = flow().with_pending_store(shared.clone());
+    let second = flow().with_pending_store(shared.clone());
+
+    let url = first
+        .begin(&host, TENANT_SERVER, "https://host.test/oauth/callback")
+        .await
+        .expect("begin");
+    let state = authorize_param(&url, "state").unwrap();
+
+    assert_eq!(
+        second.pending_server(&state).await.unwrap().as_deref(),
+        Some(TENANT_SERVER)
+    );
+    let server_id = second
+        .complete(&host, &state, "the-code")
+        .await
+        .expect("complete on the other instance");
+
+    assert_eq!(server_id, TENANT_SERVER);
+    assert_eq!(
+        host.get(TENANT_SERVER, "Authorization").as_deref(),
+        Some("Bearer at-1")
+    );
+    assert_eq!(authority.exchanges.load(Ordering::SeqCst), 1);
+    assert_eq!(shared.count().await.unwrap(), 0);
+}
+
+/// Two instances racing to complete the same redirect exchange the code once.
+#[tokio::test]
+async fn racing_completions_of_one_state_exchange_the_code_once() {
+    let (endpoint, authority) = authority_with_challenge().await;
+    let host = HostSecrets::remote(&endpoint);
+    let shared: Arc<dyn PendingAuthorizationStore> = Arc::new(MemoryPendingStore::new());
+    let first = flow().with_pending_store(shared.clone());
+    let second = flow().with_pending_store(shared);
+
+    let url = first
+        .begin(&host, TENANT_SERVER, "https://host.test/oauth/callback")
+        .await
+        .unwrap();
+    let state = authorize_param(&url, "state").unwrap();
+
+    let (a, b) = tokio::join!(
+        first.complete(&host, &state, "the-code"),
+        second.complete(&host, &state, "the-code"),
+    );
+
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert_eq!(authority.exchanges.load(Ordering::SeqCst), 1);
+}
+
+/// A host store that keeps entries past their lifetime cannot complete a
+/// stale sign-in: the flow checks the age itself.
+#[tokio::test]
+async fn an_expired_authorization_in_a_lazy_store_is_refused() {
+    #[derive(Debug, Default)]
+    struct NeverExpires(parking_lot::Mutex<BTreeMap<String, PendingAuthorization>>);
+
+    impl PendingAuthorizationStore for NeverExpires {
+        fn park<'a>(
+            &'a self,
+            state: &'a str,
+            pending: PendingAuthorization,
+        ) -> futures_util::future::BoxFuture<'a, crate::Result<()>> {
+            self.0.lock().insert(state.to_string(), pending);
+            Box::pin(std::future::ready(Ok(())))
+        }
+
+        fn take<'a>(
+            &'a self,
+            state: &'a str,
+        ) -> futures_util::future::BoxFuture<'a, crate::Result<Option<PendingAuthorization>>>
+        {
+            Box::pin(std::future::ready(Ok(self.0.lock().remove(state))))
+        }
+
+        fn peek<'a>(
+            &'a self,
+            state: &'a str,
+        ) -> futures_util::future::BoxFuture<'a, crate::Result<Option<PendingAuthorization>>>
+        {
+            Box::pin(std::future::ready(Ok(self.0.lock().get(state).cloned())))
+        }
+
+        fn count(&self) -> futures_util::future::BoxFuture<'_, crate::Result<usize>> {
+            Box::pin(std::future::ready(Ok(self.0.lock().len())))
+        }
+    }
+
+    let (endpoint, authority) = authority_with_challenge().await;
+    let host = HostSecrets::remote(&endpoint);
+    let lazy = Arc::new(NeverExpires::default());
+    lazy.park(
+        "stale",
+        PendingAuthorization {
+            server_id: TENANT_SERVER.into(),
+            code_verifier: "v".into(),
+            client_id: "client-1".into(),
+            client_secret: None,
+            token_endpoint: format!("{endpoint}/token"),
+            redirect_uri: "https://host.test/oauth/callback".into(),
+            started_at: 1,
+        },
+    )
+    .await
+    .unwrap();
+    let flow = flow().with_pending_store(lazy);
+
+    assert_eq!(flow.pending_server("stale").await.unwrap(), None);
+    let error = flow
+        .complete(&host, "stale", "the-code")
+        .await
+        .expect_err("expired");
+
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
+    assert_eq!(authority.exchanges.load(Ordering::SeqCst), 0);
 }

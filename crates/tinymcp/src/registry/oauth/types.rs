@@ -9,28 +9,6 @@ use crate::error::{Error, Result};
 // here so every path through this module keeps resolving.
 pub use tinymcp_bus::{AuthDetection, AuthKind};
 
-/// An authorization parked between the browser redirect out and back.
-#[derive(Debug, Clone)]
-pub(super) struct PendingAuthorization {
-    /// Which install this authorization is for.
-    pub(super) server_id: String,
-    /// The PKCE verifier, sent with the code exchange.
-    pub(super) code_verifier: String,
-    /// The dynamically registered client.
-    pub(super) client_id: String,
-    /// The secret, when the server issued a confidential client.
-    pub(super) client_secret: Option<String>,
-    /// Where to exchange the code.
-    pub(super) token_endpoint: String,
-    /// The redirect the authorization was started with.
-    pub(super) redirect_uri: String,
-    /// When this was parked, in Unix seconds.
-    ///
-    /// Present so an authorization the user abandoned does not sit in memory
-    /// holding a client secret forever.
-    pub(super) started_at: u64,
-}
-
 /// The bookkeeping needed to mint a new access token without another sign-in.
 ///
 /// Stored as JSON beside the access token under
