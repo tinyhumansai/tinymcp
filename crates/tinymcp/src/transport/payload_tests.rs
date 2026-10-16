@@ -518,6 +518,33 @@ fn a_tool_without_meta_serializes_without_the_member() {
 }
 
 #[test]
+fn a_remote_tools_annotations_are_kept_verbatim() {
+    let annotations = json!({
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "custom": "retained",
+    });
+    let tool: McpRemoteTool = serde_json::from_value(json!({
+        "name": "lookup",
+        "annotations": annotations,
+    }))
+    .unwrap();
+
+    assert_eq!(tool.annotations, Some(annotations.clone()));
+    assert_eq!(
+        serde_json::to_value(&tool).unwrap()["annotations"],
+        annotations
+    );
+}
+
+#[test]
+fn a_tool_without_annotations_serializes_without_the_member() {
+    let wire = serde_json::to_value(McpRemoteTool::new("plain")).unwrap();
+
+    assert!(wire.get("annotations").is_none(), "{wire}");
+}
+
+#[test]
 fn a_resource_listing_entry_keeps_its_wire_names() {
     let resource: tinymcp_bus::McpResource = serde_json::from_value(json!({
         "uri": "ui://card",
