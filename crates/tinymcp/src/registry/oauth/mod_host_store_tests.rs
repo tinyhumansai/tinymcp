@@ -280,18 +280,53 @@ async fn a_non_json_token_endpoint_failure_is_not_echoed() {
 /// exactly such a target, so nothing may be registered with it.
 #[tokio::test]
 async fn a_guarded_flow_refuses_an_internal_authorization_server() {
-    let (endpoint, state) = authority_with_challenge().await;
-    let store = store_with_remote(&endpoint);
+    // The server URL itself is now refused first when it is internal (see
+    // `a_guarded_flow_refuses_an_internal_server_url_before_probing_it`), so
+    // the endpoints a public server could advertise are checked directly:
+    // each internal one is refused by name, before anything is registered.
     let flow = flow().require_public_endpoints();
-
-    let error = flow
-        .begin(&store, "srv-1", "https://host.test/cb")
+    let public = "https://8.8.8.8";
+    for (authorize, token, register, what) in [
+        (
+            "http://127.0.0.1/authorize".to_string(),
+            format!("{public}/token"),
+            format!("{public}/register"),
+            "authorization",
+        ),
+        (
+            format!("{public}/authorize"),
+            "https://169.254.169.254/token".to_string(),
+            format!("{public}/register"),
+            "token",
+        ),
+        (
+            format!("{public}/authorize"),
+            format!("{public}/token"),
+            "https://10.0.0.1/register".to_string(),
+            "registration",
+        ),
+    ] {
+        let error = flow
+            .registration_client(&authorize, &token, &register)
+            .await
+            .expect_err(what);
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("{what} endpoint refused")),
+            "{error}"
+        );
+    }
+    assert!(
+        flow.registration_client(
+            &format!("{public}/authorize"),
+            &format!("{public}/token"),
+            &format!("{public}/register"),
+        )
         .await
-        .expect_err("a loopback authorization server");
-
-    assert!(error.to_string().contains("https"), "{error}");
-    assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
-    assert_eq!(flow.pending_count(), 0);
+        .expect("public endpoints pass")
+        .is_some()
+    );
 }
 
 #[tokio::test]
@@ -356,4 +391,55 @@ async fn desktop_flow_keeps_the_default_clients() {
             .expect("desktop flow skips public endpoint checks")
             .is_none()
     );
+}
+
+// ---------------------------------------------------------------------------
+// Refusing an internal server URL itself
+// ---------------------------------------------------------------------------
+
+/// The flow probes the server URL from the host before anything else, so a
+/// guarded flow checks that URL like the endpoints the server advertises:
+/// a user-supplied server address must not reach an internal service.
+#[tokio::test]
+async fn a_guarded_flow_refuses_an_internal_server_url_before_probing_it() {
+    let (endpoint, state) = authority_with_challenge().await;
+    let store = store_with_remote(&endpoint);
+    let flow = flow().require_public_endpoints();
+
+    let begun = flow
+        .begin(&store, "srv-1", "https://host.test/cb")
+        .await
+        .expect_err("a loopback server url");
+    let detected = flow
+        .detect(&store, "srv-1")
+        .await
+        .expect_err("a loopback server url");
+
+    for error in [begun, detected] {
+        assert!(
+            error.to_string().contains("MCP endpoint refused"),
+            "{error}"
+        );
+    }
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn the_public_endpoint_guard_is_usable_by_a_host() {
+    let plain = crate::registry::guard_public_endpoint("http://example.com/mcp", "MCP")
+        .await
+        .expect_err("plain http");
+    let internal = crate::registry::guard_public_endpoint("https://169.254.169.254/mcp", "MCP")
+        .await
+        .expect_err("the metadata address");
+    let pinned = crate::registry::guard_public_endpoint("https://93.184.215.14/mcp", "MCP")
+        .await
+        .expect("a public literal address");
+
+    assert!(plain.to_string().contains("must use https"), "{plain}");
+    assert!(
+        internal.to_string().contains("disallowed address"),
+        "{internal}"
+    );
+    assert_eq!(pinned.len(), 1);
 }

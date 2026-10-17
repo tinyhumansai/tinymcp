@@ -25,6 +25,7 @@ pub use config_doc::{AppliedServer, ConfigApplyReport};
 pub use connections::{Connections, ProbeOutcome, REMOTE_REQUEST_TIMEOUT};
 pub use oauth::{
     AuthDetection, AuthKind, DEFAULT_CLIENT_NAME, OAuthBundle, OAuthCredentialStore, OAuthFlow,
+    guard_public_endpoint,
 };
 pub use ops::McpRegistry;
 pub use setup::{SecretRef, SecretVault};

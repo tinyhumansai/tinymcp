@@ -97,7 +97,7 @@ pub use error::{Error, Result};
 pub use registry::{
     AppliedServer, ConfigApplyReport, Connections, McpRegistry, OAuthFlow, ProbeOutcome,
     REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, SupervisedHost, Supervisor,
-    SupervisorConfig, SupervisorEvent, TickReport,
+    SupervisorConfig, SupervisorEvent, TickReport, guard_public_endpoint,
 };
 pub use server::{
     ClientSession, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec, ServerInfo,

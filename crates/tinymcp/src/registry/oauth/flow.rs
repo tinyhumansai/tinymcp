@@ -109,8 +109,9 @@ impl OAuthFlow {
         &self.client_name
     }
 
-    /// Refuses authorization, registration and token endpoints that are not
-    /// `https` or that resolve to an internal address.
+    /// Refuses a server URL, and the authorization, registration and token
+    /// endpoints it advertises, that are not `https` or that resolve to an
+    /// internal address.
     ///
     /// Those endpoints are advertised by the server being signed in to and
     /// `POST`ed to from the host, so a host connecting to servers it does not
@@ -153,8 +154,10 @@ impl OAuthFlow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownServer`] when there is no such install, and
-    /// [`Error::Store`] when it cannot be read. A store failure is *not*
+    /// Returns [`Error::UnknownServer`] when there is no such install,
+    /// [`Error::Store`] when it cannot be read, and, under
+    /// [`Self::require_public_endpoints`], [`Error::MalformedResponse`] or
+    /// [`Error::EndpointResolution`] when the server's own URL is refused. A store failure is *not*
     /// collapsed into "open": reporting a server as needing nothing when the
     /// lookup failed would show the user a state that was never checked.
     pub async fn detect<S>(&self, store: &S, server_id: &str) -> Result<AuthDetection>
@@ -166,10 +169,7 @@ impl OAuthFlow {
             return Ok(AuthDetection::open());
         };
 
-        let client = McpHttpClient::builder(url)
-            .timeout_secs(PROBE_TIMEOUT_SECS)
-            .proxy(self.proxy.clone())
-            .build()?;
+        let client = self.probe_client(url).await?;
 
         match client.discover_authorization().await {
             Ok(None) => Ok(AuthDetection::open()),
@@ -204,7 +204,11 @@ impl OAuthFlow {
     /// Returns [`Error::AuthDiscovery`] when the server advertises no
     /// authorization server, or none offers everything the flow needs, [`Error::MalformedResponse`] when
     /// registration answers with something unusable, plus whatever the
-    /// transport returns.
+    /// transport returns. Under [`Self::require_public_endpoints`], also
+    /// [`Error::MalformedResponse`] when the server's own URL or an endpoint
+    /// it advertises is refused (not `https`, or internal), and
+    /// [`Error::EndpointResolution`] when a host cannot be resolved; both
+    /// before anything is registered.
     pub async fn begin<S>(&self, store: &S, server_id: &str, redirect_uri: &str) -> Result<String>
     where
         S: OAuthCredentialStore + ?Sized,
@@ -214,10 +218,7 @@ impl OAuthFlow {
             .await?
             .ok_or_else(|| Error::malformed("oauth applies only to http-remote servers"))?;
 
-        let client = McpHttpClient::builder(url.clone())
-            .timeout_secs(PROBE_TIMEOUT_SECS)
-            .proxy(self.proxy.clone())
-            .build()?;
+        let client = self.probe_client(url.clone()).await?;
 
         let context = client
             .discover_authorization()
@@ -424,6 +425,20 @@ impl OAuthFlow {
         } else {
             Ok(None)
         }
+    }
+
+    /// A client for probing the server itself. Under
+    /// [`Self::require_public_endpoints`] the server's own URL is checked like
+    /// the endpoints it advertises, and the client pinned to the addresses
+    /// that passed: the probe is a request from the host too.
+    async fn probe_client(&self, url: String) -> Result<McpHttpClient> {
+        let mut builder = McpHttpClient::builder(url.clone())
+            .timeout_secs(PROBE_TIMEOUT_SECS)
+            .proxy(self.proxy.clone());
+        if self.public_endpoints_only {
+            builder = builder.pinned_public_endpoint(guard_endpoint(&url, "MCP").await?);
+        }
+        builder.build()
     }
 
     pub(super) async fn token_client(

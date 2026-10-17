@@ -28,7 +28,7 @@ use crate::error::{Error, Result};
 ///
 /// [`Error::MalformedResponse`] when the URL is unsafe, or
 /// [`Error::EndpointResolution`] when DNS resolution could not complete.
-pub(crate) async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAddr>> {
+pub async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAddr>> {
     let refuse = |why: String| Error::malformed(format!("{what} endpoint refused: {why}"));
     let url = Url::parse(raw).map_err(|error| refuse(format!("not a valid url: {error}")))?;
     if url.scheme() != "https" {
