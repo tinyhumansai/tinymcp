@@ -1,18 +1,18 @@
 //! Running the authorization-code flow.
 
-use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine as _;
-use parking_lot::Mutex;
 use reqwest::Url;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::credentials::OAuthCredentialStore;
 use super::endpoint_guard::{guard_endpoint, guarded_client};
+use super::pending::{MemoryPendingStore, PendingAuthorization, PendingAuthorizationStore};
 use super::tokens::{due_refresh, exchange_refresh, oauth_failure_reason, persist, post_form};
-use super::types::{AuthDetection, PendingAuthorization, TokenResponse};
+use super::types::{AuthDetection, TokenResponse};
 use crate::error::{Error, Result};
 use crate::transport::http::McpHttpClient;
 use tinymcp_bus::McpProxyConfig;
@@ -20,13 +20,6 @@ use tinymcp_bus::McpProxyConfig;
 /// URL-safe base64 without padding, which is what OAuth uses throughout.
 const B64: base64::engine::general_purpose::GeneralPurpose =
     base64::engine::general_purpose::URL_SAFE_NO_PAD;
-
-/// How long an unfinished authorization stays parked.
-///
-/// A user who starts a sign-in and closes the tab leaves an entry behind
-/// holding a client secret. Ten minutes is longer than any real sign-in and
-/// short enough that abandoned ones do not accumulate.
-const PENDING_TTL: Duration = Duration::from_secs(10 * 60);
 
 /// How long to wait on an authorization server.
 const AUTH_SERVER_TIMEOUT_SECS: u64 = 20;
@@ -43,15 +36,16 @@ pub const DEFAULT_CLIENT_NAME: &str = "TinyMCP";
 
 /// Runs browser sign-in for HTTP-remote servers.
 ///
-/// Holds the authorizations parked between the redirect out and back. One
-/// instance per host; two would not see each other's pending state, and a
-/// redirect would come back to the wrong one.
+/// Parks authorizations between the redirect out and back in a
+/// [`PendingAuthorizationStore`]: this process's memory by default, so one
+/// instance per host. Instances sharing a store with
+/// [`Self::with_pending_store`] may each complete what another began.
 #[derive(Debug)]
 pub struct OAuthFlow {
     http: reqwest::Client,
     no_redirect_http: reqwest::Client,
     proxy: Option<McpProxyConfig>,
-    pending: Mutex<HashMap<String, PendingAuthorization>>,
+    pending: Arc<dyn PendingAuthorizationStore>,
     public_endpoints_only: bool,
     client_name: String,
 }
@@ -81,7 +75,7 @@ impl OAuthFlow {
             http,
             no_redirect_http,
             proxy,
-            pending: Mutex::new(HashMap::new()),
+            pending: Arc::new(MemoryPendingStore::new()),
             public_endpoints_only: false,
             client_name: DEFAULT_CLIENT_NAME.to_string(),
         })
@@ -100,6 +94,17 @@ impl OAuthFlow {
         if !name.is_empty() {
             self.client_name = name.to_string();
         }
+        self
+    }
+
+    /// Parks authorizations in `store` instead of this process's memory.
+    ///
+    /// For a host running several instances behind one callback: with a store
+    /// they all share, the instance the redirect lands on completes a sign-in
+    /// another began. See [`PendingAuthorizationStore`].
+    #[must_use]
+    pub fn with_pending_store(mut self, store: Arc<dyn PendingAuthorizationStore>) -> Self {
+        self.pending = store;
         self
     }
 
@@ -270,11 +275,9 @@ impl OAuthFlow {
         let (code_verifier, code_challenge) = generate_pkce();
         let state = uuid::Uuid::new_v4().to_string();
 
-        {
-            let mut pending = self.pending.lock();
-            prune_expired(&mut pending);
-            pending.insert(
-                state.clone(),
+        self.pending
+            .park(
+                &state,
                 PendingAuthorization {
                     server_id: server_id.to_string(),
                     code_verifier,
@@ -284,8 +287,8 @@ impl OAuthFlow {
                     redirect_uri: redirect_uri.to_string(),
                     started_at: super::tokens::now_unix(),
                 },
-            );
-        }
+            )
+            .await?;
 
         let authorize_url = Url::parse_with_params(
             &authorization_endpoint,
@@ -313,22 +316,26 @@ impl OAuthFlow {
     ///
     /// The pending entry is consumed whether or not the exchange succeeds: a
     /// code is single-use, so a retry with the same state could never work and
-    /// keeping the entry would only hold a secret in memory.
+    /// keeping the entry would only hold a secret in the store. Taking it is
+    /// atomic in the store, so two completions of one state exchange the code
+    /// at most once.
     ///
     /// # Errors
     ///
     /// Returns [`Error::MalformedResponse`] when the state is unknown or
-    /// expired, plus whatever the token endpoint returns.
+    /// expired, whatever the pending store reports when it cannot be read,
+    /// plus whatever the token endpoint returns.
     pub async fn complete<S>(&self, store: &S, state: &str, code: &str) -> Result<String>
     where
         S: OAuthCredentialStore + ?Sized,
     {
-        let pending = {
-            let mut pending = self.pending.lock();
-            prune_expired(&mut pending);
-            pending.remove(state)
-        }
-        .ok_or_else(|| Error::malformed("unknown or expired oauth state"))?;
+        let now = super::tokens::now_unix();
+        let pending = self
+            .pending
+            .take(state)
+            .await?
+            .filter(|pending| !pending.expired_at(now))
+            .ok_or_else(|| Error::malformed("unknown or expired oauth state"))?;
 
         let mut form: Vec<(&str, &str)> = vec![
             ("grant_type", "authorization_code"),
@@ -394,19 +401,27 @@ impl OAuthFlow {
     /// A browser redirect carries no session, so a host keeping credentials
     /// per tenant learns which store to [`complete`](Self::complete) into from
     /// the returned `state` alone. `None` when the state is unknown or expired.
-    #[must_use]
-    pub fn pending_server(&self, state: &str) -> Option<String> {
-        let mut pending = self.pending.lock();
-        prune_expired(&mut pending);
-        pending.get(state).map(|parked| parked.server_id.clone())
+    ///
+    /// # Errors
+    ///
+    /// Whatever the pending store reports when it cannot be read.
+    pub async fn pending_server(&self, state: &str) -> Result<Option<String>> {
+        let now = super::tokens::now_unix();
+        Ok(self
+            .pending
+            .peek(state)
+            .await?
+            .filter(|parked| !parked.expired_at(now))
+            .map(|parked| parked.server_id))
     }
 
     /// How many authorizations are parked. For tests and diagnostics.
-    #[must_use]
-    pub fn pending_count(&self) -> usize {
-        let mut pending = self.pending.lock();
-        prune_expired(&mut pending);
-        pending.len()
+    ///
+    /// # Errors
+    ///
+    /// Whatever the pending store reports when it cannot be read.
+    pub async fn pending_count(&self) -> Result<usize> {
+        self.pending.count().await
     }
 
     pub(super) async fn registration_client(
@@ -546,11 +561,6 @@ fn generate_pkce() -> (String, String) {
 ///
 /// Each holds a client secret, so leaving them is a slow leak of credentials
 /// into a map nothing ever reads again.
-fn prune_expired(pending: &mut HashMap<String, PendingAuthorization>) {
-    let cutoff = super::tokens::now_unix().saturating_sub(PENDING_TTL.as_secs());
-    pending.retain(|_, authorization| authorization.started_at >= cutoff);
-}
-
 /// Exposes [`generate_pkce`] to the module's tests.
 #[cfg(test)]
 pub(super) fn generate_pkce_for_test() -> (String, String) {

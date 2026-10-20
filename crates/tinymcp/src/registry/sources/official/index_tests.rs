@@ -195,7 +195,7 @@ async fn settle(index: &OfficialIndex) {
 fn age_sync(store: &Store, hours: i64) {
     store.age_collection(
         crate::storage::REGISTRY_INDEX_STATE,
-        &["synced_at"],
+        &["synced_ms"],
         hours * 60 * 60 * 1_000,
     );
 }

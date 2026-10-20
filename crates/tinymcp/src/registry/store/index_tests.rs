@@ -32,10 +32,10 @@ fn names(hits: &[IndexHit]) -> Vec<&str> {
 
 /// Moves every timestamp of the index back by a day.
 fn age(store: &Store) {
-    store.age_collection(crate::storage::REGISTRY_INDEX, &["synced_at"], 86_400_000);
+    store.age_collection(crate::storage::REGISTRY_INDEX, &["synced_ms"], 86_400_000);
     store.age_collection(
         crate::storage::REGISTRY_INDEX_STATE,
-        &["synced_at"],
+        &["synced_ms"],
         86_400_000,
     );
 }
@@ -58,7 +58,7 @@ fn a_sync_records_each_page_and_its_cursor() {
     assert_eq!(state.cursor.as_deref(), Some("2"));
     assert_eq!(state.pages, 1);
     assert!(state.in_progress());
-    assert_eq!(state.synced_at, None);
+    assert_eq!(state.synced_ms, None);
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn finishing_a_sync_records_when_and_clears_the_resume_point() {
 
     let state = store.index_state(SOURCE).unwrap().unwrap();
     assert!(!state.in_progress());
-    assert!(state.synced_at.is_some());
+    assert!(state.synced_ms.is_some());
     assert_eq!(state.cursor, None);
     assert_eq!(state.pages, 0);
 }
@@ -118,7 +118,7 @@ fn restarting_on_the_same_catalog_keeps_the_last_finished_sync() {
             .index_state(SOURCE)
             .unwrap()
             .unwrap()
-            .synced_at
+            .synced_ms
             .is_some()
     );
 }
@@ -138,7 +138,7 @@ fn a_sync_of_a_different_catalog_drops_the_old_rows() {
 
     let state = store.index_state(SOURCE).unwrap().unwrap();
     assert_eq!(state.base_url, "https://elsewhere.test");
-    assert_eq!(state.synced_at, None);
+    assert_eq!(state.synced_ms, None);
     assert_eq!(
         names(&store.search_index(SOURCE, &[]).unwrap()),
         Vec::<&str>::new()
@@ -263,7 +263,7 @@ fn a_sync_state_that_cannot_be_read_fails_the_page_and_the_finish() {
     let store = store();
     store.put_raw(
         crate::storage::REGISTRY_INDEX_STATE,
-        &hex_digest(SOURCE.as_bytes()),
+        &crate::storage::doc_id(&[SOURCE]).unwrap(),
         serde_json::json!({"unexpected": true}),
     );
     assert!(
@@ -286,4 +286,33 @@ fn a_term_inside_a_word_still_finds_its_row() {
 
     let hits = store.search_index(SOURCE, &terms(&["ack"])).unwrap();
     assert_eq!(names(&hits), ["a/slack"]);
+}
+
+#[test]
+fn an_index_row_is_stored_with_an_object_record_and_a_synced_time() {
+    let store = store();
+    store.begin_index_sync(SOURCE, BASE).unwrap();
+    store
+        .store_index_page(SOURCE, &[row("a/one", "a/one one", "first")], None)
+        .unwrap();
+
+    let doc = store
+        .get_raw(crate::storage::REGISTRY_INDEX, "mcp_official/a%2Fone")
+        .unwrap();
+    assert_eq!(doc["record"], serde_json::json!({"name": "a/one"}));
+    assert!(doc["synced_ms"].as_i64().unwrap() > 0);
+    assert!(doc.get("record_json").is_none());
+    let state = store
+        .get_raw(crate::storage::REGISTRY_INDEX_STATE, SOURCE)
+        .unwrap();
+    assert!(state["started_ms"].as_i64().unwrap() > 0);
+}
+
+#[test]
+fn an_index_row_whose_record_is_not_json_is_refused() {
+    let store = store();
+    store.begin_index_sync(SOURCE, BASE).unwrap();
+    let mut bad = row("a/one", "a/one one", "first");
+    bad.record_json = "not json".to_string();
+    assert!(store.store_index_page(SOURCE, &[bad], None).is_err());
 }

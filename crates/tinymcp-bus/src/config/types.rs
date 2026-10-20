@@ -93,6 +93,29 @@ pub struct StdioSandboxConfig {
     /// default; a host turns it off only for a backend it has judged enough.
     #[serde(default = "default_true")]
     pub require_process_isolation: bool,
+    /// How strictly the backend must enforce the grants. The default,
+    /// [`StdioSandboxEnforcement::Enforced`], refuses a backend that can only
+    /// enforce part of them; a host that has judged a partial backend enough
+    /// (for example macOS Seatbelt, which confines folders) opts in with
+    /// [`StdioSandboxEnforcement::Declared`].
+    #[serde(default)]
+    pub enforcement: StdioSandboxEnforcement,
+}
+
+/// Required treatment of the jail's declared constraints. Mirrors `TinyBox`'s
+/// `JailEnforcement` (this crate cannot depend on `tinybox-bus`), and
+/// serializes the same way.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum StdioSandboxEnforcement {
+    /// Require every requested filesystem, network and subprocess constraint;
+    /// a backend that cannot enforce them refuses the start.
+    #[default]
+    Enforced,
+    /// Accept the backend's advertised partial constraints. A host chooses
+    /// this only for a backend it has approved.
+    Declared,
 }
 
 impl Default for McpClientConfig {

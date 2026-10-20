@@ -1,10 +1,4 @@
-//! The storage resources `TinyMCP` asks its host to provide.
-//!
-//! These declarations describe module needs; host policy decides what to
-//! grant. Keeping collection schemas, indexes, streams, and secret selectors
-//! here gives module loaders the same contract the implementation prepares
-//! and uses. Secret environment values use a prefix, while the cache key is an
-//! exact-name need and never broadens to a prefix.
+//! `TinyMCP`'s storage needs for host policy evaluation.
 
 use std::sync::LazyLock;
 
@@ -12,21 +6,20 @@ use tinystoragedrivers_bus::{
     CollectionSpec, IndexSpec, StorageNeeds, StorageNeedsWithExactSecrets,
 };
 
-/// Documents for installed MCP servers.
-pub const SERVERS: &str = "mcp_servers";
-/// Atomic claims on installed server names.
-pub const SERVER_NAMES: &str = "mcp_server_names";
-/// Cached upstream registry browse responses.
-pub const REGISTRY_CACHE: &str = "mcp_registry_cache";
-/// Cached tool declarations by server.
-pub const TOOL_CACHE: &str = "mcp_tool_cache";
-/// The local index of the official registry.
-pub const REGISTRY_INDEX: &str = "mcp_registry_index";
-/// The sync cursor for each registry index.
-pub const REGISTRY_INDEX_STATE: &str = "mcp_registry_index_state";
-
-/// The prefix of the append-only tool-write audit stream.
-pub const AUDIT_STREAM: &str = "mcp_audit";
+/// One document per installed server.
+pub const SERVERS: &str = "mcp.servers";
+/// Claims on qualified names, so installing one service twice is one install.
+pub const SERVER_NAMES: &str = "mcp.server_names";
+/// Upstream browse responses, with a timestamp.
+pub const REGISTRY_CACHE: &str = "mcp.registry_cache";
+/// Each server's last advertised tool list, keyed by a definition fingerprint.
+pub const TOOL_CACHE: &str = "mcp.tool_cache";
+/// The local copy of an upstream catalog, one document per server.
+pub const REGISTRY_INDEX: &str = "mcp.registry_index";
+/// Where each catalog's sync stands.
+pub const REGISTRY_INDEX_STATE: &str = "mcp.registry_index_state";
+/// The append-only stream of tool-write audit records.
+pub const AUDIT_STREAM: &str = "mcp.audit";
 /// Prefix for each server's environment and OAuth bundle secret.
 pub const ENV_SECRET_PREFIX: &str = "mcp_client_env/";
 /// Exact secret name for the tool-cache fingerprint key.
@@ -42,7 +35,7 @@ static COLLECTIONS: LazyLock<Vec<CollectionSpec>> = LazyLock::new(|| {
             SERVERS,
             &[
                 ("qualified_name", "qualified_name"),
-                ("installed_at", "installed_at"),
+                ("installed_ms", "installed_ms"),
             ],
         ),
         collection(SERVER_NAMES, &[]),
@@ -52,22 +45,6 @@ static COLLECTIONS: LazyLock<Vec<CollectionSpec>> = LazyLock::new(|| {
         collection(REGISTRY_INDEX_STATE, &[]),
     ]
 });
-
-/// Returns `TinyMCP`'s complete canonical storage declaration.
-///
-/// The returned borrowed references point to process-static metadata. It
-/// requests its cache-key secret by exact name; only the environment bundle
-/// is requested by prefix.
-#[must_use]
-pub fn storage_needs() -> StorageNeedsWithExactSecrets<'static> {
-    StorageNeeds {
-        collections: COLLECTIONS.as_slice(),
-        blob_prefixes: &[],
-        stream_prefixes: STREAM_PREFIXES,
-        secret_prefixes: SECRET_PREFIXES,
-    }
-    .with_exact_secret_names(EXACT_SECRET_NAMES)
-}
 
 fn collection(name: &str, indexes: &[(&str, &str)]) -> CollectionSpec {
     CollectionSpec {
@@ -83,6 +60,21 @@ fn collection(name: &str, indexes: &[(&str, &str)]) -> CollectionSpec {
         ttl_field: None,
         search: None,
     }
+}
+
+/// Returns `TinyMCP`'s canonical storage needs for host policy evaluation.
+///
+/// Collection declarations are process-static. The cache key is an exact
+/// secret need; only server environment bundles use a prefix.
+#[must_use]
+pub fn storage_needs() -> StorageNeedsWithExactSecrets<'static> {
+    StorageNeeds {
+        collections: COLLECTIONS.as_slice(),
+        blob_prefixes: &[],
+        stream_prefixes: STREAM_PREFIXES,
+        secret_prefixes: SECRET_PREFIXES,
+    }
+    .with_exact_secret_names(EXACT_SECRET_NAMES)
 }
 
 #[cfg(test)]

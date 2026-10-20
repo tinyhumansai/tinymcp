@@ -5,12 +5,12 @@
 //!
 //! | Port | Name | Holds |
 //! | --- | --- | --- |
-//! | documents | `mcp_servers` | one document per installed server, with no credential values |
-//! | documents | `mcp_server_names` | one claim per qualified name, so installing a service twice is one install |
-//! | documents | `mcp_registry_cache` | upstream browse responses, with a timestamp |
-//! | documents | `mcp_tool_cache` | each server's last advertised tool list, keyed by a definition fingerprint |
-//! | documents | `mcp_registry_index` | the local copy of the official catalog, one document per server, searched with `DocumentStore::search` |
-//! | documents | `mcp_registry_index_state` | where that copy's sync stands |
+//! | documents | `mcp.servers` | one document per installed server, with no credential values |
+//! | documents | `mcp.server_names` | one claim per qualified name, so installing a service twice is one install |
+//! | documents | `mcp.registry_cache` | upstream browse responses, with a timestamp |
+//! | documents | `mcp.tool_cache` | each server's last advertised tool list, keyed by a definition fingerprint |
+//! | documents | `mcp.registry_index` | the local copy of the official catalog, one document per server, searched with `DocumentStore::search` |
+//! | documents | `mcp.registry_index_state` | where that copy's sync stands |
 //! | secrets | `mcp_client_env/<server id>` | the server's environment values and OAuth bundle, one secret |
 //! | secrets | `mcp_cache_fingerprint_key` | the key the tool-cache fingerprints are keyed with |
 //!

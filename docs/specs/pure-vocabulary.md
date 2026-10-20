@@ -1,15 +1,16 @@
 # Pure MCP vocabulary and bounded preparation
 
-The contract owns DTOs, wire constants, fixed declaration/schema catalogs and
-error mappings. TinyMCP re-exports identical bus-owned server info, tool/resource
+The contract owns DTOs, wire constants, fixed tool declarations, the static
+storage-needs declaration, and error mappings. TinyMCP re-exports identical bus-owned server info, tool/resource
 specifications, request headers/context and ToolCallError. Existing protocol,
 persisted registry identifiers, declarations and error wire forms remain pinned
 by golden fixtures. Raw remote metadata stays raw in serialized DTOs.
 
-Generic lexical sanitization lives in TinyTools Std at reviewed canonical
-commit 360721b; TinyMCP uses that library with default features disabled. This
-keeps skills and harness metadata independent of MCP loading. The bus has no
-TinyTools, TinyBus, runtime, HTTP or native dependencies, even optionally.
+Generic lexical sanitization lives in TinyTools 0.6 at reviewed canonical
+commit 1ec3468; TinyMCP imports it from `tinytools::sanitize` with default
+features disabled. This keeps skills and harness metadata independent of MCP
+loading. The bus has no TinyTools, TinyBus, runtime, HTTP or native
+dependencies, even optionally.
 
 ## Public Rust API compatibility
 
@@ -28,16 +29,20 @@ TinyMCP extension traits to keep method syntax:
 | ServerToolSpec / ResourceSpec | ServerToolSpecExt / ResourceSpecExt | protocol JSON projection |
 
 normalize_tool_arguments remains available from TinyMCP. Generic sanitizer
-functions remain available from tinymcp::sanitize and tinytools_std::sanitize.
+functions remain available from `tinymcp::sanitize` and
+`tinytools::sanitize`.
 Contract imports of these algorithms must migrate to owner library APIs or
 module calls. This is a necessary pre-1.0 Rust source API break requiring a minor
-package release; the release workflow owns package versioning. Fixed
+package release; the reviewed source commit sets the package version, which the
+release workflow validates. Fixed
 RegistryTool::spec and registry_tool_specs remain in the bus unchanged.
 
 Callers migrating from the previous source API should use
 `tinymcp::normalize_tool_arguments` instead of the bus-root helper,
 `tinymcp::sanitize::{sanitize_for_llm, strip_control_chars,
-strip_instruction_fences, truncate_utf8_safe}` (or TinyTools directly) instead
+strip_instruction_fences, truncate_utf8_safe}` (or
+`tinytools::sanitize::{sanitize_for_llm, strip_control_chars,
+strip_instruction_fences, truncate_utf8_safe}`) instead
 of bus sanitizers, and import `McpRemoteToolExt` / `McpToolResultExt` for the
 display and rendering methods. The DTOs themselves retain their serde wire
 forms; only executable helpers move to the implementation or their owner
@@ -122,3 +127,13 @@ module-owned protocol callbacks remain available, but transport/server adapter
 migration still needs its own lifecycle and fault fixtures. No root gitlinks,
 release digest or host switch is updated before compatible reviewed artifacts
 are released.
+
+## Client lifecycle helper ownership
+
+`ConfiguredLifecycle` and `ClientTable` implement client-side state transitions,
+admission, retirement, and cleanup reservations. They belong in the separate
+`tinymcp-client` crate, which depends on `tinymcp-bus` for the lifecycle DTOs.
+Consumers migrate Rust imports from either `tinymcp_bus::client_lifecycle` or
+`tinymcp::tinymcp_bus::client_lifecycle` to
+`tinymcp_client::client_lifecycle`. The bus crate does not forward these helpers.
+The move does not change TinyBus wire names, payloads, or `CONTRACT_VERSION`.

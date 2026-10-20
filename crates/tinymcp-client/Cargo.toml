@@ -1,0 +1,20 @@
+[package]
+name = "tinymcp-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Host-side client lifecycle helpers for the tinymcp TinyBus contract."
+documentation = "https://docs.rs/tinymcp-client"
+keywords = ["tinybus", "client", "mcp", "lifecycle"]
+categories = ["development-tools", "api-bindings"]
+publish = false
+
+[dependencies]
+# Lifecycle receipts and client settings are the TinyBus contract types. This
+# helper crate must not pull in the runtime module implementation.
+tinymcp-bus = { workspace = true }
+
+[lints]
+workspace = true

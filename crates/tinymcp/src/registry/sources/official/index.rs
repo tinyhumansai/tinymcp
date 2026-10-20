@@ -162,8 +162,8 @@ impl OfficialIndex {
         state.base_url != base
             || state.in_progress()
             || state
-                .synced_at
-                .is_none_or(|synced_at| now_ms().saturating_sub(synced_at) >= refresh_ms)
+                .synced_ms
+                .is_none_or(|synced_ms| now_ms().saturating_sub(synced_ms) >= refresh_ms)
     }
 
     /// Syncs the index, resuming an unfinished sync of the same catalog.
@@ -266,7 +266,7 @@ impl OfficialIndex {
 pub(super) fn is_ready(store: &Store, base: &str) -> bool {
     matches!(
         store.index_state(INDEX_SOURCE),
-        Ok(Some(state)) if state.base_url == base && state.synced_at.is_some()
+        Ok(Some(state)) if state.base_url == base && state.synced_ms.is_some()
     )
 }
 

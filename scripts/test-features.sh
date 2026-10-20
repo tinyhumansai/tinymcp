@@ -9,8 +9,13 @@ cargo test --locked --workspace --all-features
 
 
 set -euo pipefail
-forbidden="$(cargo tree -p tinymcp-bus -e normal,build --prefix none \
-  | grep -Ei 'tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2' || true)"
+# The contract remains data and wire vocabulary with every feature enabled.
+# Capture each tree first so a failing `cargo tree` aborts under `set -e` instead of
+# reading as an empty (clean) graph.
+default_tree="$(cargo tree -p tinymcp-bus -e normal,build --prefix none)"
+all_features_tree="$(cargo tree -p tinymcp-bus --all-features -e normal,build --prefix none)"
+forbidden="$(printf '%s\n%s\n' "$default_tree" "$all_features_tree" \
+  | grep -Ei 'tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2|tinystoragedrivers-(core|client|secrets|busproxy)' || true)"
 if [ -n "$forbidden" ]; then
   echo "tinymcp-bus pulled in a dependency its manifest forbids:" >&2
   echo "$forbidden" >&2

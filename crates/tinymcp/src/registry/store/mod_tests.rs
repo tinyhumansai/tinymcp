@@ -22,8 +22,8 @@ use tinystoragedrivers_core::Filter;
 use super::types::Store;
 use crate::Error;
 use crate::storage::{
-    CACHE_KEY_SECRET, ENV_SECRET_PREFIX, REGISTRY_CACHE, SERVER_NAMES, SERVERS, StoragePorts,
-    TOOL_CACHE,
+    CACHE_KEY_SECRET, ENV_SECRET_PREFIX, REGISTRY_CACHE, SCHEMA_VERSION, SERVER_NAMES, SERVERS,
+    StoragePorts, TOOL_CACHE, doc_id,
 };
 use tinymcp_bus::{CommandKind, InstalledServer, McpTool, Transport};
 
@@ -106,7 +106,7 @@ fn persisted_tool_cache_fingerprints_are_keyed_and_stable_after_reopen() {
         .put_cached_tools("static:weather", &fingerprint, &tools)
         .unwrap();
 
-    let id = super::hex_digest(b"static:weather");
+    let id = doc_id(&["static:weather"]).unwrap();
     let persisted = store.get_raw(TOOL_CACHE, &id).unwrap();
     let persisted = persisted["fingerprint"].as_str().unwrap().to_string();
     assert_ne!(persisted, fingerprint);
@@ -200,8 +200,8 @@ fn tool_cache_rejects_corrupt_json() {
     let fingerprint = store.keyed_cache_fingerprint("f");
     store.put_raw(
         TOOL_CACHE,
-        &super::hex_digest(b"srv-1"),
-        json!({"server_key": "srv-1", "fingerprint": fingerprint, "tools": "bad", "cached_at": 1}),
+        &doc_id(&["srv-1"]).unwrap(),
+        json!({"server_key": "srv-1", "fingerprint": fingerprint, "tools": "bad", "cached_ms": 1}),
     );
     assert!(store.cached_tools("srv-1", "f").is_err());
 }
@@ -621,17 +621,17 @@ fn a_freshly_written_entry_hits() {
 #[test]
 fn writing_the_same_key_replaces_the_previous_body() {
     let store = store();
-    store.cache("key", "first").unwrap();
-    store.cache("key", "second").unwrap();
+    store.cache("key", r#""first""#).unwrap();
+    store.cache("key", r#""second""#).unwrap();
 
-    assert_eq!(store.cached("key").unwrap().as_deref(), Some("second"));
+    assert_eq!(store.cached("key").unwrap().as_deref(), Some(r#""second""#));
 }
 
 #[test]
 fn an_entry_older_than_the_lifetime_misses() {
     // Backdated directly, so the test does not have to wait ten minutes.
     let store = store();
-    store.cache("key", "stale").unwrap();
+    store.cache("key", r#""stale""#).unwrap();
 
     age_cache(&store, 11);
 
@@ -640,43 +640,46 @@ fn an_entry_older_than_the_lifetime_misses() {
 
 /// Moves every cached entry `minutes` into the past.
 fn age_cache(store: &Store, minutes: i64) {
-    store.age_collection(REGISTRY_CACHE, &["cached_at"], minutes * 60 * 1_000);
+    store.age_collection(REGISTRY_CACHE, &["cached_ms"], minutes * 60 * 1_000);
 }
 
 #[test]
 fn a_stale_read_returns_an_entry_past_its_lifetime() {
     let store = store();
-    store.cache("key", "old").unwrap();
+    store.cache("key", r#""old""#).unwrap();
     age_cache(&store, 60 * 24);
 
     assert_eq!(store.cached("key").unwrap(), None);
-    assert_eq!(store.cached_stale("key").unwrap().as_deref(), Some("old"));
+    assert_eq!(
+        store.cached_stale("key").unwrap().as_deref(),
+        Some(r#""old""#)
+    );
     assert_eq!(store.cached_stale("other").unwrap(), None);
 }
 
 #[test]
 fn a_prefix_read_returns_matching_entries_newest_first() {
     let store = store();
-    store.cache("browse:1", "older").unwrap();
+    store.cache("browse:1", r#""older""#).unwrap();
     age_cache(&store, 30);
-    store.cache("browse:2", "newer").unwrap();
-    store.cache("search:x:1", "unrelated").unwrap();
+    store.cache("browse:2", r#""newer""#).unwrap();
+    store.cache("search:x:1", r#""unrelated""#).unwrap();
 
     assert_eq!(
         store.cached_with_prefix("browse:").unwrap(),
-        vec!["newer".to_string(), "older".to_string()]
+        vec![r#""newer""#.to_string(), r#""older""#.to_string()]
     );
 }
 
 #[test]
 fn a_prefix_read_treats_like_wildcards_literally() {
     let store = store();
-    store.cache("a_b:1", "literal").unwrap();
-    store.cache("axb:1", "wildcard match").unwrap();
+    store.cache("a_b:1", r#""literal""#).unwrap();
+    store.cache("axb:1", r#""wildcard match""#).unwrap();
 
     assert_eq!(
         store.cached_with_prefix("a_b:").unwrap(),
-        vec!["literal".to_string()]
+        vec![r#""literal""#.to_string()]
     );
     assert_eq!(
         store.cached_with_prefix("nothing:").unwrap(),
@@ -687,9 +690,9 @@ fn a_prefix_read_treats_like_wildcards_literally() {
 #[test]
 fn cache_keys_are_independent() {
     let store = store();
-    store.cache("a", "first").unwrap();
+    store.cache("a", r#""first""#).unwrap();
 
-    assert_eq!(store.cached("a").unwrap().as_deref(), Some("first"));
+    assert_eq!(store.cached("a").unwrap().as_deref(), Some(r#""first""#));
     assert_eq!(store.cached("b").unwrap(), None);
 }
 
@@ -709,7 +712,7 @@ fn seed_original_record(store: &Store) {
             "display_name": "Old Server",
             "command_kind": "node",
             "command": "npx",
-            "installed_at": 1000,
+            "installed_ms": 1000,
         }),
     );
 }
@@ -851,7 +854,7 @@ fn deleting_a_server_releases_its_qualified_name() {
     );
     assert!(
         store
-            .get_raw(SERVER_NAMES, &super::hex_digest(b"@test/server"))
+            .get_raw(SERVER_NAMES, &doc_id(&["@test/server"]).unwrap())
             .is_some()
     );
 
@@ -859,7 +862,7 @@ fn deleting_a_server_releases_its_qualified_name() {
 
     assert!(
         store
-            .get_raw(SERVER_NAMES, &super::hex_digest(b"@test/server"))
+            .get_raw(SERVER_NAMES, &doc_id(&["@test/server"]).unwrap())
             .is_none()
     );
     assert!(
@@ -876,7 +879,7 @@ fn a_claim_whose_server_is_gone_is_taken_over() {
     let store = store();
     store.put_raw(
         SERVER_NAMES,
-        &super::hex_digest(b"@test/server"),
+        &doc_id(&["@test/server"]).unwrap(),
         json!({"qualified_name": "@test/server", "server_id": "ghost", "claimed_at": 1}),
     );
     assert!(
@@ -893,11 +896,11 @@ fn a_fresh_claim_without_its_server_is_in_flight_not_stale() {
     let store = store();
     store.put_raw(
         SERVER_NAMES,
-        &super::hex_digest(b"@test/server"),
+        &doc_id(&["@test/server"]).unwrap(),
         json!({
             "qualified_name": "@test/server",
             "server_id": "in-flight",
-            "claimed_at": super::now_ms(),
+            "claimed_ms": super::now_ms(),
         }),
     );
     assert!(
@@ -981,4 +984,103 @@ fn concurrent_updates_to_one_server_all_land() {
     assert!(!server.enabled);
     assert!(server.last_connected_at.is_some());
     assert_eq!(server.config, Some(json!({"k": 1})));
+}
+
+// ---------------------------------------------------------------------------
+// The v2 stored form
+// ---------------------------------------------------------------------------
+
+/// The metadata the driver recorded for a document.
+fn meta_of(
+    ports: &StoragePorts,
+    collection: &'static str,
+    id: &str,
+) -> tinystoragedrivers_core::Meta {
+    let id = id.to_string();
+    ports
+        .run("reading metadata", move |ports| async move {
+            ports.documents.get(collection, &id).await
+        })
+        .unwrap()
+        .expect("the document exists")
+        .meta
+}
+
+#[test]
+fn an_installed_server_is_stored_with_ms_times_and_the_declared_schema() {
+    let (ports, store) = shared();
+    let mut server = stdio_server("srv-1");
+    server.last_connected_at = Some(1_700_000_100_000);
+    store.insert_server(&server).unwrap();
+
+    let doc = store.get_raw(SERVERS, "srv-1").unwrap();
+    assert_eq!(doc["installed_ms"], 1_700_000_000_000_i64);
+    assert_eq!(doc["last_connected_ms"], 1_700_000_100_000_i64);
+    assert!(doc.get("installed_at").is_none());
+    assert!(doc.get("last_connected_at").is_none());
+    assert_eq!(meta_of(&ports, SERVERS, "srv-1").schema, SCHEMA_VERSION);
+    assert_eq!(store.get_server("srv-1").unwrap(), server);
+}
+
+#[test]
+fn touching_the_last_connection_keeps_the_declared_schema() {
+    let (ports, store) = shared();
+    store.insert_server(&stdio_server("srv-1")).unwrap();
+
+    store.touch_last_connected("srv-1").unwrap();
+
+    assert!(
+        store
+            .get_server("srv-1")
+            .unwrap()
+            .last_connected_at
+            .is_some()
+    );
+    assert_eq!(meta_of(&ports, SERVERS, "srv-1").schema, SCHEMA_VERSION);
+}
+
+#[test]
+fn a_name_claim_is_keyed_by_the_escaped_qualified_name() {
+    let store = store();
+    assert!(
+        store
+            .insert_server_if_absent(&stdio_server("srv-1"))
+            .unwrap()
+    );
+
+    let claim = store.get_raw(SERVER_NAMES, "@test%2Fserver").unwrap();
+    assert_eq!(claim["server_id"], "srv-1");
+    assert!(claim["claimed_ms"].as_i64().unwrap() > 0);
+    assert!(claim.get("claimed_at").is_none());
+}
+
+#[test]
+fn a_cached_response_is_stored_as_a_json_body_not_a_string() {
+    let store = store();
+    store.cache("browse:1", r#"{"servers":[1]}"#).unwrap();
+
+    let doc = store.get_raw(REGISTRY_CACHE, "browse:1").unwrap();
+    assert_eq!(doc["body"], json!({"servers": [1]}));
+    assert!(doc["cached_ms"].as_i64().unwrap() > 0);
+    assert!(doc.get("body_json").is_none());
+}
+
+#[test]
+fn a_response_that_is_not_json_is_refused() {
+    let store = store();
+    let error = store.cache("browse:1", "not json").unwrap_err();
+    assert!(matches!(error, Error::Serialization { .. }), "{error:?}");
+    assert_eq!(store.cached("browse:1").unwrap(), None);
+}
+
+#[test]
+fn cached_tools_are_stored_with_a_cached_time_under_the_escaped_server_key() {
+    let store = store();
+    store
+        .put_cached_tools("static:weather", "definition", &[McpTool::new("search")])
+        .unwrap();
+
+    let doc = store.get_raw(TOOL_CACHE, "static:weather").unwrap();
+    assert!(doc["cached_ms"].as_i64().unwrap() > 0);
+    assert!(doc.get("cached_at").is_none());
 }

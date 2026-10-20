@@ -41,6 +41,9 @@ regex = { workspace = true }
 default = []
 # Derive `JsonSchema` on the configuration payloads. See `src/config/mod.rs`.
 schemars = ["dep:schemars"]
+# Kept as an empty compatibility feature for callers that enabled the former
+# schema projection here. Executable schemas and migrations belong to tinymcp.
+storage = []
 
 [lints]
 workspace = true

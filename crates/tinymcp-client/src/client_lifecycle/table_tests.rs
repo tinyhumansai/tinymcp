@@ -1,4 +1,6 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+//! Tests for client admission, retirement, and cleanup reservations.
+
+use super::*;
 
 use std::{
     path::Path,
@@ -7,8 +9,6 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
-
-use super::*;
 
 #[derive(Default, Debug)]
 struct Client {
@@ -152,4 +152,59 @@ fn closed_clients_finish_synchronously_and_open_ones_do_not() {
         table.finish_if_closed(dir, &client, &reservation, || true),
         Some(true)
     );
+}
+
+#[test]
+fn host_completion_fences_orphaned_cleanup_until_explicitly_completed() {
+    let table = ClientTable::<Client>::new();
+    let dir = Path::new("/host/pending");
+    let reservation = table.reserve_host_completion(dir);
+    table.retry_orphaned();
+    assert!(table.cleanup_pending(dir));
+    assert!(!table.finish_cleanup(dir, None, &reservation));
+    assert_eq!(admit(&table, dir).unwrap_err(), AdmitError::Unavailable);
+    assert!(table.complete_host_cleanup(dir, &reservation));
+    assert!(!table.cleanup_pending(dir));
+    assert!(admit(&table, dir).is_ok());
+}
+
+#[test]
+fn host_completion_preserves_callbacks_and_cannot_clear_a_successor() {
+    let table = ClientTable::<Client>::new();
+    let dir = Path::new("/host/callback");
+    let reservation = table.reserve_host_completion(dir);
+    let runs = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&runs);
+    table.reservation_with_action(
+        dir,
+        Arc::new(move || {
+            seen.fetch_add(1, Ordering::SeqCst);
+            true
+        }),
+    );
+    table.retry_orphaned();
+    assert_eq!(runs.load(Ordering::SeqCst), 0);
+    assert!(table.complete_host_cleanup(dir, &reservation));
+    assert!(table.cleanup_pending(dir));
+    table.retry_orphaned();
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+    let successor = table.reserve_host_completion(dir);
+    assert!(!table.complete_host_cleanup(dir, &reservation));
+    assert!(table.cleanup_pending(dir));
+    assert!(table.complete_host_cleanup(dir, &successor));
+}
+
+#[test]
+fn evicting_a_captured_client_cannot_evict_its_successor_or_release_a_fence() {
+    let table = ClientTable::<Client>::new();
+    let dir = Path::new("/host/eviction");
+    let original = admit(&table, dir).unwrap();
+    let reservation = table.reserve_host_completion(dir);
+    assert!(table.evict(dir, &original));
+    assert!(table.cleanup_pending(dir));
+    let successor = Arc::new(Client::default());
+    table.insert(dir.to_path_buf(), Arc::clone(&successor));
+    assert!(!table.evict(dir, &original));
+    assert!(Arc::ptr_eq(&table.snapshot()[0].1, &successor));
+    assert!(table.complete_host_cleanup(dir, &reservation));
 }

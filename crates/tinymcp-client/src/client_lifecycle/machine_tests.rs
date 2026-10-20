@@ -1,6 +1,7 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+//! Tests for configured-client lifecycle transitions.
 
 use super::*;
+
 use crate::{McpClientConfig, OpenConfiguredResponse, TransitionStatus};
 
 fn config(tag: &str) -> McpClientConfig {

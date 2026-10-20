@@ -30,13 +30,13 @@ tenants in one process. The host owns storage; this crate asks for ports.
 
 | Port | Name | Holds |
 | --- | --- | --- |
-| documents | `mcp_servers` | installed servers, indexed on `qualified_name` and `installed_at` |
-| documents | `mcp_server_names` | one claim per qualified name; makes insert-if-absent atomic |
-| documents | `mcp_registry_cache` | browse responses with a timestamp |
-| documents | `mcp_tool_cache` | last advertised tools per server, keyed by a keyed fingerprint |
-| documents | `mcp_registry_index` | the catalog, searched with `DocumentStore::search` |
-| documents | `mcp_registry_index_state` | the sync cursor per catalog |
-| streams | `mcp_audit` | tool-write audit records; id is offset + 1 |
+| documents | `mcp.servers` | installed servers, indexed on `qualified_name` and `installed_ms` |
+| documents | `mcp.server_names` | one claim per qualified name; makes insert-if-absent atomic |
+| documents | `mcp.registry_cache` | browse responses with a timestamp |
+| documents | `mcp.tool_cache` | last advertised tools per server, keyed by a keyed fingerprint |
+| documents | `mcp.registry_index` | the catalog, searched with `DocumentStore::search` |
+| documents | `mcp.registry_index_state` | the sync cursor per catalog |
+| streams | `mcp.audit` | tool-write audit records; id is offset + 1 |
 | secrets | `mcp_client_env/<server id>` | environment values and the OAuth bundle, one secret |
 | secrets | `mcp_cache_fingerprint_key` | key for tool-cache fingerprints (hex text) |
 
@@ -50,6 +50,10 @@ does not grant authority by itself. A host selects the declaration through its
 module admission and resource-mapping policy, applies its own storage policy,
 and binds the resulting grant to the authenticated caller. TinyMCP does not
 maintain a parallel `StorageGrant` list of the same resources.
+
+The bus crate keeps only this static needs vocabulary. TinyMCP's storage
+module projects it into TinyStorageDrivers' executable schema and owns the
+versioned migration callbacks; a contract-only host does not compile either.
 
 Consumers replacing the implementation-local storage API should read
 `tinymcp_bus::storage_needs().needs.collections` and the sibling stream and
@@ -96,3 +100,15 @@ tests keep secrets in a local store.
   legacy files read-only and writes the records through these ports
   (tinyhumansai/openhuman#7636).
 - Selecting a backend. Features such as `storage-sqlite` belong to the host.
+
+## Schema v2
+
+The module's declarations are `tinymcp::storage::storage_schema()` (owner `mcp`,
+scope class Module, tinystoragedrivers v1.0.0); the storage grant is generated
+from it. v1 names become `mcp.*`, `*_at` times become `*_ms` fields, ids are
+`Key::of` keys, and JSON kept inside strings (`body_json`, `record_json`)
+becomes an object body. Steps `servers_v2`, `server_names_v2`,
+`registry_cache_v2`, `tool_cache_v2`, `registry_index_v2`,
+`registry_index_state_v2` and the stream step `audit_v2` migrate a v1 database.
+Secret names are unchanged (a secret cannot be renamed by a step, and they sit
+outside the `mcp/` owner prefix).

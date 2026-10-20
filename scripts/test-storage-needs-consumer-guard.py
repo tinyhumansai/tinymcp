@@ -18,7 +18,7 @@ guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(guard)
 
 ROOT_ID = "path+tinymcp-storage-needs-consumer#0.0.0"
-CONTRACT_ID = "path+tinymcp-bus#0.19.4"
+CONTRACT_ID = "path+tinymcp-bus#0.20.0"
 TSD_ID = (
     "git+https://github.com/tinyhumansai/tinystoragedrivers?rev="
     "c9ea6ff1615b77b55d7269403af5fd11bedc9ce8#"
@@ -42,7 +42,7 @@ def fixture() -> dict:
         {
             "id": CONTRACT_ID,
             "name": "tinymcp-bus",
-            "version": "0.19.4",
+            "version": "0.20.0",
             "manifest_path": str(guard.CONTRACT_MANIFEST),
         },
         {

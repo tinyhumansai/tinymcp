@@ -4,7 +4,8 @@
 
 use super::{
     ConfiguredToolCallRequest, McpAuthConfig, McpClientConfig, McpServerConfig,
-    OpenConfiguredRequest, OpenConfiguredResponse, StdioSandboxConfig, TransitionStatus,
+    OpenConfiguredRequest, OpenConfiguredResponse, StdioSandboxConfig, StdioSandboxEnforcement,
+    TransitionStatus,
 };
 use serde_json::json;
 
@@ -158,6 +159,14 @@ fn the_stdio_sandbox_defaults_to_net_subprocess_and_the_isolation_floor() {
         serde_json::from_value(json!({ "workspace": "/work/mcp" })).unwrap();
     assert!(sandbox.allow_net && sandbox.allow_subprocess);
     assert!(sandbox.require_process_isolation);
+    assert_eq!(sandbox.enforcement, StdioSandboxEnforcement::Enforced);
+    let declared: StdioSandboxConfig =
+        serde_json::from_value(json!({ "workspace": "/w", "enforcement": "declared" })).unwrap();
+    assert_eq!(declared.enforcement, StdioSandboxEnforcement::Declared);
+    assert_eq!(
+        serde_json::to_value(StdioSandboxEnforcement::Enforced).unwrap(),
+        json!("enforced")
+    );
     assert!(sandbox.read_only.is_empty() && sandbox.deny_read.is_empty());
     assert!(serde_json::from_value::<StdioSandboxConfig>(json!({})).is_err());
     let trusted: McpServerConfig =

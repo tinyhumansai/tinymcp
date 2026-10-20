@@ -10,7 +10,7 @@ use tinystoragedrivers_core::{
 };
 use tinystoragedrivers_secrets::{MemorySecrets, SecretStore};
 
-use super::{SERVERS, storage_needs};
+use super::{AUDIT_STREAM, SERVERS, storage_needs};
 use crate::error::{Error, Result};
 
 /// The three ports the module persists through.
@@ -127,7 +127,7 @@ impl StoragePorts {
                         Err(error)
                     }
                 })?;
-            let audited = ports.streams.len(super::AUDIT_STREAM).await?;
+            let audited = ports.streams.len(AUDIT_STREAM).await?;
             Ok(servers > 0 || audited > 0)
         })
     }

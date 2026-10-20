@@ -28,7 +28,7 @@ use tinystoragedrivers_core::Precondition;
 
 use super::types::{Store, now_ms};
 use crate::error::Result;
-use crate::storage::TOOL_CACHE;
+use crate::storage::{TOOL_CACHE, doc_id, write_options};
 use tinymcp_bus::{InstalledServer, McpTool};
 
 /// The key prefix for a server pinned in a host's configuration, keeping it
@@ -122,6 +122,11 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
         })
 }
 
+/// The document id of a server key, as a store error when it cannot be built.
+fn key(server_key: &str) -> Result<String> {
+    doc_id(&[server_key]).map_err(|source| crate::Error::store("building a document id", source))
+}
+
 impl Store {
     /// Records `tools` as what the server under `server_key` advertises now.
     ///
@@ -147,18 +152,18 @@ impl Store {
         cached_at: i64,
     ) -> Result<()> {
         let fingerprint = self.keyed_cache_fingerprint(fingerprint);
-        let id = hex_digest(server_key.as_bytes());
+        let id = key(server_key)?;
         let doc = serde_json::to_value(ToolCacheDoc {
             server_key: server_key.to_string(),
             fingerprint,
             tools: serde_json::to_value(tools)?,
-            cached_at,
+            cached_ms: cached_at,
         })?;
         self.ports
             .run("writing the tool cache", move |ports| async move {
                 ports
                     .documents
-                    .put(TOOL_CACHE, &id, doc, Precondition::None)
+                    .put_with(TOOL_CACHE, &id, doc, Precondition::None, write_options())
                     .await
                     .map(|_| ())
             })
@@ -176,7 +181,7 @@ impl Store {
     /// decoded.
     pub fn cached_tools(&self, server_key: &str, fingerprint: &str) -> Result<Option<CachedTools>> {
         let fingerprint = self.keyed_cache_fingerprint(fingerprint);
-        let id = hex_digest(server_key.as_bytes());
+        let id = key(server_key)?;
         let found = self
             .ports
             .run("reading the tool cache", move |ports| async move {
@@ -192,7 +197,7 @@ impl Store {
         }
         Ok(Some(CachedTools {
             tools: serde_json::from_value(row.tools)?,
-            cached_at: row.cached_at,
+            cached_at: row.cached_ms,
         }))
     }
 
@@ -202,7 +207,7 @@ impl Store {
     ///
     /// Returns [`crate::Error::Store`] when the delete fails.
     pub fn forget_cached_tools(&self, server_key: &str) -> Result<bool> {
-        let id = hex_digest(server_key.as_bytes());
+        let id = key(server_key)?;
         self.ports
             .run("forgetting cached tools", move |ports| async move {
                 ports
@@ -219,5 +224,5 @@ struct ToolCacheDoc {
     server_key: String,
     fingerprint: String,
     tools: serde_json::Value,
-    cached_at: i64,
+    cached_ms: i64,
 }

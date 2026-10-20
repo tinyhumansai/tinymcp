@@ -1,7 +1,7 @@
 //! Shared MCP wire vocabulary, fixed tool declarations and `TinyBus` member names.
 //!
 //! The implementation re-exports these exact types. Hosts link this crate for
-//! payloads and declarations; protocol, transports, rendering, normalization,
+//! payloads and lightweight storage needs; protocol, transports, rendering, normalization,
 //! filtering and sanitization execute outside the contract. The default and
 //! all-feature dependency closures contain only serialization and schema utilities.
 //!
@@ -59,7 +59,6 @@
 pub mod agent_tools;
 pub mod audit;
 pub mod auth;
-pub mod client_lifecycle;
 pub mod config;
 pub mod config_document;
 pub mod errors;
@@ -88,7 +87,8 @@ pub use auth::{AuthDetection, AuthKind};
 pub use config::{
     ConfiguredToolCallRequest, HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig,
     McpProxyConfig, McpRegistryAuthConfig, McpServerConfig, OpenConfiguredRequest,
-    OpenConfiguredResponse, StaticServerSummary, StdioSandboxConfig, TransitionStatus,
+    OpenConfiguredResponse, StaticServerSummary, StdioSandboxConfig, StdioSandboxEnforcement,
+    TransitionStatus,
 };
 pub use config_document::{AppliedServer, ConfigApplyReport, ConfigApplyResponse};
 pub use method::{

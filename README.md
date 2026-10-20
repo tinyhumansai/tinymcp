@@ -161,7 +161,7 @@ Enable the `tools` feature to expose each server tool as a
 - **Exposure** is deferred by default, so a tool is found through the
   harness's tool search. A server, or individual tools on it, can be made
   direct (`McpExposure`).
-- **A persistent tool cache** (`mcp_tool_cache` in the store) is written on
+- **A persistent tool cache** (`mcp.tool_cache` in the store) is written on
   every successful listing and keyed by a fingerprint of the server's
   definition. `McpRegistry::cached_overview` and
   `McpServerRegistry::cached_tools` answer from it without dialling, so a

@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use tinymcp::storage::StoragePorts;
+use tinymcp::storage::{self, StoragePorts};
 use tinymcp::{AuditStore, CommandKind, InstalledServer, NewMcpWriteRecord, Store, Transport};
 use tinymcp_bus::StorageNeedsWithExactSecrets;
 
@@ -128,12 +128,12 @@ fn the_bus_contract_declares_every_persistent_need_with_its_indexes() {
     assert_eq!(
         names,
         [
-            "mcp_servers",
-            "mcp_server_names",
-            "mcp_registry_cache",
-            "mcp_tool_cache",
-            "mcp_registry_index",
-            "mcp_registry_index_state",
+            "mcp.servers",
+            "mcp.server_names",
+            "mcp.registry_cache",
+            "mcp.tool_cache",
+            "mcp.registry_index",
+            "mcp.registry_index_state",
         ]
     );
 
@@ -155,26 +155,53 @@ fn the_bus_contract_declares_every_persistent_need_with_its_indexes() {
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        indexes("mcp_servers"),
+        indexes("mcp.servers"),
         [
             ("qualified_name", vec!["qualified_name"], false),
-            ("installed_at", vec!["installed_at"], false),
+            ("installed_ms", vec!["installed_ms"], false),
         ]
     );
     assert_eq!(
-        indexes("mcp_registry_cache"),
+        indexes("mcp.registry_cache"),
         [("cache_key", vec!["cache_key"], false)]
     );
     assert_eq!(
-        indexes("mcp_registry_index"),
+        indexes("mcp.registry_index"),
         [("source", vec!["source"], false)]
     );
     assert!(needs.collections.iter().all(|spec| spec.search.is_none()));
     assert_eq!(needs.blob_prefixes, &[] as &[&str]);
-    assert_eq!(needs.stream_prefixes, ["mcp_audit"]);
+    assert_eq!(needs.stream_prefixes, ["mcp.audit"]);
     assert_eq!(needs.secret_prefixes, ["mcp_client_env/"]);
     assert_eq!(
         declaration.exact_secret_names,
         ["mcp_cache_fingerprint_key"]
+    );
+}
+
+#[test]
+fn the_storage_schema_composes_and_the_grant_is_generated_from_it() {
+    use tinystoragedrivers_core::schema::{Item, Registry};
+
+    let schema = storage::storage_schema();
+    Registry::compose([schema.clone()]).expect("the module's schema composes on its own");
+
+    let mut collections = Vec::new();
+    let mut streams = Vec::new();
+    for item in &schema.items {
+        match item {
+            Item::Collection { name, .. } => collections.push(name.clone()),
+            Item::Stream { name, .. } => streams.push(name.clone()),
+            Item::Blobs { .. } | Item::Secrets { .. } => {}
+        }
+    }
+    let granted = storage::grant();
+    assert_eq!(granted.collections, collections);
+    assert_eq!(granted.streams, streams);
+    assert!(
+        collections
+            .iter()
+            .chain(&streams)
+            .all(|name| name.starts_with(&format!("{}.", storage::OWNER)))
     );
 }

@@ -46,7 +46,7 @@ fn the_contract_declares_every_collection_index_stream_and_secret_selector() {
         indexes(SERVERS),
         [
             ("qualified_name", vec!["qualified_name"], false),
-            ("installed_at", vec!["installed_at"], false),
+            ("installed_ms", vec!["installed_ms"], false),
         ]
     );
     assert_eq!(

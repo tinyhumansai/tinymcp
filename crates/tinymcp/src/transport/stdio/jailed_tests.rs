@@ -30,6 +30,14 @@ struct State {
     confidential_reads: usize,
 }
 
+/// How much of the jail the fake backend can enforce.
+#[derive(Debug, Default, PartialEq, Eq)]
+enum Backend {
+    #[default]
+    Full,
+    BestEffort,
+}
+
 /// What the fake does differently from a plain, silent module.
 #[derive(Debug, Default)]
 struct Behavior {
@@ -37,6 +45,9 @@ struct Behavior {
     respond: bool,
     /// Make `Create` fail.
     create_error: bool,
+    /// Act as a best-effort backend: refuse `StartStdio` unless the jail
+    /// asks for `declared` enforcement.
+    backend: Backend,
     /// Report stdout closed while stderr stays open.
     stdout_only_closed: bool,
 }
@@ -45,6 +56,7 @@ struct Behavior {
 struct FakeBox {
     state: Mutex<State>,
     wake: tokio::sync::Notify,
+    close_stdin_gate: Mutex<Option<Arc<CloseStdinGate>>>,
 }
 
 impl FakeBox {
@@ -52,6 +64,11 @@ impl FakeBox {
         let fake = Self::default();
         fake.state.lock().unwrap().behavior.respond = true;
         Arc::new(fake)
+    }
+    fn serving_with_close_stdin_gate(gate: Arc<CloseStdinGate>) -> Arc<Self> {
+        let fake = Self::serving();
+        *fake.close_stdin_gate.lock().unwrap() = Some(gate);
+        fake
     }
     fn members(&self) -> Vec<&'static str> {
         self.state
@@ -81,6 +98,7 @@ impl JailBus for FakeBox {
         args: Value,
         confidential: bool,
     ) -> BoxFuture<'_, Result<Value, JailBusError>> {
+        let close_stdin_gate = self.close_stdin_gate.lock().unwrap().clone();
         Box::pin(async move {
             // Positional array in, as the bus delivers it; the fake works on
             // the single argument.
@@ -101,8 +119,10 @@ impl JailBus for FakeBox {
                     "stderr_closed": closed, "status": {"running": !closed}
                 }));
             }
+            gate_before_fakebox_record(close_stdin_gate.as_deref(), member);
             let mut state = self.state.lock().unwrap();
             state.calls.push((member, args.clone()));
+            gate_after_fakebox_record(close_stdin_gate.as_deref(), member);
             if confidential {
                 state.confidential.push(member);
             }
@@ -124,6 +144,14 @@ impl JailBus for FakeBox {
                     "state": "running", "published_ports": []
                 })),
                 m if m == names::START_STDIO => {
+                    if state.behavior.backend == Backend::BestEffort
+                        && args["jail"]["enforcement"] != "declared"
+                    {
+                        return Err(JailBusError {
+                            name: Some(tinybox_bus::UNSUPPORTED_OPERATION.into()),
+                            message: "backend cannot enforce every grant".into(),
+                        });
+                    }
                     if let Some(name) = state.start_error {
                         return Err(JailBusError {
                             name: Some(name.into()),
@@ -168,6 +196,140 @@ impl JailBus for FakeBox {
     }
 }
 
+fn gate_before_fakebox_record(gate: Option<&CloseStdinGate>, member: &'static str) {
+    if member == names::CLOSE_STDIN
+        && let Some(gate) = gate
+    {
+        gate.enter_and_wait();
+    }
+}
+
+fn gate_after_fakebox_record(gate: Option<&CloseStdinGate>, member: &'static str) {
+    if member == names::CLOSE
+        && let Some(gate) = gate
+    {
+        gate.close_recorded();
+    }
+    if member == names::CLOSE_STDIN
+        && let Some(gate) = gate
+    {
+        gate.stdin_close_recorded();
+    }
+}
+
+#[derive(Debug)]
+struct CloseStdinGate {
+    entered: std::sync::mpsc::SyncSender<()>,
+    allow_record: Mutex<std::sync::mpsc::Receiver<()>>,
+    close_recorded: std::sync::mpsc::SyncSender<()>,
+    stdin_recorded: std::sync::mpsc::SyncSender<()>,
+    deadline: Mutex<Option<std::time::Instant>>,
+}
+
+impl CloseStdinGate {
+    fn new() -> (Arc<Self>, CloseStdinGateObserver) {
+        let (entered, entered_rx) = std::sync::mpsc::sync_channel(1);
+        let (allow_record, allow_record_rx) = std::sync::mpsc::sync_channel(1);
+        let (close_recorded, close_recorded_rx) = std::sync::mpsc::sync_channel(1);
+        let (stdin_recorded, stdin_recorded_rx) = std::sync::mpsc::sync_channel(1);
+        (
+            Arc::new(Self {
+                entered,
+                allow_record: Mutex::new(allow_record_rx),
+                close_recorded,
+                stdin_recorded,
+                deadline: Mutex::new(None),
+            }),
+            CloseStdinGateObserver {
+                entered: Mutex::new(Some(entered_rx)),
+                allow_record,
+                close_recorded: close_recorded_rx,
+                stdin_recorded: stdin_recorded_rx,
+            },
+        )
+    }
+
+    fn set_deadline(&self, deadline: std::time::Instant) {
+        *self.deadline.lock().unwrap() = Some(deadline);
+    }
+
+    fn remaining(&self) -> Duration {
+        self.deadline
+            .lock()
+            .unwrap()
+            .map(|deadline| deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap_or_default()
+    }
+
+    fn enter_and_wait(&self) {
+        let _ = self.entered.send(());
+        let _ = self
+            .allow_record
+            .lock()
+            .unwrap()
+            .recv_timeout(self.remaining());
+    }
+
+    fn close_recorded(&self) {
+        let _ = self.close_recorded.try_send(());
+    }
+
+    fn stdin_close_recorded(&self) {
+        let _ = self.stdin_recorded.try_send(());
+    }
+}
+
+struct CloseStdinGateObserver {
+    entered: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    allow_record: std::sync::mpsc::SyncSender<()>,
+    close_recorded: std::sync::mpsc::Receiver<()>,
+    stdin_recorded: std::sync::mpsc::Receiver<()>,
+}
+
+impl CloseStdinGateObserver {
+    fn take_entered(&self) -> std::sync::mpsc::Receiver<()> {
+        self.entered
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the entry receiver is taken once")
+    }
+
+    fn release_stdin_gate(&self) {
+        let _ = self.allow_record.try_send(());
+    }
+}
+
+impl Drop for CloseStdinGateObserver {
+    fn drop(&mut self) {
+        self.release_stdin_gate();
+    }
+}
+
+fn wait_for_jail_cleanup(fake: &FakeBox, deadline: std::time::Instant) -> Vec<&'static str> {
+    loop {
+        let members = fake.members();
+        if let Some(close) = members.iter().position(|member| *member == names::CLOSE) {
+            let Some(kill) = members
+                .iter()
+                .position(|member| *member == names::KILL_STDIO)
+            else {
+                panic!("cleanup recorded Close without KillStdio: {members:?}");
+            };
+            assert!(kill < close, "cleanup calls are out of order: {members:?}");
+            return members;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "cleanup did not record Close before the deadline: {members:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[path = "jailed_tests/cleanup_discriminator_tests.rs"]
+mod cleanup_discriminator_tests;
+
 fn sandbox() -> StdioSandboxConfig {
     StdioSandboxConfig {
         workspace: "/work/mcp".into(),
@@ -177,6 +339,7 @@ fn sandbox() -> StdioSandboxConfig {
         allow_net: true,
         allow_subprocess: false,
         require_process_isolation: true,
+        enforcement: StdioSandboxEnforcement::default(),
     }
 }
 
@@ -231,6 +394,40 @@ async fn a_handshake_runs_through_the_jail_with_the_hosts_grants() {
     let members = fake.members();
     assert!(members.contains(&names::KILL_STDIO));
     assert_eq!(members.last(), Some(&names::CLOSE));
+}
+
+#[test]
+fn the_sandbox_enforcement_defaults_to_enforced() {
+    assert_eq!(
+        StdioSandboxEnforcement::default(),
+        StdioSandboxEnforcement::Enforced
+    );
+    assert_eq!(sandbox().enforcement, StdioSandboxEnforcement::Enforced);
+}
+
+#[tokio::test]
+async fn declared_enforcement_lets_a_best_effort_backend_start() {
+    let fake = FakeBox::serving();
+    fake.state.lock().unwrap().behavior.backend = Backend::BestEffort;
+    let config = StdioSandboxConfig {
+        enforcement: StdioSandboxEnforcement::Declared,
+        ..sandbox()
+    };
+    let spawner = JailedSpawner::new(fake.clone(), config);
+    let mut process = spawner.spawn_process(launch()).await.unwrap();
+    let start = &fake.args(names::START_STDIO)[0];
+    assert_eq!(start["jail"]["enforcement"], "declared");
+    process.handle.terminate().await;
+}
+
+#[tokio::test]
+async fn enforced_enforcement_still_refuses_a_best_effort_backend() {
+    let fake = FakeBox::serving();
+    fake.state.lock().unwrap().behavior.backend = Backend::BestEffort;
+    let spawner = JailedSpawner::new(fake.clone(), sandbox());
+    let error = spawner.spawn_process(launch()).await.unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(fake.members().last(), Some(&names::CLOSE));
 }
 
 #[tokio::test]
@@ -592,11 +789,8 @@ fn dropping_a_handle_with_no_runtime_still_releases_the_server() {
     // Dropped on a plain thread: there is no current runtime to spawn on.
     std::thread::spawn(move || drop(process)).join().unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    while fake.members().last() != Some(&names::CLOSE) {
-        assert!(std::time::Instant::now() < deadline, "cleanup never ran");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert!(fake.members().contains(&names::KILL_STDIO));
+    let members = wait_for_jail_cleanup(&fake, deadline);
+    assert!(members.contains(&names::KILL_STDIO));
 }
 
 #[tokio::test]

@@ -18,7 +18,7 @@ exclude = ["vendor", "worktrees", "crates/tinymcp-bus/consumer"]
 # true`, so the version the release workflow bumps is written in exactly one
 # place and every crate moves together.
 [workspace.package]
-version = "0.19.4"
+version = "0.20.0"
 edition = "2024"
 rust-version = "1.88"
 license = "GPL-3.0-only"
@@ -66,10 +66,9 @@ schemars = { version = "1", default-features = false, features = ["derive"] }
 # rather than a path on purpose: a host that already links tinytools through
 # another checkout redirects this one with a `[patch]` entry, so both resolve
 # to one package and `tinytools::ToolResult` stays one type. A second path
-# dependency could not be unified that way. Pin the reviewed canonical TinyTools
-# revision that provides shared lexical helpers; downstream pins migrate separately.
-tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "360721bc3c7a26221b61f6629f5f0415cfccb568", default-features = false }
-tinytools-std = { git = "https://github.com/tinyhumansai/tinytools", rev = "360721bc3c7a26221b61f6629f5f0415cfccb568", default-features = false }
+# dependency could not be unified that way. Pin the reviewed TinyTools 0.6
+# source head, which exposes lexical helpers on tinytools itself.
+tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "1ec3468f6602b69b955a0e94105ed63abb5aa98c", default-features = false }
 # `#[async_trait]` on the tool adapter and the invoker trait, matching how
 # `tinytools::Tool` itself is declared.
 async-trait = "0.1"
@@ -119,15 +118,15 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 # store call them. A git tag, like every other tinystoragedrivers consumer, so a
 # host that vendors the repository once redirects it with a `[patch]`. This
 # crate links no database: the host picks the backend.
-tinystoragedrivers-core = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v0.11.0", features = ["blocking"] }
+tinystoragedrivers-core = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v1.0.0", features = ["blocking"] }
 # The `SecretStore` port: server environment values and OAuth bundles are kept
 # there, never in a document. Same tag as the core.
-tinystoragedrivers-secrets = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v0.11.0" }
+tinystoragedrivers-secrets = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v1.0.0" }
 # The module-side storage bus: `connect_storage` over the module's TinyBus
 # connection, giving the same port traits the host serves. Used only by the
 # `module` feature (a cdylib reaches storage through the host, never a file).
-tinystoragedrivers-busproxy = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v0.11.0" }
-tinystoragedrivers-client = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v0.11.0" }
+tinystoragedrivers-busproxy = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v1.0.0" }
+tinystoragedrivers-client = { git = "https://github.com/tinyhumansai/tinystoragedrivers", tag = "v1.0.0" }
 # Locating a user's home directory, to find the version-manager shim
 # directories a desktop launch's stripped PATH leaves out.
 dirs = "7"

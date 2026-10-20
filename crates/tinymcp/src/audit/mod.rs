@@ -5,7 +5,7 @@
 //!
 //! # Its own stream
 //!
-//! The audit log is the append-only stream `mcp_audit` on the storage ports
+//! The audit log is the append-only stream `mcp.audit` on the storage ports
 //! (see [`crate::storage`]), apart from the installed-server documents. Before
 //! the extraction it shared a database with the host's own memory tables, which
 //! made it unmovable without taking that host's schema with it. A record's

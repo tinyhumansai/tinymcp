@@ -28,9 +28,9 @@
 /// scrubbing of credentials from static remote-tool metadata; 1.18 adds safe
 /// static-server summaries, 1.19 adds one-shot configured server calls, and
 /// 1.20 adds module-owned generic server argument validation. 1.21 adds
-/// module-owned MCP identifier normalization to `TransformText`. 1.22 adds the
-/// shared configured-client lifecycle vocabulary (`client_lifecycle`): the
-/// open/close receipt state machine and the admission/retirement table. 1.23 adds pure registry-answer helpers
+/// module-owned MCP identifier normalization to `TransformText`. The former
+/// 1.22 Rust-only client lifecycle helpers moved to `tinymcp-client`; this
+/// changes no wire vocabulary. 1.23 adds pure registry-answer helpers
 /// (`require_identifier`, `ServerDetail::server_json`, `explain_not_connected`) that
 /// hosts previously copied; no member was added or removed. 1.24 adds tool
 /// `_meta` on `McpTool` and the `ReadResource` and `StaticReadResource`
@@ -40,8 +40,11 @@
 /// segments are now `Blocked` (previously `Web`). 1.26 adds
 /// `McpClientConfig::stdio_sandbox` and `McpServerConfig::operator_trusted`:
 /// a stdio server runs in the host's jail, or unconfined only when the operator
-/// trusts it; with neither it is refused.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 26);
+/// trusts it; with neither it is refused. 1.27 adds
+/// `StdioSandboxConfig::enforcement` (`StdioSandboxEnforcement`), letting the
+/// host choose `Declared` for a backend with partial enforcement; the default
+/// stays `Enforced`.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 27);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.

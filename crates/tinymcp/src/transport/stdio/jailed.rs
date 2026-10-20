@@ -27,7 +27,7 @@ use tinybox_bus::{
     CreateRequest, JailEnforcement, NativeJailConfig, ProcessRef, ReserveRequest, ResourceId,
     StdioChunk, StdioReadRequest, StdioStartRequest, StdioWriteRequest, Workspace, names,
 };
-use tinymcp_bus::StdioSandboxConfig;
+use tinymcp_bus::{StdioSandboxConfig, StdioSandboxEnforcement};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio::task::JoinHandle;
 
@@ -193,8 +193,12 @@ impl JailedSpawner {
             read_write: self.sandbox.read_write.clone(),
             allow_net: self.sandbox.allow_net,
             allow_subprocess: self.sandbox.allow_subprocess,
-            // Never `Declared`: a partial backend must refuse, not weaken.
-            enforcement: JailEnforcement::Enforced,
+            // `Enforced` unless the host opted into `Declared`: a partial
+            // backend refuses by default rather than weakening the jail.
+            enforcement: match self.sandbox.enforcement {
+                StdioSandboxEnforcement::Enforced => JailEnforcement::Enforced,
+                StdioSandboxEnforcement::Declared => JailEnforcement::Declared,
+            },
             require_process_isolation: self.sandbox.require_process_isolation,
             deny_read: self.sandbox.deny_read.clone(),
         }

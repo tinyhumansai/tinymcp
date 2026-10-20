@@ -11,7 +11,9 @@
 //!    is frequently wrong about this.
 //! 2. [`OAuthFlow::begin`] discovers the authorization server, registers a
 //!    client dynamically (RFC 7591), generates a PKCE pair, parks the pending
-//!    state, and returns the authorize URL for a browser.
+//!    state in a [`PendingAuthorizationStore`] (memory by default; a shared
+//!    one for a host running several instances), and returns the authorize
+//!    URL for a browser.
 //! 3. [`OAuthFlow::complete`] takes the code and state from the redirect,
 //!    exchanges the code, and persists the token.
 //!
@@ -47,11 +49,15 @@
 pub(crate) mod credentials;
 pub(crate) mod endpoint_guard;
 pub(crate) mod flow;
+pub(crate) mod pending;
 pub(crate) mod tokens;
 pub(crate) mod types;
 
 pub use credentials::OAuthCredentialStore;
 pub use flow::{DEFAULT_CLIENT_NAME, OAuthFlow};
+pub use pending::{
+    MemoryPendingStore, PENDING_TTL_SECS, PendingAuthorization, PendingAuthorizationStore,
+};
 pub use tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
 pub use types::{AuthDetection, AuthKind, OAuthBundle};
 

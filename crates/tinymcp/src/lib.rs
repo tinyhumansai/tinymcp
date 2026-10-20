@@ -95,7 +95,8 @@ pub use config_servers::{
 };
 pub use error::{Error, Result};
 pub use registry::{
-    AppliedServer, ConfigApplyReport, Connections, McpRegistry, OAuthFlow, ProbeOutcome,
+    AppliedServer, ConfigApplyReport, Connections, McpRegistry, MemoryPendingStore, OAuthFlow,
+    PENDING_TTL_SECS, PendingAuthorization, PendingAuthorizationStore, ProbeOutcome,
     REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, SupervisedHost, Supervisor,
     SupervisorConfig, SupervisorEvent, TickReport,
 };
@@ -132,8 +133,8 @@ pub use tinymcp_bus::{
     McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata,
     RegistryConnection, RegistryFreshness, RegistryListResponse, RegistryPagination,
     RegistryServerDetail, RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS, SearchCuration,
-    ServerDetail, ServerStatus, StdioSandboxConfig, Transport, config, is_compatible, names,
-    version,
+    ServerDetail, ServerStatus, StdioSandboxConfig, StdioSandboxEnforcement, Transport, config,
+    is_compatible, names, version,
 };
 
 pub use tinymcp_bus::{

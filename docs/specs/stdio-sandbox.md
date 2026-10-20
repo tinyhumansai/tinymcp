@@ -16,8 +16,13 @@ in the second or third row; installed servers are never operator-trusted.
 `StdioSandboxConfig` carries the workspace (the server's writable root), read
 and write grants, `deny_read` paths (credential stores), network and subprocess
 permissions, and whether the backend must meet the untrusted-code isolation
-floor (on by default). The launcher always asks for `Enforced`: a backend that
-cannot enforce the grants refuses and the server does not start.
+floor (on by default), and `enforcement` (contract 1.27). `enforcement`
+mirrors TinyBox's `JailEnforcement`: `Enforced` (the default) asks the backend to
+enforce every grant, so a backend that cannot refuses and the server does not
+start; `Declared` accepts the backend's advertised partial constraints, for a
+host that has judged such a backend enough (for example macOS Seatbelt, which
+confines folders). The launcher passes the value to TinyBox unchanged; only the
+host chooses it, and existing hosts keep `Enforced`.
 
 The launcher (`transport::stdio::jailed::JailedSpawner`) reserves a passthrough
 resource over the workspace, starts the server with `StartStdio`, and pumps its

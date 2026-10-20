@@ -47,12 +47,6 @@ Contract 1.21 adds identifier normalization to `TransformText`. The module
 uses the generic MCP bridge's existing rules, preserving plain punctuation and
 removing sentence punctuation only when it follows a markdown wrapper.
 
-Contract 1.22 adds `client_lifecycle`: the pure, I/O-free receipt state machine
-(`ConfiguredLifecycle`) and the admission/retirement table (`ClientTable`) a
-host drives around `OpenConfigured`, `Close` and `TransitionStatus`. The host
-supplies the configuration it wants served and performs each bus call a `Step`
-names; caching, retirement and acknowledged cleanup live here.
-
 Contract 1.23 adds pure helpers hosts used to copy: `require_identifier`,
 `ServerDetail::server_json` (the detail screen's JSON shape with
 `required_env_keys`) and `explain_not_connected` (how a `NotConnected` answer
@@ -81,3 +75,10 @@ Library consumers bring implementation extension traits into scope for moved
 DTO methods. Contract-only hosts call the compiled module. See
 [the relocation specification](../../docs/specs/pure-vocabulary.md) for public
 API compatibility and remaining transport/host integration work.
+
+The stateful client-side receipt machine and admission table live in the
+`tinymcp-client` crate. Consumers migrate Rust imports from either
+`tinymcp_bus::client_lifecycle` or
+`tinymcp::tinymcp_bus::client_lifecycle` to
+`tinymcp_client::client_lifecycle`; the TinyBus contract keeps only serialized
+lifecycle request and response types.

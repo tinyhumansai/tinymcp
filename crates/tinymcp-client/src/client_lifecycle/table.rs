@@ -3,7 +3,10 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard, PoisonError},
+    sync::{
+        Arc, Mutex, MutexGuard, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 /// A cache entry the table can mark unavailable.
@@ -22,6 +25,7 @@ pub type CleanupAction = Arc<dyn Fn() -> bool + Send + Sync>;
 #[derive(Default)]
 pub struct CleanupReservation {
     after_close: Mutex<Option<CleanupAction>>,
+    host_completion_pending: AtomicBool,
 }
 
 impl std::fmt::Debug for CleanupReservation {
@@ -149,6 +153,52 @@ impl<C: Retire> ClientTable<C> {
         )
     }
 
+    /// Fence a directory until the host confirms its own filesystem cleanup.
+    /// Module close and orphan retries cannot release this reservation.
+    pub fn reserve_host_completion(&self, dir: &Path) -> Arc<CleanupReservation> {
+        let mut reservations = lock(&self.reservations);
+        let reservation = reservations.entry(dir.to_path_buf()).or_default();
+        reservation
+            .host_completion_pending
+            .store(true, Ordering::Release);
+        Arc::clone(reservation)
+    }
+
+    /// Confirm host cleanup for the exact reservation. An independent callback
+    /// remains reserved for the normal cleanup path. Returns false for a stale
+    /// token, which can never clear its successor's fence.
+    pub fn complete_host_cleanup(&self, dir: &Path, reservation: &Arc<CleanupReservation>) -> bool {
+        let after_close = lock(&reservation.after_close);
+        let mut reservations = lock(&self.reservations);
+        if !reservations
+            .get(dir)
+            .is_some_and(|stored| Arc::ptr_eq(stored, reservation))
+        {
+            return false;
+        }
+        reservation
+            .host_completion_pending
+            .store(false, Ordering::Release);
+        if after_close.is_none() {
+            reservations.remove(dir);
+        }
+        true
+    }
+
+    /// Evict only the captured client, preserving any directory reservation.
+    /// A stale completion cannot remove a replacement client.
+    pub fn evict(&self, dir: &Path, client: &Arc<C>) -> bool {
+        let mut clients = lock(&self.clients);
+        if !clients
+            .get(dir)
+            .is_some_and(|current| Arc::ptr_eq(current, client))
+        {
+            return false;
+        }
+        clients.remove(dir);
+        true
+    }
+
     /// A reservation for `dir` carrying `action`, kept if one is already set.
     pub fn reservation_with_action(
         &self,
@@ -197,7 +247,7 @@ impl<C: Retire> ClientTable<C> {
         let is_current = lock(&self.reservations)
             .get(dir)
             .is_some_and(|stored| Arc::ptr_eq(stored, reservation));
-        if !is_current {
+        if !is_current || reservation.host_completion_pending.load(Ordering::Acquire) {
             return false;
         }
         if client.is_some_and(|client| !self.owns(dir, client)) {
@@ -217,9 +267,10 @@ impl<C: Retire> ClientTable<C> {
             clients.remove(dir);
         }
         let mut reservations = lock(&self.reservations);
-        if reservations
-            .get(dir)
-            .is_some_and(|stored| Arc::ptr_eq(stored, reservation))
+        if !reservation.host_completion_pending.load(Ordering::Acquire)
+            && reservations
+                .get(dir)
+                .is_some_and(|stored| Arc::ptr_eq(stored, reservation))
         {
             reservations.remove(dir);
             true
@@ -253,3 +304,7 @@ impl<C: Retire> ClientTable<C> {
             .is_some_and(|current| Arc::ptr_eq(current, client))
     }
 }
+
+#[cfg(test)]
+#[path = "table_race_tests.rs"]
+mod tests;

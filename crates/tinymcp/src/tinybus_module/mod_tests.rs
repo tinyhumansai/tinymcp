@@ -3058,6 +3058,7 @@ fn stdio_launchers_need_a_configured_sandbox_and_a_reachable_bus() {
             allow_net: true,
             allow_subprocess: true,
             require_process_isolation: true,
+            enforcement: tinymcp_bus::StdioSandboxEnforcement::default(),
         }),
         ..McpClientConfig::default()
     };

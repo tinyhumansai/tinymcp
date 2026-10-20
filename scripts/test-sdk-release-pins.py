@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SDK_URL = "https://github.com/tinyhumansai/tinybus"
 SDK_VERSION = "0.3.3"
 SDK_REV = "207a9a7df15e44fdba00a807d0f7eaf21904ba0e"
-MODULE_VERSION = "0.19.4"
+MODULE_VERSION = "0.20.0"
 
 
 def manifest(path: Path) -> dict:
