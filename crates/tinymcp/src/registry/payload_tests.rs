@@ -250,6 +250,35 @@ fn a_tool_without_meta_serializes_without_the_key() {
 }
 
 #[test]
+fn a_tools_annotations_survive_the_cache_round_trip_verbatim() {
+    // Annotations are retained as the server sent them, including a
+    // non-boolean `readOnlyHint` and unknown members: this crate carries them,
+    // it does not interpret them.
+    for annotations in [
+        json!({ "readOnlyHint": true }),
+        json!({ "readOnlyHint": false, "destructiveHint": true }),
+        json!({ "readOnlyHint": "true" }),
+        json!({ "custom": 7 }),
+    ] {
+        let tool: McpTool =
+            serde_json::from_value(json!({ "name": "lookup", "annotations": annotations }))
+                .unwrap();
+        assert_eq!(tool.annotations, Some(annotations.clone()));
+        let encoded = serde_json::to_value(&tool).unwrap();
+        assert_eq!(encoded["annotations"], annotations);
+        assert_eq!(serde_json::from_value::<McpTool>(encoded).unwrap(), tool);
+    }
+}
+
+#[test]
+fn a_tool_without_annotations_serializes_without_the_key() {
+    let encoded = serde_json::to_value(McpTool::new("ping")).unwrap();
+    assert!(encoded.get("annotations").is_none(), "{encoded}");
+    let old: McpTool = serde_json::from_value(json!({ "name": "old" })).unwrap();
+    assert_eq!(old.annotations, None);
+}
+
+#[test]
 fn an_overview_round_trips_with_its_tools() {
     let overview = ConnectedServerOverview {
         server_id: "uuid-1".into(),

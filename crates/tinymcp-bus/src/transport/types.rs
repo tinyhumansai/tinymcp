@@ -61,6 +61,13 @@ pub struct McpRemoteTool {
     /// Untrusted remote data; never place it in a model's context.
     #[serde(default, rename = "_meta", skip_serializing_if = "Option::is_none")]
     pub meta: Option<Value>,
+    /// The tool's MCP annotations (`readOnlyHint`, `destructiveHint`, ...),
+    /// verbatim, as the server listed them.
+    ///
+    /// Untrusted server declarations. Hosts decide whether to believe them;
+    /// carrying them here grants no permission and changes no classification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<Value>,
 }
 
 impl McpRemoteTool {
@@ -82,6 +89,7 @@ impl McpRemoteTool {
             description: None,
             input_schema: Value::Null,
             meta: None,
+            annotations: None,
         }
     }
 }
