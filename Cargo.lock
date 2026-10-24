@@ -1765,10 +1765,11 @@ dependencies = [
 
 [[package]]
 name = "tinybox-bus"
-version = "0.1.36"
-source = "git+https://github.com/tinyhumansai/tinybox?tag=v0.1.36#39fe22189431bdf787dafce5eea6d7d49d1a00f8"
+version = "0.1.41"
+source = "git+https://github.com/tinyhumansai/tinybox?tag=v0.1.41#d1761a459478ba14bb579a43c2cb20c369dc7e23"
 dependencies = [
  "serde",
+ "tinystoragedrivers-bus 1.5.0",
 ]
 
 [[package]]
@@ -1895,6 +1896,15 @@ dependencies = [
 
 [[package]]
 name = "tinystoragedrivers-bus"
+version = "1.5.0"
+source = "git+https://github.com/tinyhumansai/tinystoragedrivers?rev=c9ea6ff1615b77b55d7269403af5fd11bedc9ce8#c9ea6ff1615b77b55d7269403af5fd11bedc9ce8"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "tinystoragedrivers-bus"
 version = "2.1.0"
 source = "git+https://github.com/tinyhumansai/tinystoragedrivers?rev=2856dfa6f5b4de981a4db2801ae6be80c6432b3b#2856dfa6f5b4de981a4db2801ae6be80c6432b3b"
 dependencies = [
@@ -1916,7 +1926,7 @@ dependencies = [
  "serde_json",
  "tinybus",
  "tinystoragedrivers-api",
- "tinystoragedrivers-bus",
+ "tinystoragedrivers-bus 2.1.0",
  "tinystoragedrivers-types",
  "tokio",
  "zeroize",
