@@ -1765,8 +1765,8 @@ dependencies = [
 
 [[package]]
 name = "tinybox-bus"
-version = "0.1.36"
-source = "git+https://github.com/tinyhumansai/tinybox?tag=v0.1.36#39fe22189431bdf787dafce5eea6d7d49d1a00f8"
+version = "0.1.42"
+source = "git+https://github.com/tinyhumansai/tinybox?tag=v0.1.42#f69b28d80d8f0a5eb164b41e008cf1a05bb05f2e"
 dependencies = [
  "serde",
 ]
