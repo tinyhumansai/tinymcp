@@ -1815,7 +1815,7 @@ dependencies = [
 
 [[package]]
 name = "tinymcp"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "tinymcp-bus"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "base64 0.23.1",
  "regex",
