@@ -1155,6 +1155,89 @@ async fn an_origin_authorization_server_without_dynamic_registration_wants_a_sta
     assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
 }
 
+/// An MCP server shaped like `mcp.ticktick.com`: its protected-resource
+/// document names the authorization server with a trailing slash, while that
+/// server's RFC 8414 document gives its issuer without one and it publishes no
+/// `OpenID` document.
+async fn slash_named_origin_authority() -> (String, Arc<Authority>) {
+    let state = Arc::new(Authority::default());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+
+    let protected_resource = json!({
+        "resource": format!("{origin}/mcp"),
+        "authorization_servers": [format!("{origin}/")],
+    });
+    let authorization_server = json!({
+        "issuer": origin,
+        "authorization_endpoint": format!("{origin}/authorize"),
+        "token_endpoint": format!("{origin}/token"),
+        "registration_endpoint": format!("{origin}/register"),
+        "response_types_supported": ["code"],
+        "code_challenge_methods_supported": ["S256"],
+    });
+    let challenge =
+        format!("Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource\"");
+
+    let app = Router::new()
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(move || {
+                let document = protected_resource.clone();
+                async move { axum::Json(document) }
+            }),
+        )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(move || {
+                let document = authorization_server.clone();
+                async move { axum::Json(document) }
+            }),
+        )
+        .route(
+            "/.well-known/openid-configuration",
+            get(|| async { AxumStatus::NOT_FOUND }),
+        )
+        .route(
+            "/mcp",
+            post(move || {
+                let challenge = challenge.clone();
+                async move {
+                    (
+                        AxumStatus::UNAUTHORIZED,
+                        [("WWW-Authenticate", challenge)],
+                        "",
+                    )
+                        .into_response()
+                }
+            }),
+        )
+        .merge(endpoints())
+        .with_state(Arc::clone(&state));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    (format!("{origin}/mcp"), state)
+}
+
+#[tokio::test]
+async fn an_authorization_server_named_with_a_trailing_slash_signs_in_through_its_origin_issuer() {
+    let (endpoint, state) = slash_named_origin_authority().await;
+    let store = store_with_remote(&endpoint);
+
+    let url = flow()
+        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect("begin");
+
+    let origin = endpoint.trim_end_matches("/mcp");
+    assert!(url.starts_with(&format!("{origin}/authorize?")), "{url}");
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        authorize_param(&url, "code_challenge_method").as_deref(),
+        Some("S256")
+    );
+}
+
 #[tokio::test]
 async fn beginning_against_a_server_advertising_no_authorization_server_says_so() {
     let app = Router::new().fallback(|| async {

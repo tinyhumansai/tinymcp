@@ -53,7 +53,7 @@ use crate::transport::resources::{
     MAX_RESOURCE_PAGES, list_params, parse_read_result, parse_resource_page,
 };
 use crate::transport::{redact_endpoint, render_tool_result, validate_protocol_version};
-use discovery::{DISCOVERY_BUDGET, WellKnownOutcome};
+use discovery::{DISCOVERY_BUDGET, WellKnownOutcome, issuer_is_origin};
 use headers::{
     apply_auth, header_to_string, mcp_param_headers_from_schema, parse_www_authenticate_challenge,
 };
@@ -1295,8 +1295,27 @@ fn rfc8414_metadata_url(issuer: &str) -> Result<String> {
     Ok(url.into())
 }
 
+/// Whether `metadata` was published by `issuer`.
+///
+/// Exact, except that an issuer naming a bare http(s) origin matches the same
+/// origin with or without one trailing slash: an empty http path and `/` are
+/// the same URL (RFC 3986 §6.2.3). An issuer with a path matches only itself.
 fn metadata_matches_issuer(metadata: &AuthorizationServerMetadata, issuer: &str) -> bool {
     metadata.issuer == issuer
+        || origin_of(issuer).is_some_and(|origin| {
+            issuer_is_origin(issuer, &origin) && issuer_is_origin(&metadata.issuer, &origin)
+        })
+}
+
+/// `issuer` parsed as a bare http(s) origin, or `None` when it carries a
+/// path, query, or fragment.
+fn origin_of(issuer: &str) -> Option<Url> {
+    let url = Url::parse(issuer).ok()?;
+    let bare = matches!(url.scheme(), "http" | "https")
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none();
+    bare.then_some(url)
 }
 
 fn validate_metadata_issuer(metadata: &AuthorizationServerMetadata, issuer: &str) -> Result<()> {

@@ -82,6 +82,43 @@ fn metadata_issuer_matching_preserves_trailing_slash_identity() {
     ));
 }
 
+fn metadata_issued_by(issuer: &str) -> AuthorizationServerMetadata {
+    AuthorizationServerMetadata {
+        issuer: issuer.into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    }
+}
+
+#[test]
+fn an_origin_issuer_matches_metadata_with_or_without_one_trailing_slash() {
+    let matches = |metadata: &str, issuer: &str| {
+        metadata_matches_issuer(&metadata_issued_by(metadata), issuer)
+    };
+
+    assert!(matches("https://a.example", "https://a.example/"));
+    assert!(matches("https://a.example/", "https://a.example"));
+    assert!(matches("https://a.example:8443", "https://a.example:8443/"));
+    assert!(!matches("https://a.example//", "https://a.example"));
+    assert!(!matches("https://a.example", "https://a.example//"));
+    assert!(!matches(
+        "https://a.example/tenant",
+        "https://a.example/tenant/"
+    ));
+    assert!(!matches(
+        "https://a.example/tenant/",
+        "https://a.example/tenant"
+    ));
+    assert!(!matches("https://b.example", "https://a.example/"));
+    assert!(!matches("http://a.example", "https://a.example/"));
+    assert!(!matches("https://a.example:8443", "https://a.example/"));
+    assert!(!matches("https://a.example?x=1", "https://a.example/"));
+}
+
 #[test]
 fn mismatched_metadata_issuers_are_not_merged() {
     let primary = AuthorizationServerMetadata {
@@ -810,6 +847,43 @@ async fn complete_rfc8414_metadata_is_returned_without_oidc_discovery() {
 
     assert_eq!(metadata.issuer, issuer);
     assert!(metadata.registration_endpoint.is_some());
+}
+
+#[tokio::test]
+async fn an_origin_issuer_with_a_trailing_slash_accepts_metadata_without_one() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let metadata_issuer = origin.clone();
+    let app = Router::new().route(
+        "/.well-known/oauth-authorization-server",
+        get(move || {
+            let issuer = metadata_issuer.clone();
+            async move {
+                Json(json!({
+                    "issuer": issuer,
+                    "authorization_endpoint": format!("{issuer}/authorize"),
+                    "token_endpoint": format!("{issuer}/token"),
+                    "registration_endpoint": format!("{issuer}/register"),
+                    "code_challenge_methods_supported": ["S256"],
+                }))
+            }
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = McpHttpClient::new(format!("{origin}/"), 2).unwrap();
+
+    let metadata = client
+        .fetch_authorization_server_metadata(&format!("{origin}/"))
+        .await
+        .unwrap();
+
+    assert_eq!(metadata.issuer, origin);
+    assert_eq!(
+        metadata.authorization_endpoint,
+        Some(format!("{origin}/authorize"))
+    );
 }
 
 #[tokio::test]

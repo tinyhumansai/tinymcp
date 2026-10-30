@@ -7,7 +7,7 @@ persisted registry identifiers, declarations and error wire forms remain pinned
 by golden fixtures. Raw remote metadata stays raw in serialized DTOs.
 
 Generic lexical sanitization lives in TinyTools 0.6 at reviewed canonical
-commit 1ec3468; TinyMCP imports it from `tinytools::sanitize` with default
+commit 41cc80a; TinyMCP imports it from `tinytools::sanitize` with default
 features disabled. This keeps skills and harness metadata independent of MCP
 loading. The bus has no TinyTools, TinyBus, runtime, HTTP or native
 dependencies, even optionally.
