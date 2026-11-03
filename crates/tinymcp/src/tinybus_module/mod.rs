@@ -183,7 +183,7 @@ macro_rules! export_module {
         #[cfg(any(feature = "static-link", test))]
         mod linked_exports {
             // TinyBus generates these three ABI items without rustdoc.
-            #![cfg_attr(not(test), expect(missing_docs, reason = "generated TinyBus ABI entries"))]
+            #![cfg_attr(not(test), allow(missing_docs))]
             use super::*;
             tinybus_module::module_export_static! { $($declaration)* }
         }

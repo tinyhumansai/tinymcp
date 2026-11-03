@@ -38,13 +38,13 @@ tinybox-bus = { git = "https://github.com/tinyhumansai/tinybox", tag = "v0.1.36"
 # TinyBus defines the message types, interface macro, and frozen module ABI
 # used by the generated integration. Socket and CLI features are unnecessary
 # here.
-tinybus = { version = ">=0.3.6, <0.4", default-features = false, features = [
+tinybus = { version = ">=0.3.12, <0.4", default-features = false, features = [
     "macros",
     "modules",
 ] }
 # The module-side SDK owns the isolated runtime and exports the ABI entrypoints
 # required by TinyBus's dynamic loader.
-tinybus-module = ">=0.3.6, <0.4"
+tinybus-module = ">=0.3.12, <0.4"
 # Derive macros for the crate-wide error type in `crates/tinymcp/src/error/`.
 # Every dependency entry should carry a comment like this one saying why it is
 # here.
