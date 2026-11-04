@@ -1,4 +1,5 @@
-//! The remote tool's wire form, annotations included.
+//! The transport wire forms: remote tool annotations and authorization-server
+//! metadata.
 
 use serde_json::json;
 
@@ -49,5 +50,39 @@ fn absent_annotations_stay_off_the_wire() -> TestResult {
     let wire = serde_json::to_value(&annotated)?;
     assert_eq!(wire["annotations"], json!({"readOnlyHint": true}));
     assert_eq!(serde_json::from_value::<McpRemoteTool>(wire)?, annotated);
+    Ok(())
+}
+
+#[test]
+fn an_authorization_servers_token_endpoint_auth_methods_are_kept() -> TestResult {
+    let metadata: AuthorizationServerMetadata = serde_json::from_value(json!({
+        "issuer": "https://auth.test",
+        "token_endpoint_auth_methods_supported": ["none"],
+    }))?;
+
+    assert_eq!(
+        metadata.token_endpoint_auth_methods_supported,
+        Some(vec!["none".to_string()])
+    );
+    let wire = serde_json::to_value(&metadata)?;
+    assert_eq!(
+        wire["token_endpoint_auth_methods_supported"],
+        json!(["none"])
+    );
+    assert_eq!(
+        serde_json::from_value::<AuthorizationServerMetadata>(wire)?,
+        metadata
+    );
+    Ok(())
+}
+
+#[test]
+fn absent_token_endpoint_auth_methods_stay_off_the_wire() -> TestResult {
+    let metadata: AuthorizationServerMetadata =
+        serde_json::from_value(json!({ "issuer": "https://auth.test" }))?;
+
+    assert_eq!(metadata.token_endpoint_auth_methods_supported, None);
+    let wire = serde_json::to_value(&metadata)?;
+    assert!(wire.get("token_endpoint_auth_methods_supported").is_none());
     Ok(())
 }

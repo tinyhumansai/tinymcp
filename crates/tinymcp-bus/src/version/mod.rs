@@ -44,7 +44,9 @@
 /// `StdioSandboxConfig::enforcement` (`StdioSandboxEnforcement`), letting the
 /// host choose `Declared` for a backend with partial enforcement; the default
 /// stays `Enforced`. 1.28 adds the optional `annotations` on `McpRemoteTool`.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 28);
+/// 1.29 adds the optional `token_endpoint_auth_methods_supported` on
+/// `AuthorizationServerMetadata`.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 29);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.

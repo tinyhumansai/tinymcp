@@ -427,6 +427,11 @@ pub struct AuthorizationServerMetadata {
     /// The PKCE code-challenge methods the server supports.
     #[serde(default)]
     pub code_challenge_methods_supported: Vec<String>,
+    /// How clients may authenticate at the token endpoint, for example
+    /// `client_secret_post` or `none` for a public client. `None` when the
+    /// server does not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_endpoint_auth_methods_supported: Option<Vec<String>>,
 }
 
 /// A parsed `WWW-Authenticate` challenge from a 401.

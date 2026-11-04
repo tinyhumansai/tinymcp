@@ -70,6 +70,7 @@ fn metadata_issuer_matching_preserves_trailing_slash_identity() {
         response_types_supported: Vec::new(),
         grant_types_supported: Vec::new(),
         code_challenge_methods_supported: Vec::new(),
+        token_endpoint_auth_methods_supported: None,
     };
 
     assert!(!metadata_matches_issuer(
@@ -91,6 +92,7 @@ fn metadata_issued_by(issuer: &str) -> AuthorizationServerMetadata {
         response_types_supported: Vec::new(),
         grant_types_supported: Vec::new(),
         code_challenge_methods_supported: Vec::new(),
+        token_endpoint_auth_methods_supported: None,
     }
 }
 
@@ -129,6 +131,7 @@ fn mismatched_metadata_issuers_are_not_merged() {
         response_types_supported: Vec::new(),
         grant_types_supported: Vec::new(),
         code_challenge_methods_supported: Vec::new(),
+        token_endpoint_auth_methods_supported: None,
     };
     let secondary = AuthorizationServerMetadata {
         issuer: "https://example.com/tenant/".into(),
@@ -138,6 +141,7 @@ fn mismatched_metadata_issuers_are_not_merged() {
         response_types_supported: Vec::new(),
         grant_types_supported: Vec::new(),
         code_challenge_methods_supported: Vec::new(),
+        token_endpoint_auth_methods_supported: None,
     };
 
     assert_eq!(
@@ -156,6 +160,7 @@ fn metadata_merge_preserves_rfc_default_for_omitted_grant_types() {
         response_types_supported: Vec::new(),
         grant_types_supported: Vec::new(),
         code_challenge_methods_supported: Vec::new(),
+        token_endpoint_auth_methods_supported: None,
     };
     let secondary = AuthorizationServerMetadata {
         issuer: "https://example.com".into(),
@@ -165,11 +170,25 @@ fn metadata_merge_preserves_rfc_default_for_omitted_grant_types() {
         response_types_supported: Vec::new(),
         grant_types_supported: vec!["client_credentials".into()],
         code_challenge_methods_supported: Vec::new(),
+        token_endpoint_auth_methods_supported: None,
     };
 
     let merged = fill_missing_metadata(primary, secondary);
 
     assert_eq!(merged.grant_types_supported.len(), 0);
+}
+
+#[test]
+fn metadata_merge_preserves_omitted_token_endpoint_auth_methods() {
+    let primary = metadata_issued_by("https://example.com");
+    let secondary = AuthorizationServerMetadata {
+        token_endpoint_auth_methods_supported: Some(vec!["client_secret_basic".into()]),
+        ..metadata_issued_by("https://example.com")
+    };
+
+    let merged = fill_missing_metadata(primary, secondary);
+
+    assert_eq!(merged.token_endpoint_auth_methods_supported, None);
 }
 
 // ---------------------------------------------------------------------------
