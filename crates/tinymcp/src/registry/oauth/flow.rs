@@ -232,18 +232,13 @@ impl OAuthFlow {
 
         // Chosen by capability rather than by position: the first advertised
         // authorization server may be incomplete while a later one is usable.
-        let metadata = context
+        let (metadata, auth_method) = context
             .authorization_server_metadata
             .iter()
             .find(|metadata| can_drive_sign_in(metadata))
+            .and_then(|metadata| client_auth_method(metadata).map(|method| (metadata, method)))
             .ok_or_else(|| Error::AuthDiscovery {
-                detail: if context.authorization_server_metadata.is_empty() {
-                    "the server advertises no authorization server".to_string()
-                } else {
-                    "no authorization server offers an authorize endpoint, a token endpoint, and \
-                     dynamic client registration together"
-                        .to_string()
-                },
+                detail: no_drivable_server_reason(&context.authorization_server_metadata),
                 challenge: Box::new(context.challenge.clone()),
             })?;
 
@@ -270,6 +265,7 @@ impl OAuthFlow {
                 registration_http.as_ref().unwrap_or(&self.http),
                 &registration_endpoint,
                 redirect_uri,
+                auth_method,
             )
             .await?;
 
@@ -469,22 +465,28 @@ impl OAuthFlow {
 
     /// Registers a client dynamically, per RFC 7591.
     ///
-    /// A confidential client is requested, and the secret is kept when one is
-    /// issued: some servers issue one regardless of what was asked for, and the
-    /// token exchange then fails without it.
+    /// A confidential client keeps the secret when one is issued: some servers
+    /// issue one regardless of what was asked for, and the token exchange then
+    /// fails without it. A public client keeps none, so neither the exchange
+    /// nor a refresh sends one.
     async fn register_client(
         &self,
         http: &reqwest::Client,
         registration_endpoint: &str,
         redirect_uri: &str,
+        auth_method: ClientAuthMethod,
     ) -> Result<(String, Option<String>)> {
         let body = json!({
             "client_name": self.client_name,
             "redirect_uris": [redirect_uri],
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "token_endpoint_auth_method": "client_secret_post",
+            "token_endpoint_auth_method": auth_method.as_str(),
         });
+        tracing::debug!(
+            auth_method = auth_method.as_str(),
+            "registering an oauth client"
+        );
 
         let response = http
             .post(registration_endpoint)
@@ -519,28 +521,99 @@ impl OAuthFlow {
             .ok_or_else(|| Error::malformed("client registration returned no client_id"))?
             .to_string();
 
-        let client_secret = registered
-            .get("client_secret")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
+        let client_secret = match auth_method {
+            ClientAuthMethod::SecretPost => registered
+                .get("client_secret")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            ClientAuthMethod::None => None,
+        };
 
         Ok((client_id, client_secret))
     }
 }
 
+/// How a registered client authenticates at the token endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClientAuthMethod {
+    /// A confidential client sending its secret in the form body.
+    SecretPost,
+    /// A public client sending no secret.
+    None,
+}
+
+impl ClientAuthMethod {
+    /// The RFC 7591 `token_endpoint_auth_method` value.
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SecretPost => "client_secret_post",
+            Self::None => "none",
+        }
+    }
+}
+
+/// The method to register with: `client_secret_post` when the server lists it
+/// or lists nothing, `none` when it lists that instead, and `None` when it
+/// accepts neither.
+fn client_auth_method(
+    metadata: &tinymcp_bus::AuthorizationServerMetadata,
+) -> Option<ClientAuthMethod> {
+    let Some(methods) = metadata
+        .token_endpoint_auth_methods_supported
+        .as_deref()
+        .filter(|methods| !methods.is_empty())
+    else {
+        return Some(ClientAuthMethod::SecretPost);
+    };
+    let lists = |method: ClientAuthMethod| methods.iter().any(|listed| listed == method.as_str());
+    [ClientAuthMethod::SecretPost, ClientAuthMethod::None]
+        .into_iter()
+        .find(|method| lists(*method))
+}
+
+/// Why no advertised authorization server can drive a sign-in.
+pub(super) fn no_drivable_server_reason(
+    metadata: &[tinymcp_bus::AuthorizationServerMetadata],
+) -> String {
+    if metadata.is_empty() {
+        return "the server advertises no authorization server".to_string();
+    }
+    let refused_only_for_auth_method = metadata.iter().any(|server| {
+        has_sign_in_endpoints(server)
+            && supports_authorization_code(server)
+            && client_auth_method(server).is_none()
+    });
+    if refused_only_for_auth_method {
+        "no authorization server accepts client_secret_post or none at its token endpoint"
+            .to_string()
+    } else {
+        "no authorization server offers an authorize endpoint, a token endpoint, and dynamic \
+         client registration together"
+            .to_string()
+    }
+}
+
 /// Whether this flow can run a sign-in against an authorization server: it
 /// advertises an authorize endpoint, a token endpoint and dynamic client
-/// registration, and accepts an authorization code.
+/// registration, accepts an authorization code, and accepts a client that
+/// authenticates with `client_secret_post` or `none`.
 ///
 /// [`OAuthFlow::detect`] and [`OAuthFlow::begin`] both ask this one question,
 /// so detection never offers a sign-in that `begin` would then refuse — a
 /// server with no registration endpoint (Slack's, for one) reads as wanting a
 /// static token, not as a Sign in button that leads nowhere.
 fn can_drive_sign_in(metadata: &tinymcp_bus::AuthorizationServerMetadata) -> bool {
+    has_sign_in_endpoints(metadata)
+        && supports_authorization_code(metadata)
+        && client_auth_method(metadata).is_some()
+}
+
+/// Whether an authorization server advertises the authorize, token and
+/// registration endpoints the flow posts to.
+fn has_sign_in_endpoints(metadata: &tinymcp_bus::AuthorizationServerMetadata) -> bool {
     metadata.authorization_endpoint.is_some()
         && metadata.token_endpoint.is_some()
         && metadata.registration_endpoint.is_some()
-        && supports_authorization_code(metadata)
 }
 
 /// Whether an authorization server will accept an authorization code.
