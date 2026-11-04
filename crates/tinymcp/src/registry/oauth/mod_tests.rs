@@ -1524,3 +1524,10 @@ mod host_store;
 
 #[path = "mod_refresh_tests.rs"]
 mod flow_refresh;
+
+// ---------------------------------------------------------------------------
+// Confidential and public clients
+// ---------------------------------------------------------------------------
+
+#[path = "mod_public_client_tests.rs"]
+mod public_client;
