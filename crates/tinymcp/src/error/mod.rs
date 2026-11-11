@@ -166,6 +166,19 @@ pub enum Error {
         version: String,
     },
 
+    /// A stdio server's process could not be started: the launcher exists but
+    /// the operating system or the jail refused to run it (Windows os error
+    /// 193 for a script without a runnable extension, a permission error, a
+    /// sandbox that cannot host it). Not a protocol failure, and nothing was
+    /// said to or by the server.
+    #[error("launching `{command}` failed: {detail}")]
+    LaunchFailed {
+        /// The configured command.
+        command: String,
+        /// Why the launch was refused.
+        detail: String,
+    },
+
     /// A response was not the shape the protocol requires.
     #[error("malformed mcp response: {detail}")]
     MalformedResponse {
@@ -451,6 +464,7 @@ impl Error {
             Self::EndpointResolution { .. } => errors::ENDPOINT_RESOLUTION,
             Self::RegistryTimeout { .. } => errors::REGISTRY_TIMEOUT,
             Self::UnsupportedProtocolVersion { .. } => errors::UNSUPPORTED_PROTOCOL_VERSION,
+            Self::LaunchFailed { .. } => errors::LAUNCH_FAILED,
             Self::MalformedResponse { .. } => errors::MALFORMED_RESPONSE,
             Self::Rpc { .. } => errors::RPC,
             Self::MissingAuthChallenge => errors::MISSING_AUTH_CHALLENGE,

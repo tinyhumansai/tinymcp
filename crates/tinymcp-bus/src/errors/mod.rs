@@ -47,6 +47,10 @@ pub const ENDPOINT_RESOLUTION: &str = "ai.tinyhumans.tinymcp.Error.EndpointResol
 /// A server negotiated a protocol version the client does not speak.
 pub const UNSUPPORTED_PROTOCOL_VERSION: &str =
     "ai.tinyhumans.tinymcp.Error.UnsupportedProtocolVersion";
+/// A stdio server's launcher was found but its process could not be started
+/// (an unrunnable script on Windows, a permission error, a jail that refused
+/// it). Added in contract 1.32; before it, these were `MALFORMED_RESPONSE`.
+pub const LAUNCH_FAILED: &str = "ai.tinyhumans.tinymcp.Error.LaunchFailed";
 /// A response was not the shape the protocol requires.
 pub const MALFORMED_RESPONSE: &str = "ai.tinyhumans.tinymcp.Error.MalformedResponse";
 /// A server returned a JSON-RPC error object.
@@ -125,6 +129,7 @@ pub const ALL: &[&str] = &[
     INVALID_ARGUMENTS,
     REGISTRY_TIMEOUT,
     RESOURCE_TOO_LARGE,
+    LAUNCH_FAILED,
 ];
 
 #[cfg(test)]

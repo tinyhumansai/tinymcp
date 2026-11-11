@@ -51,7 +51,9 @@
 /// and public unless the operator declared that server local.
 /// 1.31 adds `McpRegistryAuthConfig::curated_servers` (`CuratedServerEntry`):
 /// host-supplied curated servers, never badged official.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 31);
+/// 1.32 adds the `LaunchFailed` error name: a stdio server whose process could
+/// not be started, previously reported as `MalformedResponse`.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 32);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.

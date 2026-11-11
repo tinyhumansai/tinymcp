@@ -61,6 +61,10 @@ fn assorted_other_errors() -> Vec<Error> {
             action: "writing credentials".into(),
             detail: "the vault is sealed".into(),
         },
+        Error::LaunchFailed {
+            command: "npx".into(),
+            detail: "%1 is not a valid Win32 application. (os error 193)".into(),
+        },
         Error::MalformedResponse {
             detail: "no result member".into(),
         },
