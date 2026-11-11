@@ -851,8 +851,10 @@ async fn an_uncurated_server_the_registry_does_not_list_is_still_an_error() {
         .await
         .unwrap_err();
 
+    // Not described from a curated entry, and not a raw upstream failure:
+    // the registry's 404 is the unknown-server answer (#167).
     assert!(
-        matches!(error, Error::Http { status: 404, .. }),
+        matches!(&error, Error::UnknownServer { server } if server == "io.example/nowhere"),
         "{error:?}"
     );
 }
