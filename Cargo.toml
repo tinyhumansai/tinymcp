@@ -20,7 +20,7 @@ exclude = ["vendor", "worktrees"]
 [workspace.package]
 version = "0.20.6"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 license = "GPL-3.0-only"
 repository = "https://github.com/tinyhumansai/tinymcp"
 
@@ -115,15 +115,15 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 # Runtime-neutral storage ports and their shared serialized types. TinyMCP
 # owns its typed repositories and migrations; the host chooses the engines.
-tinystoragedrivers-api = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.1", rev = "19be64111fbecb4b11f3752432a0356029a83328" }
-tinystoragedrivers-types = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.1", rev = "19be64111fbecb4b11f3752432a0356029a83328" }
+tinystoragedrivers-api = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.3", rev = "f5a33025b9feaa36fea522cce764fe8c796e5139" }
+tinystoragedrivers-types = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.3", rev = "f5a33025b9feaa36fea522cce764fe8c796e5139" }
 # The module-side storage bus: `connect_storage` over the module's TinyBus
 # connection, giving the same port traits the host serves. Used only by the
 # `module` feature (a cdylib reaches storage through the host, never a file).
-tinystoragedrivers-busproxy = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.1", rev = "19be64111fbecb4b11f3752432a0356029a83328" }
-tinystoragedrivers-testkit = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.1", rev = "19be64111fbecb4b11f3752432a0356029a83328" }
-tinystoragedrivers-document = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.1", rev = "19be64111fbecb4b11f3752432a0356029a83328", default-features = false, features = ["memory"] }
-tinystoragedrivers-secrets = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.1", rev = "19be64111fbecb4b11f3752432a0356029a83328" }
+tinystoragedrivers-busproxy = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.3", rev = "f5a33025b9feaa36fea522cce764fe8c796e5139" }
+tinystoragedrivers-testkit = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.3", rev = "f5a33025b9feaa36fea522cce764fe8c796e5139" }
+tinystoragedrivers-document = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.3", rev = "f5a33025b9feaa36fea522cce764fe8c796e5139", default-features = false, features = ["memory"] }
+tinystoragedrivers-secrets = { git = "https://github.com/tinyhumansai/tinystoragedrivers", version = "2.1.3", rev = "f5a33025b9feaa36fea522cce764fe8c796e5139" }
 # Locating a user's home directory, to find the version-manager shim
 # directories a desktop launch's stripped PATH leaves out.
 dirs = "7"
