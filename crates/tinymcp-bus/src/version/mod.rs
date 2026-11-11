@@ -44,7 +44,10 @@
 /// `StdioSandboxConfig::enforcement` (`StdioSandboxEnforcement`), letting the
 /// host choose `Declared` for a backend with partial enforcement; the default
 /// stays `Enforced`. 1.28 adds the optional `annotations` on `McpRemoteTool`.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 28);
+/// 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
+/// endpoint guard on by default: endpoints a server advertises must be `https`
+/// and public unless the operator declared that server local.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 30);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.
