@@ -34,7 +34,10 @@ tinymcp-bus = { path = "crates/tinymcp-bus" }
 # The TinyBox bus contract, used by the jailed stdio launcher to start MCP
 # servers inside TinyBox's native jail. Contract types only: the module reaches
 # TinyBox through the bus and never links its implementation.
-tinybox-bus = { git = "https://github.com/tinyhumansai/tinybox", tag = "v0.1.36" }
+# Keep it at or below the TinyBox release a host ships: `is_compatible` wants the
+# module's major to match and its minor to be at least this one, so a tag newer
+# than the shipped module refuses it. v0.2.5 (contract 2.3) accepts 2.3 and 2.4.
+tinybox-bus = { git = "https://github.com/tinyhumansai/tinybox", tag = "v0.2.5" }
 # TinyBus defines the message types, interface macro, and frozen module ABI
 # used by the generated integration. Socket and CLI features are unnecessary
 # here.
