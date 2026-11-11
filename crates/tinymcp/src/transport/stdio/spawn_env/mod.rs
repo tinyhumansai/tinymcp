@@ -352,9 +352,20 @@ fn is_executable_file(path: &Path) -> bool {
 /// Every filename the operating system would try for `base`.
 #[cfg(windows)]
 fn executable_candidates(base: PathBuf) -> Vec<PathBuf> {
-    let mut candidates = vec![base.clone()];
     let extensions = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+    pathext_candidates(base, &extensions)
+}
 
+/// `base` with each `PATHEXT` extension appended, then `base` itself.
+///
+/// The bare name comes last. Node installs an extensionless `npx` shell script
+/// beside `npx.cmd`, and `CreateProcessW` refuses the script with os error 193,
+/// so taking the bare name first broke the most common stdio config, a command
+/// of `npx` (#168). A real extensionless executable still resolves when nothing
+/// with an extension sits beside it.
+#[cfg(any(windows, test))]
+fn pathext_candidates(base: PathBuf, extensions: &str) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
     for extension in extensions.split(';') {
         let extension = extension.trim();
         if extension.is_empty() {
@@ -364,7 +375,7 @@ fn executable_candidates(base: PathBuf) -> Vec<PathBuf> {
         name.push(extension);
         candidates.push(PathBuf::from(name));
     }
-
+    candidates.push(base);
     candidates
 }
 
