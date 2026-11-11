@@ -7,6 +7,9 @@ use crate::registry::OAuthCredentialStore;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 
+/// The server a guard decision is made for: a remote, not one declared local.
+const SERVER: &str = "https://mcp.vendor.example/mcp";
+
 /// A host's secret store: credentials in a map, keyed by whatever server id
 /// the host chooses — here a tenant-qualified one.
 #[derive(Debug, Default)]
@@ -314,7 +317,7 @@ async fn a_guarded_flow_refuses_an_internal_authorization_server() {
         ),
     ] {
         let error = flow
-            .registration_client(&authorize, &token, &register)
+            .registration_client(SERVER, &authorize, &token, &register)
             .await
             .expect_err(what);
         assert!(
@@ -326,6 +329,7 @@ async fn a_guarded_flow_refuses_an_internal_authorization_server() {
     }
     assert!(
         flow.registration_client(
+            SERVER,
             &format!("{public}/authorize"),
             &format!("{public}/token"),
             &format!("{public}/register"),
@@ -368,6 +372,7 @@ async fn public_endpoint_clients_validate_and_pin_registration_and_token_hosts()
     let flow = flow().require_public_endpoints();
     let registration = flow
         .registration_client(
+            SERVER,
             "https://8.8.8.8/authorize",
             "https://1.1.1.1/token",
             "https://9.9.9.9/register",
@@ -376,7 +381,7 @@ async fn public_endpoint_clients_validate_and_pin_registration_and_token_hosts()
         .expect("validate public endpoints");
     assert!(registration.is_some());
     assert!(
-        flow.token_client("https://8.8.8.8/token")
+        flow.token_client(SERVER, "https://8.8.8.8/token")
             .await
             .expect("build token client")
             .is_some()
@@ -387,13 +392,13 @@ async fn public_endpoint_clients_validate_and_pin_registration_and_token_hosts()
 async fn desktop_flow_keeps_the_default_clients() {
     let flow = flow();
     assert!(
-        flow.registration_client("not a url", "not a url", "not a url")
+        flow.registration_client(SERVER, "not a url", "not a url", "not a url")
             .await
             .expect("desktop flow skips public endpoint checks")
             .is_none()
     );
     assert!(
-        flow.token_client("not a url")
+        flow.token_client(SERVER, "not a url")
             .await
             .expect("desktop flow skips public endpoint checks")
             .is_none()
@@ -582,4 +587,72 @@ async fn an_expired_authorization_in_a_lazy_store_is_refused() {
         "{error:?}"
     );
     assert_eq!(authority.exchanges.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn internal_endpoints_are_refused_for_a_remote_and_allowed_for_a_declared_local_server() {
+    let local_server = "http://127.0.0.1:8080/mcp";
+    let flow = flow()
+        .require_public_endpoints()
+        .with_local_origins(["http://127.0.0.1:8080", "not a url"]);
+    for endpoint in [
+        "https://127.0.0.1/token",
+        "https://169.254.169.254/token",
+        "http://8.8.8.8/token",
+    ] {
+        let refused = flow
+            .token_client(SERVER, endpoint)
+            .await
+            .expect_err(endpoint);
+        assert!(
+            refused.to_string().contains("token endpoint refused"),
+            "{endpoint}: {refused}"
+        );
+        assert!(
+            flow.token_client(local_server, endpoint)
+                .await
+                .expect(endpoint)
+                .is_none(),
+            "{endpoint}: a declared-local server keeps the unguarded client"
+        );
+    }
+    // The registration path makes the same decision per server.
+    assert!(
+        flow.registration_client(
+            SERVER,
+            "https://169.254.169.254/authorize",
+            "https://169.254.169.254/token",
+            "https://169.254.169.254/register",
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        flow.registration_client(
+            local_server,
+            "http://127.0.0.1:8080/authorize",
+            "http://127.0.0.1:8080/token",
+            "http://127.0.0.1:8080/register",
+        )
+        .await
+        .expect("declared local")
+        .is_none()
+    );
+}
+
+#[test]
+fn origins_compare_by_scheme_host_and_explicit_port() {
+    assert_eq!(
+        crate::registry::oauth::flow::origin_of("http://LocalHost/mcp").as_deref(),
+        Some("http://localhost:80")
+    );
+    assert_eq!(
+        crate::registry::oauth::flow::origin_of("http://localhost:80").as_deref(),
+        Some("http://localhost:80")
+    );
+    assert_eq!(
+        crate::registry::oauth::flow::origin_of("https://mcp.vendor.example/x").as_deref(),
+        Some("https://mcp.vendor.example:443")
+    );
+    assert_eq!(crate::registry::oauth::flow::origin_of("not a url"), None);
 }
