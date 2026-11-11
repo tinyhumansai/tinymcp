@@ -221,6 +221,15 @@ impl Registries {
         })
     }
 
+    /// The dispatcher over a Smithery adapter pointed at `base`, for tests that
+    /// stand in for Smithery with a loopback server.
+    #[cfg(test)]
+    pub(crate) fn with_smithery_base(auth: McpRegistryAuthConfig, base: &str) -> Result<Self> {
+        let mut registries = Self::new(auth)?;
+        registries.smithery = SmitheryRegistry::with_base(base)?;
+        Ok(registries)
+    }
+
     /// Starts a background sync of the official catalog's local index when
     /// one is due, returning whether it did.
     ///
