@@ -2397,17 +2397,32 @@ fn a_curated_server_already_on_the_page_moves_to_the_head_as_the_registry_row() 
     let mut rows = summaries(&["@acme/notion", "com.notion/mcp"]);
     rows[1].display_name = "From the registry".to_string();
 
-    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "notion", 20);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "notion", None);
 
     assert_eq!(names(&rows), ["com.notion/mcp", "@acme/notion"]);
     assert_eq!(rows[0].display_name, "From the registry");
 }
 
 #[test]
-fn a_curated_lead_stays_within_the_page_size() {
+fn a_curated_lead_keeps_every_registry_row_on_the_page() {
+    // Cutting the page back to its size would push `@acme/slack-2` off page
+    // one, and page two starts from the registry's cursor, so it would never
+    // be shown.
     let mut rows = summaries(&["@acme/slack", "@acme/slack-2"]);
 
-    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "slack", 2);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "slack", None);
+
+    assert_eq!(
+        names(&rows),
+        ["com.slack/mcp", "@acme/slack", "@acme/slack-2"]
+    );
+}
+
+#[test]
+fn a_page_with_nothing_after_it_is_cut_back_to_its_cap() {
+    let mut rows = summaries(&["@acme/slack", "@acme/slack-2"]);
+
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "slack", Some(2));
 
     assert_eq!(names(&rows), ["com.slack/mcp", "@acme/slack"]);
 }
@@ -2416,7 +2431,7 @@ fn a_curated_lead_stays_within_the_page_size() {
 fn a_blank_query_leaves_the_page_alone() {
     let mut rows = summaries(&["@acme/one", "@acme/two"]);
 
-    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "  ", 20);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "  ", None);
 
     assert_eq!(names(&rows), ["@acme/one", "@acme/two"]);
 }
@@ -2443,7 +2458,7 @@ fn a_runtime_curated_server_does_not_lead_a_page() {
         "https://mcp.zebra.example/mcp",
     )]);
 
-    lead_with_curated(&mut rows, &catalog, "zebra", 20);
+    lead_with_curated(&mut rows, &catalog, "zebra", None);
 
     assert_eq!(names(&rows), ["@acme/zebra"]);
 }
@@ -2456,7 +2471,7 @@ fn a_replaced_built_in_no_longer_leads_a_page() {
         "https://notion.example/mcp",
     )]);
 
-    lead_with_curated(&mut rows, &catalog, "notion", 20);
+    lead_with_curated(&mut rows, &catalog, "notion", None);
 
     assert_eq!(names(&rows), ["@acme/notion"]);
 }
@@ -2486,7 +2501,61 @@ async fn a_runtime_curated_server_is_described_when_the_registry_does_not_list_i
 fn a_query_matching_no_curated_server_leaves_the_page_alone() {
     let mut rows = summaries(&["@acme/one"]);
 
-    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "nonesuch", 20);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "nonesuch", None);
 
     assert_eq!(names(&rows), ["@acme/one"]);
+}
+
+/// A registry of two full pages of two rows each, all matching `slack`.
+async fn two_pages_of_slack_rows() -> String {
+    let app = Router::new().route(
+        "/v0/servers",
+        get(|uri: Uri| async move {
+            let body = if param(&uri, "cursor").as_deref() == Some("2") {
+                json!({ "servers": [envelope("@acme/slack-c"), envelope("@acme/slack-d")] })
+            } else {
+                json!({
+                    "servers": [envelope("@acme/slack-a"), envelope("@acme/slack-b")],
+                    "metadata": { "nextCursor": "2" },
+                })
+            };
+            axum::Json(body)
+        }),
+    );
+    serve(app).await
+}
+
+#[tokio::test]
+async fn every_registry_row_appears_exactly_once_across_pages_when_a_curated_server_leads() {
+    let base = two_pages_of_slack_rows().await;
+    let (store, cursors, auth) = (store(), cursors(), auth_at(&base));
+
+    let mut seen: Vec<String> = Vec::new();
+    for page in [1, 2] {
+        let found = adapter()
+            .search(&store, &auth, &cursors, "slack", page, 2)
+            .await
+            .expect("the registry answers");
+        seen.extend(names_of(&found).into_iter().map(str::to_string));
+    }
+
+    let upstream: Vec<&str> = seen
+        .iter()
+        .map(String::as_str)
+        .filter(|name| name.starts_with("@acme/"))
+        .collect();
+    assert_eq!(
+        upstream,
+        [
+            "@acme/slack-a",
+            "@acme/slack-b",
+            "@acme/slack-c",
+            "@acme/slack-d"
+        ]
+    );
+    // The curated server leads page one once.
+    assert_eq!(
+        seen.iter().filter(|name| *name == "com.slack/mcp").count(),
+        1
+    );
 }

@@ -90,6 +90,14 @@ so a host can tell a tool that only reads from one that changes something
 before it calls it. The field is optional and omitted when absent, and
 `StaticScrubTools` scrubs it like the rest of a tool's metadata.
 
+Contract 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
+endpoint guard on by default. The authorization, registration and token
+endpoints a server advertises are requested from the host, so they must now be
+`https` and resolve to public addresses, refusing loopback, private, link-local
+and metadata addresses. The exception is a server whose URL has an origin the
+operator listed in `local_oauth_origins`, such as a loopback development server;
+each exemption is logged. Token refreshes on connect go through the same guard.
+
 Contract 1.31 adds `McpRegistryAuthConfig::curated_servers`
 (`CuratedServerEntry`): curated servers a host adds at runtime, merged with
 the module's built-in list. They are listed, searched and described like the

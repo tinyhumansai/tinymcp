@@ -174,7 +174,11 @@ impl McpOfficialRegistry {
             .search_registry(store, auth, cursors, query, page, page_size)
             .await?;
         if page == 1 {
-            lead_with_curated(&mut found.servers, &catalog, query, page_size);
+            // A local fallback is one bounded page with nothing after it, so it
+            // keeps its size; a registry page is followed by its cursor.
+            let cap = (found.freshness == RegistryFreshness::LocalFallback)
+                .then(|| usize::try_from(page_size.max(1)).unwrap_or(usize::MAX));
+            lead_with_curated(&mut found.servers, &catalog, query, cap);
         }
         Ok(found)
     }
@@ -486,7 +490,12 @@ fn served(
 
 /// Puts the curated servers matching `query` at the head of a first page,
 /// adding any the page does not carry and keeping the registry's row for any
-/// it does, within `page_size` rows.
+/// it does.
+///
+/// A registry page is not cut to fit: page two continues from the registry's
+/// own cursor, so a row pushed off page one would never appear on any page,
+/// and page one may run longer by the curated servers it adds. Only a page
+/// with nothing after it (the local fallback) is cut back to `cap`.
 ///
 /// Only promoted entries lead (see [`CuratedCatalog::is_promoted`]); a runtime
 /// entry is not moved to the top.
@@ -494,7 +503,7 @@ fn lead_with_curated(
     servers: &mut Vec<RegistryServerSummary>,
     catalog: &CuratedCatalog,
     query: &str,
-    page_size: u32,
+    cap: Option<usize>,
 ) {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     if terms.is_empty() {
@@ -519,7 +528,9 @@ fn lead_with_curated(
         })
         .collect();
     leading.append(servers);
-    leading.truncate(usize::try_from(page_size.max(1)).unwrap_or(usize::MAX));
+    if let Some(cap) = cap {
+        leading.truncate(cap);
+    }
     *servers = leading;
 }
 

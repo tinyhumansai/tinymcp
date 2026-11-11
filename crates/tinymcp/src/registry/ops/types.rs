@@ -63,11 +63,27 @@ impl McpRegistry {
             store: Arc::new(store),
             connections: Connections::new(),
             registries: Registries::new(registry_auth)?,
-            oauth: OAuthFlow::new(proxy.clone())?,
+            // Secure by default: the endpoints a server advertises are POSTed
+            // to from the host, so they must be https and public unless the
+            // operator declared that server local (`with_local_oauth_origins`).
+            oauth: OAuthFlow::new(proxy.clone())?.require_public_endpoints(),
             vault: SecretVault::new(),
             identity,
             proxy,
         })
+    }
+
+    /// Exempts servers at `origins` from the OAuth endpoint guard: the ones an
+    /// operator configured as local, from
+    /// [`tinymcp_bus::McpClientConfig::local_oauth_origins`].
+    #[must_use]
+    pub fn with_local_oauth_origins<I, S>(mut self, origins: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.oauth = self.oauth.with_local_origins(origins);
+        self
     }
 
     /// The same registry starting stdio servers through `stdio`.

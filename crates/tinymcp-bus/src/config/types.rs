@@ -58,6 +58,17 @@ pub struct McpClientConfig {
     /// one) is refused rather than started unconfined.
     #[serde(default)]
     pub stdio_sandbox: Option<StdioSandboxConfig>,
+    /// Origins (`scheme://host[:port]`) of installed servers the operator
+    /// declares local, such as `http://localhost:8080`.
+    ///
+    /// The OAuth endpoints a server advertises (authorization, registration,
+    /// token) are requested from the host, so by default they must be `https`
+    /// and resolve to public addresses. A server whose URL has one of these
+    /// origins may use loopback, private or plain-`http` endpoints instead;
+    /// each use is logged. Empty by default: every server is guarded. Added in
+    /// contract 1.30.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_oauth_origins: Vec<String>,
 }
 
 /// The jail a host grants stdio MCP servers.
@@ -127,6 +138,7 @@ impl Default for McpClientConfig {
             registry_auth: McpRegistryAuthConfig::default(),
             proxy: None,
             stdio_sandbox: None,
+            local_oauth_origins: Vec::new(),
         }
     }
 }

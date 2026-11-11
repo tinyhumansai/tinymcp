@@ -4,10 +4,13 @@
 //! being signed in to, and the flow then POSTs to them **from the host**. An
 //! unchecked endpoint is a server-side request-forgery primitive: a hostile
 //! server can aim the flow at an internal service or the cloud metadata
-//! address. A host serving untrusted servers turns this guard on with
-//! [`OAuthFlow::require_public_endpoints`](super::OAuthFlow::require_public_endpoints).
-//! It is off by default because a desktop host legitimately signs in to
-//! loopback development servers.
+//! address. [`McpRegistry`](crate::registry::McpRegistry), which every module
+//! host goes through, turns this guard on with
+//! [`OAuthFlow::require_public_endpoints`](super::OAuthFlow::require_public_endpoints)
+//! and exempts only the servers the operator declared local
+//! (`McpClientConfig::local_oauth_origins`), so a loopback development server
+//! still signs in when its owner says so. A bare `OAuthFlow` stays unguarded
+//! for library callers that check endpoints themselves.
 
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::time::Duration;

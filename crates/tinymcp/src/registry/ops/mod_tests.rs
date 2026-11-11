@@ -710,7 +710,12 @@ fn remote_record(server_id: &str, endpoint: &str) -> InstalledServer {
 
 /// A facade holding `server` as an enabled install.
 fn registry_with(server: &InstalledServer) -> McpRegistry {
-    let registry = registry();
+    // The stand-ins are loopback servers, which the OAuth endpoint guard
+    // refuses unless the operator declares them local, as a developer would.
+    let registry = match &server.transport {
+        Transport::HttpRemote { url } => registry().with_local_oauth_origins([url]),
+        _ => registry(),
+    };
     registry.store().insert_server(server).expect("insert");
     registry
 }
@@ -1716,4 +1721,39 @@ async fn a_supervisor_from_the_registry_steps_over_its_store() {
         .await;
 
     assert!(report.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// The OAuth endpoint guard is on by default
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_loopback_server_is_refused_by_the_oauth_guard_unless_declared_local() {
+    let (endpoint, state) = mcp_server().await;
+    state.demand_auth.store(true, Ordering::SeqCst);
+    let record = remote_record("srv-1", &endpoint);
+
+    // A registry built the normal way: nothing declared local.
+    let guarded = registry();
+    guarded.store().insert_server(&record).expect("insert");
+    let detected = guarded
+        .detect_auth("srv-1")
+        .await
+        .expect_err("a plain-http loopback server is refused");
+    assert!(
+        detected.to_string().contains("endpoint refused"),
+        "{detected}"
+    );
+    let begun = guarded
+        .oauth_begin("srv-1", "http://127.0.0.1:1/callback")
+        .await
+        .expect_err("no sign-in is started against it");
+    assert!(begun.to_string().contains("endpoint refused"), "{begun}");
+
+    // The same server, declared local by the operator, is probed.
+    let local = registry_with(&record);
+    local
+        .detect_auth("srv-1")
+        .await
+        .expect("a declared-local server is probed");
 }
