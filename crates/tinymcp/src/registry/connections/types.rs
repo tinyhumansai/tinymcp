@@ -11,7 +11,7 @@ use super::dial::{build_http_auth, credential_safe_dial_url, resolve_final_url};
 use super::status::{ConnectFailure, classify};
 use crate::error::{Error, Result};
 use crate::registry::Store;
-use crate::registry::oauth::{OAuthFlow, refresh_if_expired};
+use crate::registry::oauth::OAuthFlow;
 use crate::transport::http::McpHttpClient;
 use crate::transport::stdio::McpStdioClient;
 use crate::transport::stdio::jailed::StdioLaunchers;
@@ -386,7 +386,9 @@ impl Connections {
         // Refresh before dialling so a session never opens with a stale token.
         // A refresh that fails is not fatal: the existing token may still work,
         // and if it does not, the 401 tells the user to sign in again.
-        if let Err(error) = refresh_if_expired(store, oauth.http(), &server.server_id).await {
+        // Through the flow, not the free `refresh_if_expired`: the flow re-checks
+        // the stored token endpoint against the guard before posting to it.
+        if let Err(error) = oauth.refresh(store, &server.server_id).await {
             tracing::warn!(
                 server_id = %server.server_id,
                 "could not refresh the access token; dialling with the existing one: {error}"

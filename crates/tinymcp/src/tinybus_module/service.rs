@@ -119,6 +119,7 @@ impl McpService {
                 config.client.client_identity.clone(),
                 config.client.proxy.clone(),
             )?
+            .with_local_oauth_origins(&config.client.local_oauth_origins)
             .with_stdio(stdio.clone()),
         );
 
