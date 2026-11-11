@@ -3,9 +3,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::{
-    ConfiguredToolCallRequest, McpAuthConfig, McpClientConfig, McpServerConfig,
-    OpenConfiguredRequest, OpenConfiguredResponse, StdioSandboxConfig, StdioSandboxEnforcement,
-    TransitionStatus,
+    ConfiguredToolCallRequest, CuratedEntryAuth, CuratedEntryTransport, CuratedServerEntry,
+    McpAuthConfig, McpClientConfig, McpRegistryAuthConfig, McpServerConfig, OpenConfiguredRequest,
+    OpenConfiguredResponse, StdioSandboxConfig, StdioSandboxEnforcement, TransitionStatus,
 };
 use serde_json::json;
 
@@ -172,4 +172,59 @@ fn the_stdio_sandbox_defaults_to_net_subprocess_and_the_isolation_floor() {
     let trusted: McpServerConfig =
         serde_json::from_value(json!({ "command": "npx", "operator_trusted": true })).unwrap();
     assert!(trusted.operator_trusted);
+}
+
+#[test]
+fn runtime_curated_servers_have_a_pinned_wire_form() {
+    let wire = json!({
+        "curated_servers": [{
+            "qualified_name": "com.slack/mcp",
+            "display_name": "Slack",
+            "description": "Slack's hosted MCP server",
+            "remote_url": "https://mcp.slack.com/mcp",
+            "transport": "streamable_http",
+            "auth": "oauth_preregistered",
+        }]
+    });
+    let auth: McpRegistryAuthConfig = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(
+        auth.curated_servers,
+        [CuratedServerEntry {
+            qualified_name: "com.slack/mcp".into(),
+            display_name: "Slack".into(),
+            description: "Slack's hosted MCP server".into(),
+            remote_url: "https://mcp.slack.com/mcp".into(),
+            transport: CuratedEntryTransport::StreamableHttp,
+            auth: CuratedEntryAuth::OauthPreregistered,
+            icon_url: None,
+        }]
+    );
+    // Only the new member is pinned here; the older optional fields keep their
+    // existing wire form (`null` when unset).
+    assert_eq!(
+        serde_json::to_value(&auth).unwrap()["curated_servers"],
+        wire["curated_servers"]
+    );
+    // Absent by default, and left off the wire when empty.
+    let empty = McpRegistryAuthConfig::default();
+    assert_eq!(empty.curated_servers, Vec::new());
+    assert!(
+        serde_json::to_value(&empty)
+            .unwrap()
+            .get("curated_servers")
+            .is_none()
+    );
+}
+
+#[test]
+fn a_misspelled_curated_server_key_is_refused() {
+    let wire = json!({
+        "qualified_name": "com.slack/mcp",
+        "display_name": "Slack",
+        "remote_url": "https://mcp.slack.com/mcp",
+        "transport": "sse",
+        "auth": "none",
+        "icon": "https://example.com/slack.png",
+    });
+    assert!(serde_json::from_value::<CuratedServerEntry>(wire).is_err());
 }

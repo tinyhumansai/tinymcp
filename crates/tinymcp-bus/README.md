@@ -103,6 +103,13 @@ and metadata addresses. The exception is a server whose URL has an origin the
 operator listed in `local_oauth_origins`, such as a loopback development server;
 each exemption is logged. Token refreshes on connect go through the same guard.
 
+Contract 1.31 adds `McpRegistryAuthConfig::curated_servers`
+(`CuratedServerEntry`): curated servers a host adds at runtime, merged with
+the module's built-in list. They are listed, searched and described like the
+built-in ones but never badged official or promoted, and one naming a built-in
+replaces its endpoint and takes its badge away. Empty by default and omitted
+from the wire when empty.
+
 Library consumers bring implementation extension traits into scope for moved
 DTO methods. Contract-only hosts call the compiled module. See
 [the relocation specification](../../docs/specs/pure-vocabulary.md) for public

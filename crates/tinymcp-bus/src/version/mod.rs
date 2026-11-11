@@ -49,7 +49,9 @@
 /// 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
 /// endpoint guard on by default: endpoints a server advertises must be `https`
 /// and public unless the operator declared that server local.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 30);
+/// 1.31 adds `McpRegistryAuthConfig::curated_servers` (`CuratedServerEntry`):
+/// host-supplied curated servers, never badged official.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 31);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.
