@@ -312,7 +312,8 @@ the authorization server shows on its consent screen; it defaults to
 
 Dynamic registration asks for a confidential client (`client_secret_post`)
 when the authorization server's `token_endpoint_auth_methods_supported` lists
-it or lists nothing, and for a public client (`none`) when it lists only that.
+it or lists nothing, and for a public client (`none`) when it lists `none` but
+not `client_secret_post`, whatever else it lists.
 A public client stores no secret, and neither the code exchange nor a refresh
 sends one. A server that accepts neither is not offered a sign-in: `detect`
 reports a static token and `begin` refuses before registering.
