@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use super::types::{OfficialListResponse, OfficialServer};
 use super::{lead_with_curated, page_bound, search_cache_key};
+use crate::registry::curation::CuratedCatalog;
 
 /// A list response wrapping `servers`.
 fn list_response(servers: &Value, next_cursor: Option<&str>) -> OfficialListResponse {
@@ -2090,8 +2091,15 @@ fn a_local_match_skips_cached_pages_that_do_not_decode() {
         )
         .unwrap();
 
-    let page = super::fallback::serve_cached(&store, &cursors(), "weather", 1, 20)
-        .expect("the decodable page answers");
+    let page = super::fallback::serve_cached(
+        &store,
+        &CuratedCatalog::new(&[]),
+        &cursors(),
+        "weather",
+        1,
+        20,
+    )
+    .expect("the decodable page answers");
 
     assert_eq!(page.servers[0].qualified_name, "@acme/weather");
 }
@@ -2106,7 +2114,10 @@ fn a_blank_query_has_no_local_matches() {
         )
         .unwrap();
 
-    assert!(super::fallback::serve_cached(&store, &cursors(), "   ", 1, 20).is_none());
+    assert!(
+        super::fallback::serve_cached(&store, &CuratedCatalog::new(&[]), &cursors(), "   ", 1, 20)
+            .is_none()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2228,7 +2239,15 @@ fn a_server_cached_as_a_page_row_and_a_detail_appears_once() {
         .unwrap();
     cache_detail(&store, &envelope("com.notion/mcp")["server"]);
 
-    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+    let page = super::fallback::serve_cached(
+        &store,
+        &CuratedCatalog::new(&[]),
+        &cursors(),
+        "notion",
+        1,
+        20,
+    )
+    .unwrap();
 
     assert_eq!(names_of(&page), ["com.notion/mcp"]);
 }
@@ -2251,7 +2270,15 @@ fn a_detail_matching_on_its_name_leads_a_page_row_matching_on_its_description() 
         .unwrap();
     cache_detail(&store, &envelope("com.notion/mcp")["server"]);
 
-    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+    let page = super::fallback::serve_cached(
+        &store,
+        &CuratedCatalog::new(&[]),
+        &cursors(),
+        "notion",
+        1,
+        20,
+    )
+    .unwrap();
 
     assert_eq!(names_of(&page), ["com.notion/mcp", "io.github.acme/pages"]);
 }
@@ -2267,7 +2294,10 @@ fn a_detail_offering_no_way_to_connect_is_not_matched() {
         )
         .unwrap();
 
-    assert!(super::fallback::serve_cached(&store, &cursors(), "zzq", 1, 20).is_none());
+    assert!(
+        super::fallback::serve_cached(&store, &CuratedCatalog::new(&[]), &cursors(), "zzq", 1, 20)
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -2301,7 +2331,15 @@ fn a_curated_server_leads_cached_rows_in_a_local_match() {
         )
         .unwrap();
 
-    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+    let page = super::fallback::serve_cached(
+        &store,
+        &CuratedCatalog::new(&[]),
+        &cursors(),
+        "notion",
+        1,
+        20,
+    )
+    .unwrap();
 
     assert_eq!(
         names_of(&page),
@@ -2316,7 +2354,15 @@ fn local_matches_from_details_are_capped_at_the_page_size() {
         cache_detail(&store, &envelope(name)["server"]);
     }
 
-    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 2).unwrap();
+    let page = super::fallback::serve_cached(
+        &store,
+        &CuratedCatalog::new(&[]),
+        &cursors(),
+        "notion",
+        1,
+        2,
+    )
+    .unwrap();
 
     assert_eq!(page.servers.len(), 2);
 }
@@ -2351,7 +2397,7 @@ fn a_curated_server_already_on_the_page_moves_to_the_head_as_the_registry_row() 
     let mut rows = summaries(&["@acme/notion", "com.notion/mcp"]);
     rows[1].display_name = "From the registry".to_string();
 
-    lead_with_curated(&mut rows, "notion", 20);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "notion", 20);
 
     assert_eq!(names(&rows), ["com.notion/mcp", "@acme/notion"]);
     assert_eq!(rows[0].display_name, "From the registry");
@@ -2361,7 +2407,7 @@ fn a_curated_server_already_on_the_page_moves_to_the_head_as_the_registry_row() 
 fn a_curated_lead_stays_within_the_page_size() {
     let mut rows = summaries(&["@acme/slack", "@acme/slack-2"]);
 
-    lead_with_curated(&mut rows, "slack", 2);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "slack", 2);
 
     assert_eq!(names(&rows), ["com.slack/mcp", "@acme/slack"]);
 }
@@ -2370,16 +2416,77 @@ fn a_curated_lead_stays_within_the_page_size() {
 fn a_blank_query_leaves_the_page_alone() {
     let mut rows = summaries(&["@acme/one", "@acme/two"]);
 
-    lead_with_curated(&mut rows, "  ", 20);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "  ", 20);
 
     assert_eq!(names(&rows), ["@acme/one", "@acme/two"]);
+}
+
+/// A runtime curated entry, as a host would configure it.
+fn runtime_entry(name: &str, url: &str) -> tinymcp_bus::CuratedServerEntry {
+    tinymcp_bus::CuratedServerEntry {
+        qualified_name: name.into(),
+        display_name: "Swiggy Food".into(),
+        description: "Order food from Swiggy".into(),
+        remote_url: url.into(),
+        transport: tinymcp_bus::CuratedEntryTransport::StreamableHttp,
+        auth: tinymcp_bus::CuratedEntryAuth::Oauth,
+        icon_url: None,
+    }
+}
+
+#[test]
+fn a_runtime_curated_server_does_not_lead_a_page() {
+    // A name no built-in server shares, so only the runtime entry could lead.
+    let mut rows = summaries(&["@acme/zebra"]);
+    let catalog = CuratedCatalog::new(&[runtime_entry(
+        "io.zebra/mcp",
+        "https://mcp.zebra.example/mcp",
+    )]);
+
+    lead_with_curated(&mut rows, &catalog, "zebra", 20);
+
+    assert_eq!(names(&rows), ["@acme/zebra"]);
+}
+
+#[test]
+fn a_replaced_built_in_no_longer_leads_a_page() {
+    let mut rows = summaries(&["@acme/notion"]);
+    let catalog = CuratedCatalog::new(&[runtime_entry(
+        "com.notion/mcp",
+        "https://notion.example/mcp",
+    )]);
+
+    lead_with_curated(&mut rows, &catalog, "notion", 20);
+
+    assert_eq!(names(&rows), ["@acme/notion"]);
+}
+
+#[tokio::test]
+async fn a_runtime_curated_server_is_described_when_the_registry_does_not_list_it() {
+    let base = failing_registry(503, "maintenance").await;
+    let mut auth = auth_at(&base);
+    auth.curated_servers = vec![runtime_entry(
+        "in.swiggy/food",
+        "https://mcp.swiggy.com/food",
+    )];
+
+    let detail = adapter()
+        .get(&store(), &auth, "in.swiggy/food")
+        .await
+        .expect("answered from the runtime entry");
+
+    assert_eq!(detail.qualified_name, "in.swiggy/food");
+    assert_eq!(
+        detail.connections[0].deployment_url.as_deref(),
+        Some("https://mcp.swiggy.com/food")
+    );
 }
 
 #[test]
 fn a_query_matching_no_curated_server_leaves_the_page_alone() {
     let mut rows = summaries(&["@acme/one"]);
 
-    lead_with_curated(&mut rows, "nonesuch", 20);
+    lead_with_curated(&mut rows, &CuratedCatalog::new(&[]), "nonesuch", 20);
 
     assert_eq!(names(&rows), ["@acme/one"]);
 }

@@ -202,7 +202,11 @@ impl McpRegistry {
         let mut results = self.registry_search(query, page, page_size).await?;
 
         if curation.tag_official {
-            curation::tag_official(&mut results.servers);
+            // The catalog's tagging, not the built-in list's: a runtime entry
+            // naming a built-in server takes its badge away.
+            self.registries
+                .curated_catalog()
+                .tag_official(&mut results.servers);
         }
         if curation.official_first {
             curation::float_official_first(&mut results.servers);

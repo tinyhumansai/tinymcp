@@ -62,7 +62,7 @@ use super::types::{
 };
 use crate::error::{Error, Result};
 use crate::registry::Store;
-use crate::registry::curation::{CURATED_SERVERS, curated_server};
+use crate::registry::curation::{CuratedCatalog, entry_detail, entry_summary};
 use tinymcp_bus::{
     McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail, RegistryServerSummary,
 };
@@ -164,7 +164,9 @@ impl McpOfficialRegistry {
         page: u32,
         page_size: u32,
     ) -> Result<SourcePage> {
-        if let Some(found) = index::search(store, &base_url(auth), query, page, page_size) {
+        let catalog = CuratedCatalog::for_settings(auth);
+        if let Some(found) = index::search(store, &base_url(auth), &catalog, query, page, page_size)
+        {
             return Ok(found);
         }
 
@@ -172,7 +174,7 @@ impl McpOfficialRegistry {
             .search_registry(store, auth, cursors, query, page, page_size)
             .await?;
         if page == 1 {
-            lead_with_curated(&mut found.servers, query, page_size);
+            lead_with_curated(&mut found.servers, &catalog, query, page_size);
         }
         Ok(found)
     }
@@ -189,6 +191,7 @@ impl McpOfficialRegistry {
         page_size: u32,
     ) -> Result<SourcePage> {
         let cache_key = search_cache_key(query, page, page_size);
+        let catalog = CuratedCatalog::for_settings(auth);
 
         if let Ok(Some(cached)) = store.cached(&cache_key)
             && let Ok(parsed) = serde_json::from_str::<OfficialListResponse>(&cached)
@@ -205,7 +208,7 @@ impl McpOfficialRegistry {
             .active(operation, &url, self.timeouts.cooldown)
         {
             tracing::debug!(%operation, "official registry cooling down; answering from the cache");
-            return serve_cached(store, cursors, query, page, page_size).ok_or(error);
+            return serve_cached(store, &catalog, cursors, query, page, page_size).ok_or(error);
         }
 
         match self
@@ -222,7 +225,7 @@ impl McpOfficialRegistry {
                     code = error.wire_name(),
                     "official registry unavailable; answering from the cache"
                 );
-                serve_cached(store, cursors, query, page, page_size).ok_or(error)
+                serve_cached(store, &catalog, cursors, query, page, page_size).ok_or(error)
             }
             outcome => outcome,
         }
@@ -291,14 +294,14 @@ impl McpOfficialRegistry {
         qualified_name: &str,
     ) -> Result<RegistryServerDetail> {
         match self.get_listed(store, auth, qualified_name).await {
-            Err(error) => match curated_server(qualified_name) {
+            Err(error) => match CuratedCatalog::for_settings(auth).get(qualified_name) {
                 Some(curated) => {
                     tracing::debug!(
                         qualified_name,
                         code = error.wire_name(),
                         "official detail answered from the curated entry"
                     );
-                    Ok(curated.to_detail())
+                    Ok(entry_detail(curated))
                 }
                 None => Err(error),
             },
@@ -484,14 +487,22 @@ fn served(
 /// Puts the curated servers matching `query` at the head of a first page,
 /// adding any the page does not carry and keeping the registry's row for any
 /// it does, within `page_size` rows.
-fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, page_size: u32) {
+///
+/// Only promoted entries lead (see [`CuratedCatalog::is_promoted`]); a runtime
+/// entry is not moved to the top.
+fn lead_with_curated(
+    servers: &mut Vec<RegistryServerSummary>,
+    catalog: &CuratedCatalog,
+    query: &str,
+    page_size: u32,
+) {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     if terms.is_empty() {
         return;
     }
 
-    let mut leading: Vec<RegistryServerSummary> = CURATED_SERVERS
-        .iter()
+    let mut leading: Vec<RegistryServerSummary> = catalog
+        .promoted()
         .filter(|curated| {
             let text = format!(
                 "{} {} {}",
@@ -504,7 +515,7 @@ fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, page
             servers
                 .iter()
                 .position(|row| row.qualified_name == curated.qualified_name)
-                .map_or_else(|| curated.to_summary(), |at| servers.remove(at))
+                .map_or_else(|| entry_summary(curated), |at| servers.remove(at))
         })
         .collect();
     leading.append(servers);

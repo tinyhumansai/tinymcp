@@ -494,6 +494,69 @@ pub struct McpRegistryAuthConfig {
     /// `MCP_OFFICIAL_REGISTRY_TOKEN`.
     #[serde(default)]
     pub mcp_official_token: Option<String>,
+    /// Curated servers the host adds at runtime, merged with the built-in
+    /// list. Not a secret.
+    ///
+    /// They are listed, searched and described like the built-in ones, but
+    /// never badged official or promoted: the badge is a claim about software
+    /// someone vetted, and a configuration line must not be able to make an
+    /// arbitrary endpoint look like that. An entry naming a built-in server
+    /// replaces its endpoint and takes its badge away.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub curated_servers: Vec<CuratedServerEntry>,
+}
+
+/// A curated server supplied by the host at runtime.
+///
+/// The owned twin of the module's compiled-in `CuratedServer`. Unknown fields
+/// are refused, so a misspelled key fails loudly instead of loading an entry
+/// with a default in its place.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct CuratedServerEntry {
+    /// The exact registry qualified name.
+    pub qualified_name: String,
+    /// The vendor's name for it.
+    pub display_name: String,
+    /// A short description.
+    #[serde(default)]
+    pub description: String,
+    /// The vendor-hosted endpoint; `https` only.
+    pub remote_url: String,
+    /// How the endpoint speaks MCP.
+    pub transport: CuratedEntryTransport,
+    /// How the endpoint authenticates a client.
+    pub auth: CuratedEntryAuth,
+    /// An icon for it; `https` only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+}
+
+/// How a runtime curated server's endpoint speaks MCP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CuratedEntryTransport {
+    /// Streamable HTTP.
+    StreamableHttp,
+    /// Server-sent events.
+    Sse,
+}
+
+/// How a runtime curated server's endpoint authenticates a client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CuratedEntryAuth {
+    /// OAuth, with dynamic client registration.
+    Oauth,
+    /// OAuth for clients the vendor registered in advance only.
+    OauthPreregistered,
+    /// A static token sent in the `Authorization` header.
+    Token,
+    /// No authentication.
+    None,
 }
 
 /// A proxy for outbound HTTP, already resolved by the host.

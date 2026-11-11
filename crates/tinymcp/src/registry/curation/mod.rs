@@ -14,6 +14,13 @@
 //! install reach it when the registry cannot be asked. [`OFFICIAL_SERVERS`] is
 //! the same list as bare names.
 //!
+//! # A host can add curated servers at runtime
+//!
+//! [`CuratedCatalog`] merges the host's
+//! [`tinymcp_bus::McpRegistryAuthConfig::curated_servers`] over the built-in
+//! list. Runtime entries are listed, searched and described, but never badged
+//! or promoted; see the `catalog` module.
+//!
 //! # Matching is exact, never a substring
 //!
 //! A term like `stripe` or `github` appears in the name of plenty of unrelated
@@ -29,9 +36,11 @@
 //! emitting those keys could otherwise filter itself into a catalog that
 //! promises the user a server is safely installable.
 
+mod catalog;
 mod servers;
 mod types;
 
+pub use catalog::{CuratedCatalog, entry_detail, entry_summary, validated_runtime_entries};
 pub use types::{
     CURATED_SERVERS, CuratedAuth, CuratedServer, CuratedTransport, OFFICIAL_SERVERS,
     curated_server, float_official_first, is_perfect_server, retain_perfect_servers, tag_official,

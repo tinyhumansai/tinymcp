@@ -43,7 +43,7 @@ use super::types::{OfficialServer, latest_server_records};
 use super::{auth_token, base_url, list_url};
 use crate::error::{Error, Result};
 use crate::registry::Store;
-use crate::registry::curation::{CURATED_SERVERS, curated_server};
+use crate::registry::curation::{CuratedCatalog, entry_summary};
 use crate::registry::sources::shared::read_body;
 use crate::registry::sources::types::{
     RegistryIndexSettings, RegistryOperation, RegistryTimeouts, SOURCE_MCP_OFFICIAL, SourcePage,
@@ -275,6 +275,7 @@ pub(super) fn is_ready(store: &Store, base: &str) -> bool {
 pub(super) fn search(
     store: &Store,
     base: &str,
+    catalog: &CuratedCatalog,
     query: &str,
     page: u32,
     page_size: u32,
@@ -305,11 +306,12 @@ pub(super) fn search(
         .map(|(_, row)| row.qualified_name.clone())
         .collect();
     matches.extend(
-        CURATED_SERVERS
+        catalog
+            .entries()
             .iter()
-            .filter(|curated| !indexed.contains(curated.qualified_name))
+            .filter(|curated| !indexed.contains(&curated.qualified_name))
             .filter_map(|curated| {
-                let row = curated.to_summary();
+                let row = entry_summary(curated);
                 let label = search_label(&row.qualified_name, &row.display_name);
                 let description = curated.description.to_lowercase();
                 let in_label = terms.iter().all(|term| label.contains(term.as_str()));
@@ -320,7 +322,7 @@ pub(super) fn search(
             }),
     );
     matches.sort_by(|(left_label, left), (right_label, right)| {
-        rank(*left_label, left, *right_label, right)
+        rank(catalog, *left_label, left, *right_label, right)
     });
 
     let size = usize::try_from(page_size.max(1)).unwrap_or(usize::MAX);
@@ -348,15 +350,16 @@ pub(super) fn search(
     })
 }
 
-/// The order of two matches: curated first, then name or title matches, then
-/// alphabetical by display name and qualified name.
+/// The order of two matches: promoted curated servers first, then name or title
+/// matches, then alphabetical by display name and qualified name.
 fn rank(
+    catalog: &CuratedCatalog,
     left_label: bool,
     left: &RegistryServerSummary,
     right_label: bool,
     right: &RegistryServerSummary,
 ) -> Order {
-    let curated = |row: &RegistryServerSummary| curated_server(&row.qualified_name).is_none();
+    let curated = |row: &RegistryServerSummary| !catalog.is_promoted(&row.qualified_name);
 
     curated(left)
         .cmp(&curated(right))

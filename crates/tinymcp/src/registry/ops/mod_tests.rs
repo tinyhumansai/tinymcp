@@ -647,6 +647,7 @@ fn registry_settings_report_whether_credentials_are_set_and_never_their_values()
             smithery_api_key: Some("smithery-secret".into()),
             mcp_official_token: Some("official-secret".into()),
             mcp_official_base: Some("https://registry.test".into()),
+            ..McpRegistryAuthConfig::default()
         },
         McpClientIdentityConfig::default(),
         None,

@@ -1,6 +1,6 @@
 # Curated servers at runtime
 
-Status: proposed (tinymcp#49).
+Status: accepted (tinymcp#49).
 
 ## Problem
 
@@ -43,7 +43,8 @@ new client config, as any other client-config change does.
 
 ### Validation
 
-When the module object opens, each entry is checked:
+When the registry dispatcher takes the settings (the module object opening), each
+entry is checked:
 
 - `remote_url` (and `icon_url`, when set) is `https` with a host and no
   credentials;
@@ -55,34 +56,46 @@ still load. An entry is never silently changed into something else. Open does
 not fail over a bad curated entry, because the catalog is optional and the rest
 of the client still has to work.
 
-### Precedence
+### Runtime entries are never promoted
 
-A runtime entry whose `qualified_name` matches a built-in replaces it. That is
-what lets a host correct a moved endpoint without waiting for a release.
+The official badge is a claim that someone vetted a server. A configuration
+line must not be able to make an arbitrary endpoint look like that, so a runtime
+entry is never badged official, never leads a first search page, and never
+ranks as curated. Those stay with the built-in servers.
+
+A runtime entry whose `qualified_name` matches a built-in replaces its
+endpoint, which lets a host fix a moved endpoint without waiting for a release.
+It also takes the built-in's badge and promotions away. The replacement is
+logged at warn with both URLs when the settings are taken.
+
 Runtime entries come after the built-ins in listing order, so the existing
 order is kept.
 
 ### Where the merged list is used
 
-Everywhere the built-in list is used today:
+`CuratedCatalog` (`registry/curation/catalog.rs`) is the merged list. Each use
+builds it from the registry settings in force:
 
-- badging (`tag_official`) and `official_first` ordering, through
-  `RegistrySearchCurated`;
-- the curated lead on a first search page (`lead_with_curated`);
-- the local-index merge and its ranking (`official/index.rs`);
-- the cache fallback when the registry is unreachable (`official/fallback.rs`);
-- the detail fallback when the registry has no record (`McpOfficialRegistry::get`).
+- listing and search: the local-index merge (`official/index.rs`) and the
+  cache fallback when the registry is unreachable (`official/fallback.rs`)
+  include runtime entries;
+- the detail fallback when the registry has no record
+  (`McpOfficialRegistry::get`) describes a runtime entry, and a replacement wins
+  over the built-in;
+- promotion (badging through `RegistrySearchCurated`, `official_first`, the
+  curated lead on a first page, and curated-first ranking) uses only built-in
+  servers nobody replaced (`CuratedCatalog::is_promoted`).
 
-`OFFICIAL_SERVERS` and `CURATED_SERVERS` stay as the built-in `const` lists. A
-merged accessor, `official_servers(&McpRegistryAuthConfig) -> Vec<String>`,
-reports the merged names. No host reads the consts today (openhuman uses only
+`OFFICIAL_SERVERS`, `CURATED_SERVERS` and `tag_official` keep their meaning:
+the built-in list alone. No host reads them today (openhuman uses only
 `RegistrySearchCurated`).
 
 ## Contract
 
-An additive minor bump of tinymcp-bus: a new optional field and a new payload
-type. Its number follows whatever is current when this lands (1.29 is taken by
-#164).
+An additive minor bump of tinymcp-bus: a new optional field and three new
+payload types (`CuratedServerEntry`, `CuratedEntryTransport`,
+`CuratedEntryAuth`). It takes 1.31: #164 lands as 1.29 and the OAuth endpoint
+guard (`local_oauth_origins`) as 1.30, both before this.
 
 ## Out of scope
 
