@@ -47,6 +47,9 @@ pub struct OAuthFlow {
     proxy: Option<McpProxyConfig>,
     pending: Arc<dyn PendingAuthorizationStore>,
     public_endpoints_only: bool,
+    /// Origins (`scheme://host:port`) of servers the operator declared local,
+    /// exempt from [`Self::require_public_endpoints`].
+    local_origins: Vec<String>,
     client_name: String,
 }
 
@@ -77,6 +80,7 @@ impl OAuthFlow {
             proxy,
             pending: Arc::new(MemoryPendingStore::new()),
             public_endpoints_only: false,
+            local_origins: Vec::new(),
             client_name: DEFAULT_CLIENT_NAME.to_string(),
         })
     }
@@ -130,6 +134,46 @@ impl OAuthFlow {
     pub fn require_public_endpoints(mut self) -> Self {
         self.public_endpoints_only = true;
         self
+    }
+
+    /// Exempts servers at `origins` (`scheme://host[:port]`, such as
+    /// `http://localhost:8080`) from [`Self::require_public_endpoints`].
+    ///
+    /// For servers an operator configured as local, such as a development
+    /// server on loopback. Every exemption used is logged. An entry that is not
+    /// a URL with a host is ignored with a warning, never treated as matching.
+    #[must_use]
+    pub fn with_local_origins<I, S>(mut self, origins: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        for raw in origins {
+            if let Some(origin) = origin_of(raw.as_ref()) {
+                self.local_origins.push(origin);
+            } else {
+                tracing::warn!("ignoring a local oauth origin that is not a url with a host");
+            }
+        }
+        self
+    }
+
+    /// Whether the endpoint guard applies to the server at `server_url`: it is
+    /// on, and the operator has not declared that server local.
+    fn guards(&self, server_url: &str) -> bool {
+        if !self.public_endpoints_only {
+            return false;
+        }
+        match origin_of(server_url) {
+            Some(origin) if self.local_origins.contains(&origin) => {
+                tracing::warn!(
+                    origin,
+                    "oauth endpoint guard skipped for a server the operator declared local"
+                );
+                false
+            }
+            _ => true,
+        }
     }
 
     /// The HTTP client this flow uses, for the refresh path.
@@ -260,6 +304,7 @@ impl OAuthFlow {
 
         let registration_http = self
             .registration_client(
+                &url,
                 &authorization_endpoint,
                 &token_endpoint,
                 &registration_endpoint,
@@ -349,7 +394,13 @@ impl OAuthFlow {
             form.push(("client_secret", secret));
         }
 
-        let guarded_http = self.token_client(&pending.token_endpoint).await?;
+        let server_url = store
+            .remote_url(&pending.server_id)
+            .await?
+            .unwrap_or_default();
+        let guarded_http = self
+            .token_client(&server_url, &pending.token_endpoint)
+            .await?;
         let http = guarded_http.as_ref().unwrap_or(&self.http);
         let body = post_form(http, &pending.token_endpoint, &form).await?;
         let tokens = TokenResponse::parse(&body)?;
@@ -392,7 +443,10 @@ impl OAuthFlow {
         let Some(bundle) = due_refresh(store, server_id).await? else {
             return Ok(false);
         };
-        let guarded_http = self.token_client(&bundle.token_endpoint).await?;
+        let server_url = store.remote_url(server_id).await?.unwrap_or_default();
+        let guarded_http = self
+            .token_client(&server_url, &bundle.token_endpoint)
+            .await?;
         let http = guarded_http.as_ref().unwrap_or(&self.http);
         exchange_refresh(store, http, server_id, &bundle).await
     }
@@ -427,11 +481,12 @@ impl OAuthFlow {
 
     pub(super) async fn registration_client(
         &self,
+        server_url: &str,
         authorization_endpoint: &str,
         token_endpoint: &str,
         registration_endpoint: &str,
     ) -> Result<Option<reqwest::Client>> {
-        if self.public_endpoints_only {
+        if self.guards(server_url) {
             guard_endpoint(authorization_endpoint, "authorization").await?;
             guard_endpoint(token_endpoint, "token").await?;
             Ok(Some(
@@ -450,7 +505,7 @@ impl OAuthFlow {
         let mut builder = McpHttpClient::builder(url.clone())
             .timeout_secs(PROBE_TIMEOUT_SECS)
             .proxy(self.proxy.clone());
-        if self.public_endpoints_only {
+        if self.guards(&url) {
             builder = builder.pinned_public_endpoint(guard_endpoint(&url, "MCP").await?);
         }
         builder.build()
@@ -458,9 +513,10 @@ impl OAuthFlow {
 
     pub(super) async fn token_client(
         &self,
+        server_url: &str,
         token_endpoint: &str,
     ) -> Result<Option<reqwest::Client>> {
-        if self.public_endpoints_only {
+        if self.guards(server_url) {
             Ok(Some(guarded_client(token_endpoint, "token").await?))
         } else {
             Ok(None)
@@ -570,6 +626,19 @@ fn generate_pkce() -> (String, String) {
     let verifier = B64.encode(bytes);
     let challenge = B64.encode(Sha256::digest(verifier.as_bytes()));
     (verifier, challenge)
+}
+
+/// `raw`'s origin as `scheme://host:port`, with the host lowercased and the
+/// port made explicit, so `http://LocalHost` and `http://localhost:80` match.
+pub(super) fn origin_of(raw: &str) -> Option<String> {
+    let url = reqwest::Url::parse(raw.trim()).ok()?;
+    let host = url.host_str().filter(|host| !host.is_empty())?;
+    let port = url.port_or_known_default()?;
+    Some(format!(
+        "{}://{}:{port}",
+        url.scheme(),
+        host.to_ascii_lowercase()
+    ))
 }
 
 /// Drops authorizations the user never finished.
