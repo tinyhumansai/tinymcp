@@ -44,7 +44,9 @@
 /// `StdioSandboxConfig::enforcement` (`StdioSandboxEnforcement`), letting the
 /// host choose `Declared` for a backend with partial enforcement; the default
 /// stays `Enforced`. 1.28 adds the optional `annotations` on `McpRemoteTool`.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 28);
+/// 1.32 adds the `LaunchFailed` error name: a stdio server whose process could
+/// not be started, previously reported as `MalformedResponse`.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 32);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.

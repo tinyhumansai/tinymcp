@@ -252,6 +252,21 @@ mod against_a_fake_server {
     }
 
     #[tokio::test]
+    async fn a_process_that_cannot_be_started_is_a_launch_failure_not_a_bad_response() {
+        // Windows' os error 193 and a jail's refusal both arrive here; the
+        // server never ran, so nothing it said can have been malformed.
+        let client = client_for(responder(&[&initialize_reply()])).with_spawner(Arc::new(Refusing));
+
+        let error = client.initialize().await.expect_err("a refused launch");
+
+        assert!(
+            matches!(&error, Error::LaunchFailed { detail, .. } if detail.contains("jail refused")),
+            "{error:?}"
+        );
+        assert_eq!(error.wire_name(), tinymcp_bus::errors::LAUNCH_FAILED);
+    }
+
+    #[tokio::test]
     async fn a_server_negotiating_an_unknown_version_fails_the_handshake() {
         // The HTTP transport always checked this; the subprocess one did not.
         // A local child is no more trustworthy than a remote endpoint.

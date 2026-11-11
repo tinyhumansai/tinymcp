@@ -274,11 +274,12 @@ impl McpStdioClient {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::MalformedResponse`] when the command cannot be found on
-    /// the resolved path, when the child cannot be spawned, or when the reply
-    /// is not the shape the protocol requires; and
-    /// [`Error::UnsupportedProtocolVersion`] when the server settles on a
-    /// version this client does not speak.
+    /// Returns [`Error::MissingRuntime`] when the command cannot be found on
+    /// the resolved path; [`Error::LaunchFailed`] when it is found but the
+    /// child cannot be started (or the jail refuses it);
+    /// [`Error::MalformedResponse`] when the reply is not the shape the
+    /// protocol requires; and [`Error::UnsupportedProtocolVersion`] when the
+    /// server settles on a version this client does not speak.
     ///
     /// Boxed at the method boundary so the async body is compiled once, inside
     /// this crate, rather than re-instantiated by every downstream crate or
@@ -336,9 +337,14 @@ impl McpStdioClient {
             env,
             cwd: self.cwd.clone(),
         };
-        let process = self.spawner.spawn_process(launch).await.map_err(|error| {
-            Error::malformed(format!("spawning `{}` failed: {error}", self.command))
-        })?;
+        let process =
+            self.spawner
+                .spawn_process(launch)
+                .await
+                .map_err(|error| Error::LaunchFailed {
+                    command: self.command.clone(),
+                    detail: error.to_string(),
+                })?;
 
         let mut session = StdioSession {
             handle: process.handle,
