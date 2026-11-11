@@ -5,7 +5,7 @@ A stdio MCP server is third-party code. The module starts one of three ways:
 | Server | Started |
 | --- | --- |
 | `McpServerConfig::operator_trusted = true` | As an ordinary child process, unconfined. Only the host's own configuration should set it. |
-| Any other, with `McpClientConfig::stdio_sandbox` set | Inside the `TinyBox` native jail, through the `TinyBox` bus contract (`StartStdio`, contract 1.21). |
+| Any other, with `McpClientConfig::stdio_sandbox` set | Inside the `TinyBox` native jail, through the `TinyBox` bus contract (`StartStdio`, tinybox-bus v0.2.5, contract 2.3, which accepts TinyBox 2.3 and later 2.x modules). A module whose contract `tinybox_bus::is_compatible` rejects is refused before anything is reserved, with an error naming both versions. |
 | Any other, with no sandbox | Refused. There is no fallback to an unconfined start. |
 
 Every registry-installed server (catalog installs and setup test connections) is

@@ -336,6 +336,48 @@ async fn a_sandbox_module_too_old_for_stdio_is_refused_before_any_resource_exist
 }
 
 #[tokio::test]
+async fn the_tinybox_contracts_openhuman_ships_start_a_jailed_server() {
+    // TinyBox v0.2.5 reports contract 2.3 and v0.2.6 reports 2.4; openhuman has
+    // shipped both. On tinybox-bus 0.1.x every such launch was refused (#169).
+    for contract in [(2, 3), (2, 4)] {
+        let fake = FakeBox::serving();
+        fake.state.lock().unwrap().contract = Some(contract);
+        let spawner = Arc::new(JailedSpawner::new(fake.clone(), sandbox()));
+        let client = McpStdioClient::new(
+            "sh",
+            vec![],
+            vec![],
+            None,
+            &McpClientIdentityConfig::default(),
+        )
+        .with_spawner(spawner);
+        client
+            .initialize()
+            .await
+            .unwrap_or_else(|error| panic!("contract {contract:?}: {error}"));
+        assert!(fake.members().contains(&names::START_STDIO), "{contract:?}");
+        client.close_session().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_refused_contract_names_both_versions() {
+    let fake = FakeBox::serving();
+    fake.state.lock().unwrap().contract = Some((1, 21));
+    let spawner = JailedSpawner::new(fake.clone(), sandbox());
+    let error = spawner.spawn_process(launch()).await.unwrap_err();
+    let (major, minor) = tinybox_bus::CONTRACT_VERSION;
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "the sandbox module speaks contract 1.21, but jailed stdio needs {major}.{minor} or a \
+             later {major}.x"
+        )
+    );
+    assert_eq!(fake.members(), [names::CAPABILITIES]);
+}
+
+#[tokio::test]
 async fn the_jailed_spawner_never_produces_a_child_process() {
     let spawner = JailedSpawner::new(FakeBox::serving(), sandbox());
     let error = spawner.spawn(launch()).await.unwrap_err();

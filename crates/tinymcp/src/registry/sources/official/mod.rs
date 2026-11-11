@@ -286,8 +286,8 @@ impl McpOfficialRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownServer`] when the registry lists no version of
-    /// it, plus whatever the upstream returns.
+    /// Returns [`Error::UnknownServer`] when the registry does not list it (a
+    /// 404, or no version), plus whatever the upstream returns.
     pub(super) async fn get(
         &self,
         store: &Store,
@@ -331,9 +331,19 @@ impl McpOfficialRegistry {
             base_url(auth),
             encode_path_segment(qualified_name)
         );
-        let body = self
+        // The registry answers 404 for a name it does not list. That is the
+        // same answer as an empty versions document, not an upstream failure.
+        let body = match self
             .send(self.request(auth, &url), &url, RegistryOperation::Detail)
-            .await?;
+            .await
+        {
+            Err(Error::Http { status: 404, .. }) => {
+                return Err(Error::UnknownServer {
+                    server: qualified_name.to_string(),
+                });
+            }
+            sent => sent?,
+        };
 
         let document: Value = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("official versions response: {error}")))?;
@@ -433,7 +443,9 @@ impl McpOfficialRegistry {
             .request(auth, &url)
             .query(&[("limit", limit.to_string())])
             .query(&[("version", "latest")]);
-        if !query.is_empty() {
+        // The registry refuses a search shorter than its minimum with a 422,
+        // so a query that short is served as the unfiltered page instead.
+        if query.trim().chars().count() >= MIN_SEARCH_CHARS {
             request = request.query(&[("search", query)]);
         }
         if let Some(cursor) = cursor {
@@ -527,6 +539,11 @@ fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, cap:
 fn list_url(auth: &McpRegistryAuthConfig) -> String {
     format!("{}/v0/servers", base_url(auth))
 }
+
+/// The shortest `search` the official registry accepts, counted after
+/// trimming. A shorter one is answered `422 search must contain at least 3
+/// characters after trimming`.
+const MIN_SEARCH_CHARS: usize = 3;
 
 /// The cache key for one page of one search.
 fn search_cache_key(query: &str, page: u32, page_size: u32) -> String {
