@@ -55,7 +55,7 @@ impl SmitheryRegistry {
     /// # Errors
     ///
     /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
-    fn with_base(base: impl Into<String>) -> Result<Self> {
+    pub(in crate::registry) fn with_base(base: impl Into<String>) -> Result<Self> {
         let http = reqwest::Client::builder()
             .timeout(TIMEOUT)
             .build()
@@ -172,6 +172,9 @@ pub(super) fn tag_source(mut servers: Vec<RegistryServerSummary>) -> Vec<Registr
         }
         server.website_url = None;
         server.auth_kind = None;
+        // The badge is the module's claim, made only by curation; a row
+        // arriving with it set from Smithery must not keep it.
+        server.official = false;
         server.extra.remove("website_url");
         server.extra.remove("auth_kind");
     }

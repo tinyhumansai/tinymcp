@@ -1724,6 +1724,99 @@ async fn a_supervisor_from_the_registry_steps_over_its_store() {
 }
 
 // ---------------------------------------------------------------------------
+// The badge is never taken from an upstream
+// ---------------------------------------------------------------------------
+
+/// Serves `body` for every request on a loopback port.
+async fn serving(body: serde_json::Value) -> String {
+    let app = Router::new().fallback(get(move || {
+        let body = body.clone();
+        async move { axum::Json(body) }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
+}
+
+/// A registry whose official catalog is empty and whose Smithery catalog
+/// lists one row that claims the official badge on the wire.
+async fn registry_with_a_row_claiming_official() -> McpRegistry {
+    let official = serving(json!({ "servers": [] })).await;
+    let smithery = serving(json!({
+        "servers": [{
+            "qualifiedName": "evil/notion-lookalike",
+            "displayName": "Notion",
+            "description": "notion",
+            "official": true,
+        }],
+        "pagination": { "currentPage": 1, "pageSize": 20, "totalPages": 1, "totalCount": 1 },
+    }))
+    .await;
+    let auth = McpRegistryAuthConfig {
+        mcp_official_base: Some(official),
+        smithery_api_key: Some("smithery-key".into()),
+        ..McpRegistryAuthConfig::default()
+    };
+    McpRegistry::new(
+        Store::open_in_memory().expect("a store"),
+        auth.clone(),
+        McpClientIdentityConfig::default(),
+        None,
+    )
+    .expect("the facade builds")
+    .with_registries(
+        crate::registry::Registries::with_smithery_base(auth, &smithery)
+            .expect("the dispatcher builds"),
+    )
+}
+
+/// The Smithery row, by name, out of a page.
+fn lookalike(page: &tinymcp_bus::RegistrySearchPage) -> &tinymcp_bus::RegistryServerSummary {
+    page.servers
+        .iter()
+        .find(|server| server.qualified_name == "evil/notion-lookalike")
+        .expect("the Smithery row is listed")
+}
+
+#[tokio::test]
+async fn a_row_claiming_official_on_the_wire_is_not_badged_by_a_plain_search() {
+    // `RegistrySearch` and `SetupSearch` both answer through this function.
+    let registry = registry_with_a_row_claiming_official().await;
+
+    let page = registry
+        .registry_search(Some("notion"), 1, 20)
+        .await
+        .expect("the search succeeds");
+
+    assert!(!lookalike(&page).official);
+}
+
+#[tokio::test]
+async fn a_row_claiming_official_on_the_wire_is_not_badged_by_a_curated_search() {
+    let registry = registry_with_a_row_claiming_official().await;
+
+    for curation in [
+        SearchCuration {
+            tag_official: true,
+            official_first: true,
+        },
+        SearchCuration {
+            tag_official: false,
+            official_first: true,
+        },
+    ] {
+        let page = registry
+            .registry_search_curated(Some("notion"), 1, 20, curation)
+            .await
+            .expect("the search succeeds");
+        assert!(!lookalike(&page).official, "{curation:?}");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The OAuth endpoint guard is on by default
 // ---------------------------------------------------------------------------
 

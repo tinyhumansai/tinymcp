@@ -73,6 +73,15 @@ impl McpRegistry {
         })
     }
 
+    /// The same registry searching through `registries`, for tests that stand
+    /// in for an upstream catalog.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_registries(mut self, registries: Registries) -> Self {
+        self.registries = registries;
+        self
+    }
+
     /// Exempts servers at `origins` from the OAuth endpoint guard: the ones an
     /// operator configured as local, from
     /// [`tinymcp_bus::McpClientConfig::local_oauth_origins`].
@@ -179,10 +188,16 @@ impl McpRegistry {
         let mut freshness = RegistryFreshness::Live;
 
         for source in self.registries.searchable() {
-            let found = self
+            let mut found = self
                 .registries
                 .search(&self.store, source, query, page, page_size)
                 .await?;
+            // No row leaves an uncurated search badged: the badge is set only
+            // by `registry_search_curated`, from the module's own list, never
+            // taken from what an upstream sent.
+            for server in &mut found.servers {
+                server.official = false;
+            }
             servers.extend(found.servers);
             total_pages = total_pages.max(found.total_pages);
             freshness = freshness.max(found.freshness);

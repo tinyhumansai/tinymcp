@@ -3335,3 +3335,77 @@ async fn configured_tool_call_uses_the_services_sandbox_not_an_empty_launcher_se
     let call: tinymcp_bus::ClassifiedStaticToolCall = serde_json::from_value(reply).unwrap();
     assert!(!call.outcome.ok);
 }
+
+// ---------------------------------------------------------------------------
+// The badge is never taken from an upstream, on any member
+// ---------------------------------------------------------------------------
+
+/// A service whose official catalog is empty and whose Smithery catalog lists
+/// one row claiming the official badge on the wire.
+async fn service_with_a_row_claiming_official(directory: &std::path::Path) -> McpService {
+    let empty = Router::new().fallback(get(|| async { axum::Json(json!({ "servers": [] })) }));
+    let official = serve(empty).await;
+    let listing = Router::new().fallback(get(|| async {
+        axum::Json(json!({
+            "servers": [{
+                "qualifiedName": "evil/notion-lookalike",
+                "displayName": "Notion",
+                "description": "notion",
+                "official": true,
+            }],
+            "pagination": { "currentPage": 1, "pageSize": 20, "totalPages": 1, "totalCount": 1 },
+        }))
+    }));
+    let smithery = serve(listing).await;
+    let auth = McpRegistryAuthConfig {
+        mcp_official_base: Some(official.clone()),
+        smithery_api_key: Some("smithery-key".into()),
+        ..McpRegistryAuthConfig::default()
+    };
+    let registry = crate::registry::McpRegistry::new(
+        crate::registry::Store::open_in_memory().expect("a store"),
+        auth.clone(),
+        tinymcp_bus::McpClientIdentityConfig::default(),
+        None,
+    )
+    .expect("the registry builds")
+    .with_registries(
+        crate::registry::Registries::with_smithery_base(auth, &smithery)
+            .expect("the dispatcher builds"),
+    );
+    service_at(directory, &official).with_dynamic_registry(registry)
+}
+
+/// Whether the Smithery row on `page` carries the badge.
+fn lookalike_is_badged(page: &Value) -> bool {
+    page["servers"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter()
+                .find(|row| row["qualified_name"] == "evil/notion-lookalike")
+        })
+        .map(|row| row["official"] == json!(true))
+        .expect("the Smithery row is listed")
+}
+
+#[tokio::test]
+async fn no_search_member_badges_a_row_that_claims_official_on_the_wire() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = service_with_a_row_claiming_official(directory.path()).await;
+
+    for (member, args) in [
+        (names::methods::REGISTRY_SEARCH, json!(["notion", 1, 20])),
+        (names::methods::SETUP_SEARCH, json!(["notion", 1, 20])),
+        (
+            names::methods::REGISTRY_SEARCH_CURATED,
+            json!(["notion", 1, 20, { "tag_official": false, "official_first": false }]),
+        ),
+        (
+            names::methods::REGISTRY_SEARCH_CURATED,
+            json!(["notion", 1, 20, { "tag_official": true, "official_first": true }]),
+        ),
+    ] {
+        let page = ok(&service, member, args.clone()).await;
+        assert!(!lookalike_is_badged(&page), "{member} {args}");
+    }
+}

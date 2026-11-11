@@ -541,3 +541,13 @@ fn a_row_that_already_names_its_source_keeps_it() {
 
     assert_eq!(tag_source(vec![server])[0].source, "somewhere_else");
 }
+
+#[test]
+fn a_row_claiming_the_official_badge_arrives_without_it() {
+    let mut claimed = bare_summary();
+    claimed.official = true;
+
+    let tagged = tag_source(vec![claimed]);
+
+    assert!(!tagged[0].official);
+}

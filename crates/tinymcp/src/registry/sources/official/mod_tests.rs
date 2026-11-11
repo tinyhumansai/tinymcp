@@ -885,6 +885,7 @@ struct Seen {
     pages: AtomicUsize,
     cursors: Mutex<Vec<Option<String>>>,
     versions: Mutex<Vec<Option<String>>>,
+    searches: Mutex<Vec<Option<String>>>,
     authorization: Mutex<Option<String>>,
     detail_path: Mutex<Option<String>>,
 }
@@ -931,6 +932,7 @@ async fn paged_registry(pages: usize) -> (String, Arc<Seen>) {
                     let cursor = param(&uri, "cursor");
                     seen.cursors.lock().push(cursor.clone());
                     seen.versions.lock().push(param(&uri, "version"));
+                    seen.searches.lock().push(param(&uri, "search"));
 
                     let page: usize = cursor
                         .as_deref()
@@ -1016,6 +1018,23 @@ async fn the_first_page_is_fetched_without_a_cursor() {
 
     assert_eq!(servers.len(), 1);
     assert_eq!(seen.cursors.lock().as_slice(), &[None]);
+}
+
+#[tokio::test]
+async fn a_query_shorter_than_the_registry_minimum_is_not_sent_as_a_search() {
+    let (base, seen) = paged_registry(1).await;
+
+    for query in ["a", " ab ", "abc"] {
+        adapter()
+            .search(&store(), &auth_at(&base), &cursors(), query, 1, 20)
+            .await
+            .expect("the search succeeds");
+    }
+
+    assert_eq!(
+        seen.searches.lock().as_slice(),
+        &[None, None, Some("abc".to_string())]
+    );
 }
 
 #[tokio::test]
@@ -1352,6 +1371,25 @@ async fn a_name_containing_a_slash_is_sent_as_one_escaped_segment() {
         seen.detail_path.lock().as_deref(),
         Some("/v0/servers/@acme%2Fweather/versions")
     );
+}
+
+#[tokio::test]
+async fn a_name_the_registry_does_not_list_is_an_unknown_server() {
+    let base = failing_registry(
+        404,
+        r#"{"title":"Not Found","status":404,"detail":"Server not found"}"#,
+    )
+    .await;
+
+    let error = adapter()
+        .get(&store(), &auth_at(&base), "@acme/nothing")
+        .await
+        .expect_err("not listed");
+
+    match error {
+        Error::UnknownServer { server } => assert_eq!(server, "@acme/nothing"),
+        other => panic!("expected an unknown-server error, got {other:?}"),
+    }
 }
 
 #[tokio::test]
