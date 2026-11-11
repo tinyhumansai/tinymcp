@@ -8,6 +8,7 @@
 use std::sync::atomic::AtomicUsize;
 use std::time::Duration;
 
+use crate::registry::curation::CuratedCatalog;
 use axum::Router;
 use axum::extract::State;
 use axum::http::Uri;
@@ -269,7 +270,7 @@ async fn a_sync_keeps_one_row_per_server_preferring_the_latest_version() {
     synced(&base, &store).await;
 
     assert_eq!(indexed_names(&store), ["io.example/versioned"]);
-    let page = search(&store, &base, "versioned", 1, 20).unwrap();
+    let page = search(&store, &base, &CuratedCatalog::new(&[]), "versioned", 1, 20).unwrap();
     assert_eq!(page.servers[0].display_name, "New");
 }
 
@@ -639,21 +640,41 @@ async fn an_index_that_has_not_finished_a_sync_is_not_searched() {
         .begin_index_sync(INDEX_SOURCE, "https://registry.test")
         .unwrap();
 
-    assert!(search(&store, "https://registry.test", "slack", 1, 20).is_none());
+    assert!(
+        search(
+            &store,
+            "https://registry.test",
+            &CuratedCatalog::new(&[]),
+            "slack",
+            1,
+            20
+        )
+        .is_none()
+    );
 }
 
 #[tokio::test]
 async fn an_index_of_a_different_catalog_is_not_searched() {
     let (_base, _upstream, store) = indexed(vec![envelope("io.example/a", "A", "")]).await;
 
-    assert!(search(&store, "https://elsewhere.test", "a", 1, 20).is_none());
+    assert!(
+        search(
+            &store,
+            "https://elsewhere.test",
+            &CuratedCatalog::new(&[]),
+            "a",
+            1,
+            20
+        )
+        .is_none()
+    );
 }
 
 #[tokio::test]
 async fn a_query_with_no_words_is_not_searched_locally() {
     let (base, _upstream, store) = indexed(vec![envelope("io.example/a", "A", "")]).await;
 
-    assert!(search(&store, &base, "   ", 1, 20).is_none());
+    assert!(search(&store, &base, &CuratedCatalog::new(&[]), "   ", 1, 20).is_none());
 }
 
 #[tokio::test]
@@ -666,7 +687,7 @@ async fn a_search_ranks_curated_then_name_then_description_then_alphabetical() {
     ])
     .await;
 
-    let page = search(&store, &base, "Slack", 1, 20).unwrap();
+    let page = search(&store, &base, &CuratedCatalog::new(&[]), "Slack", 1, 20).unwrap();
 
     assert_eq!(page.freshness, RegistryFreshness::Indexed);
     assert_eq!(
@@ -689,7 +710,15 @@ async fn every_word_of_the_query_must_match() {
     ])
     .await;
 
-    let page = search(&store, &base, "slack posts", 1, 20).unwrap();
+    let page = search(
+        &store,
+        &base,
+        &CuratedCatalog::new(&[]),
+        "slack posts",
+        1,
+        20,
+    )
+    .unwrap();
 
     assert_eq!(page_names(&page), ["io.example/zeta"]);
 }
@@ -702,7 +731,7 @@ async fn a_curated_server_the_index_holds_appears_once_with_the_registry_record(
     ])
     .await;
 
-    let page = search(&store, &base, "notion", 1, 20).unwrap();
+    let page = search(&store, &base, &CuratedCatalog::new(&[]), "notion", 1, 20).unwrap();
 
     assert_eq!(
         page_names(&page),
@@ -718,7 +747,15 @@ async fn a_curated_server_the_index_holds_appears_once_with_the_registry_record(
 async fn a_curated_server_absent_from_the_index_matches_on_its_description() {
     let (base, _upstream, store) = indexed(vec![envelope("io.example/a", "A", "")]).await;
 
-    let page = search(&store, &base, "jira confluence", 1, 20).unwrap();
+    let page = search(
+        &store,
+        &base,
+        &CuratedCatalog::new(&[]),
+        "jira confluence",
+        1,
+        20,
+    )
+    .unwrap();
 
     assert_eq!(page_names(&page), ["com.atlassian/atlassian-mcp-server"]);
     assert_eq!(page.servers[0].source, SOURCE_MCP_OFFICIAL);
@@ -737,9 +774,9 @@ async fn a_search_pages_through_its_matches() {
         .collect();
     let (base, _upstream, store) = indexed(servers).await;
 
-    let first = search(&store, &base, "widget", 1, 2).unwrap();
-    let last = search(&store, &base, "widget", 3, 2).unwrap();
-    let beyond = search(&store, &base, "widget", 4, 2).unwrap();
+    let first = search(&store, &base, &CuratedCatalog::new(&[]), "widget", 1, 2).unwrap();
+    let last = search(&store, &base, &CuratedCatalog::new(&[]), "widget", 3, 2).unwrap();
+    let beyond = search(&store, &base, &CuratedCatalog::new(&[]), "widget", 4, 2).unwrap();
 
     assert_eq!(
         page_names(&first),
@@ -755,7 +792,15 @@ async fn a_search_pages_through_its_matches() {
 async fn a_search_matching_nothing_is_an_empty_indexed_page() {
     let (base, _upstream, store) = indexed(vec![envelope("io.example/a", "A", "")]).await;
 
-    let page = search(&store, &base, "nothing-matches-this", 1, 20).unwrap();
+    let page = search(
+        &store,
+        &base,
+        &CuratedCatalog::new(&[]),
+        "nothing-matches-this",
+        1,
+        20,
+    )
+    .unwrap();
 
     assert_eq!(page_names(&page), Vec::<&str>::new());
     assert_eq!(page.total_pages, 1);
@@ -851,8 +896,10 @@ async fn an_uncurated_server_the_registry_does_not_list_is_still_an_error() {
         .await
         .unwrap_err();
 
+    // Not described from a curated entry, and not a raw upstream failure:
+    // the registry's 404 is the unknown-server answer (#167).
     assert!(
-        matches!(error, Error::Http { status: 404, .. }),
+        matches!(&error, Error::UnknownServer { server } if server == "io.example/nowhere"),
         "{error:?}"
     );
 }

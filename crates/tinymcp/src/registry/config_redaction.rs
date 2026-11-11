@@ -50,6 +50,9 @@ impl McpRegistryAuthConfigExt for McpRegistryAuthConfig {
                 smithery_api_key: None,
                 mcp_official_base: self.mcp_official_base.clone(),
                 mcp_official_token: None,
+                // Endpoints and names, not secrets: validation refuses a URL
+                // carrying credentials.
+                curated_servers: self.curated_servers.clone(),
             },
             smithery_set,
             official_set,

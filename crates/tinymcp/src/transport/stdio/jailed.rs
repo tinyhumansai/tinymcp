@@ -201,6 +201,9 @@ impl JailedSpawner {
             },
             require_process_isolation: self.sandbox.require_process_isolation,
             deny_read: self.sandbox.deny_read.clone(),
+            // No resource limits: none is a hard requirement of a stdio server,
+            // and `None` keeps the request's wire form as before.
+            resources: None,
         }
     }
 
@@ -209,9 +212,14 @@ impl JailedSpawner {
         let capabilities: tinybox_bus::ModuleCapabilities =
             invoke(bus, names::CAPABILITIES, ()).await?;
         if !tinybox_bus::is_compatible(capabilities.contract_version) {
+            let (major, minor) = capabilities.contract_version;
+            let (want_major, want_minor) = tinybox_bus::CONTRACT_VERSION;
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "the sandbox module is too old for jailed stdio",
+                format!(
+                    "the sandbox module speaks contract {major}.{minor}, but jailed stdio needs \
+                     {want_major}.{want_minor} or a later {want_major}.x"
+                ),
             ));
         }
         let resource: ResourceId = invoke(bus, names::RESERVE, ReserveRequest::Resource).await?;

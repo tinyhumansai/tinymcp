@@ -78,7 +78,7 @@ enum Fetched {
 /// What the origin's own authorization-server metadata lookup found.
 #[derive(Debug)]
 enum OriginLookup {
-    Found(String, AuthorizationServerMetadata),
+    Found(String, Box<AuthorizationServerMetadata>),
     Missing,
     Transient,
 }
@@ -160,7 +160,7 @@ impl McpHttpClient {
                 WellKnownOutcome::Found(WellKnownAuthorization {
                     metadata_url,
                     protected_resource_metadata,
-                    authorization_servers: vec![metadata],
+                    authorization_servers: vec![*metadata],
                 })
             }
             OriginLookup::Transient => WellKnownOutcome::Transient,
@@ -225,7 +225,7 @@ impl McpHttpClient {
         }
 
         match found {
-            Some((url, metadata)) => OriginLookup::Found(url, metadata),
+            Some((url, metadata)) => OriginLookup::Found(url, Box::new(metadata)),
             None if transient => OriginLookup::Transient,
             None => OriginLookup::Missing,
         }

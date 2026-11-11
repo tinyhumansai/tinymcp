@@ -264,6 +264,7 @@ fn redacting_registry_auth_drops_both_secrets_and_reports_that_they_were_set() {
         smithery_api_key: Some("smithery-secret".into()),
         mcp_official_base: Some("https://registry.test".into()),
         mcp_official_token: Some("official-secret".into()),
+        ..McpRegistryAuthConfig::default()
     };
 
     let (redacted, smithery_set, official_set) = auth.redacted();
@@ -294,6 +295,7 @@ fn a_redacted_registry_auth_never_serializes_a_secret() {
         smithery_api_key: Some("smithery-secret".into()),
         mcp_official_base: None,
         mcp_official_token: Some("official-secret".into()),
+        ..McpRegistryAuthConfig::default()
     };
     let (redacted, _, _) = auth.redacted();
     let encoded = serde_json::to_string(&redacted).expect("redacted auth serializes");

@@ -210,15 +210,33 @@ impl Registries {
     /// Returns [`Error::ClientBuild`] when the Smithery HTTP client cannot be
     /// built.
     pub fn with_official(
-        auth: McpRegistryAuthConfig,
+        mut auth: McpRegistryAuthConfig,
         official: McpOfficialRegistry,
     ) -> Result<Self> {
+        auth.curated_servers =
+            crate::registry::curation::validated_runtime_entries(auth.curated_servers);
         Ok(Self {
             official,
             smithery: SmitheryRegistry::new()?,
             auth: Mutex::new(auth),
             cursors: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// The curated list in force: the built-in servers plus the host's
+    /// validated runtime entries.
+    #[must_use]
+    pub fn curated_catalog(&self) -> crate::registry::curation::CuratedCatalog {
+        crate::registry::curation::CuratedCatalog::for_settings(&self.auth.lock())
+    }
+
+    /// The dispatcher over a Smithery adapter pointed at `base`, for tests that
+    /// stand in for Smithery with a loopback server.
+    #[cfg(test)]
+    pub(crate) fn with_smithery_base(auth: McpRegistryAuthConfig, base: &str) -> Result<Self> {
+        let mut registries = Self::new(auth)?;
+        registries.smithery = SmitheryRegistry::with_base(base)?;
+        Ok(registries)
     }
 
     /// Starts a background sync of the official catalog's local index when

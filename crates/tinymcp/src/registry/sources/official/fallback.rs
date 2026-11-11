@@ -18,7 +18,7 @@ use super::types::{OfficialListResponse, OfficialServer};
 use super::{BROWSE_CACHE_PREFIX, CursorCache, DETAIL_CACHE_PREFIX, search_cache_key, served};
 use crate::error::Error;
 use crate::registry::Store;
-use crate::registry::curation::{CURATED_SERVERS, CuratedServer, curated_server};
+use crate::registry::curation::{CuratedCatalog, entry_summary};
 use crate::registry::sources::types::{RegistryOperation, SourcePage};
 use tinymcp_bus::{RegistryFreshness, RegistryServerSummary};
 
@@ -77,6 +77,7 @@ impl Cooldown {
 /// What can stand in for a listing the registry could not answer.
 pub(super) fn serve_cached(
     store: &Store,
+    catalog: &CuratedCatalog,
     cursors: &CursorCache,
     query: &str,
     page: u32,
@@ -89,7 +90,7 @@ pub(super) fn serve_cached(
         return None;
     }
 
-    let servers = local_matches(store, query, page_size);
+    let servers = local_matches(store, catalog, query, page_size);
     tracing::debug!(
         query_length = query.len(),
         matches = servers.len(),
@@ -133,7 +134,12 @@ fn stale_page(
 /// Catalog page rows come before detail rows, and a server appears once. A row
 /// matches when every word of the query appears in its name, title, or
 /// description, ignoring case. Rows matching on name or title come first.
-fn local_matches(store: &Store, query: &str, limit: u32) -> Vec<RegistryServerSummary> {
+fn local_matches(
+    store: &Store,
+    catalog: &CuratedCatalog,
+    query: &str,
+    limit: u32,
+) -> Vec<RegistryServerSummary> {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     if terms.is_empty() {
         return Vec::new();
@@ -155,7 +161,7 @@ fn local_matches(store: &Store, query: &str, limit: u32) -> Vec<RegistryServerSu
         .filter(OfficialServer::is_installable)
         .map(OfficialServer::into_summary);
 
-    let curated_rows = CURATED_SERVERS.iter().map(CuratedServer::to_summary);
+    let curated_rows = catalog.entries().iter().map(entry_summary);
 
     let mut seen = HashSet::new();
     let mut matches: Vec<(bool, RegistryServerSummary)> = page_rows
@@ -177,8 +183,7 @@ fn local_matches(store: &Store, query: &str, limit: u32) -> Vec<RegistryServerSu
         })
         .collect();
 
-    matches
-        .sort_by_key(|(in_label, row)| (curated_server(&row.qualified_name).is_none(), !in_label));
+    matches.sort_by_key(|(in_label, row)| (!catalog.is_promoted(&row.qualified_name), !in_label));
     matches
         .into_iter()
         .map(|(_, row)| row)

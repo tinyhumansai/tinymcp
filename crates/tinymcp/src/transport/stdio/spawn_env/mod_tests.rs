@@ -10,7 +10,8 @@
 
 use super::{
     PATH_MARK_END, PATH_MARK_START, PATH_SEP, join_dirs, locate_command, merge_path_strings,
-    missing_command_error, order_sources, parse_marked_path, parse_version, spawn_path,
+    missing_command_error, order_sources, parse_marked_path, parse_version, pathext_candidates,
+    spawn_path,
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -173,6 +174,33 @@ fn a_non_numeric_version_parses_to_nothing() {
 // ---------------------------------------------------------------------------
 // locate_command
 // ---------------------------------------------------------------------------
+
+#[test]
+fn pathext_variants_come_before_the_bare_name() {
+    let candidates = pathext_candidates(PathBuf::from("bin").join("npx"), ".COM;.EXE; ;.BAT;.CMD");
+    let expected: Vec<PathBuf> = ["npx.COM", "npx.EXE", "npx.BAT", "npx.CMD", "npx"]
+        .iter()
+        .map(|name| PathBuf::from("bin").join(name))
+        .collect();
+    assert_eq!(candidates, expected);
+}
+
+/// Node puts an extensionless `npx` shell script beside `npx.cmd`. The script
+/// cannot be spawned on Windows, so the `.cmd` has to win (#168).
+#[cfg(windows)]
+#[test]
+fn a_bare_name_prefers_its_pathext_variant_over_an_extensionless_script() {
+    let directory = tempfile::tempdir().unwrap();
+    write_file(&directory.path().join("npx"), true);
+    write_file(&directory.path().join("npx.cmd"), true);
+
+    let found = locate_command("npx", &directory.path().to_string_lossy(), None).unwrap();
+    let extension = found.extension().and_then(|extension| extension.to_str());
+    assert!(
+        extension.is_some_and(|extension| extension.eq_ignore_ascii_case("cmd")),
+        "{found:?}"
+    );
+}
 
 #[test]
 fn an_empty_command_resolves_to_nothing() {

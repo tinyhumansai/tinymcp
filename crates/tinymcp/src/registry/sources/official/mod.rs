@@ -62,7 +62,7 @@ use super::types::{
 };
 use crate::error::{Error, Result};
 use crate::registry::Store;
-use crate::registry::curation::{CURATED_SERVERS, curated_server};
+use crate::registry::curation::{CuratedCatalog, entry_detail, entry_summary};
 use tinymcp_bus::{
     McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail, RegistryServerSummary,
 };
@@ -164,7 +164,9 @@ impl McpOfficialRegistry {
         page: u32,
         page_size: u32,
     ) -> Result<SourcePage> {
-        if let Some(found) = index::search(store, &base_url(auth), query, page, page_size) {
+        let catalog = CuratedCatalog::for_settings(auth);
+        if let Some(found) = index::search(store, &base_url(auth), &catalog, query, page, page_size)
+        {
             return Ok(found);
         }
 
@@ -176,7 +178,7 @@ impl McpOfficialRegistry {
             // keeps its size; a registry page is followed by its cursor.
             let cap = (found.freshness == RegistryFreshness::LocalFallback)
                 .then(|| usize::try_from(page_size.max(1)).unwrap_or(usize::MAX));
-            lead_with_curated(&mut found.servers, query, cap);
+            lead_with_curated(&mut found.servers, &catalog, query, cap);
         }
         Ok(found)
     }
@@ -193,6 +195,7 @@ impl McpOfficialRegistry {
         page_size: u32,
     ) -> Result<SourcePage> {
         let cache_key = search_cache_key(query, page, page_size);
+        let catalog = CuratedCatalog::for_settings(auth);
 
         if let Ok(Some(cached)) = store.cached(&cache_key)
             && let Ok(parsed) = serde_json::from_str::<OfficialListResponse>(&cached)
@@ -209,7 +212,7 @@ impl McpOfficialRegistry {
             .active(operation, &url, self.timeouts.cooldown)
         {
             tracing::debug!(%operation, "official registry cooling down; answering from the cache");
-            return serve_cached(store, cursors, query, page, page_size).ok_or(error);
+            return serve_cached(store, &catalog, cursors, query, page, page_size).ok_or(error);
         }
 
         match self
@@ -226,7 +229,7 @@ impl McpOfficialRegistry {
                     code = error.wire_name(),
                     "official registry unavailable; answering from the cache"
                 );
-                serve_cached(store, cursors, query, page, page_size).ok_or(error)
+                serve_cached(store, &catalog, cursors, query, page, page_size).ok_or(error)
             }
             outcome => outcome,
         }
@@ -286,8 +289,8 @@ impl McpOfficialRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownServer`] when the registry lists no version of
-    /// it, plus whatever the upstream returns.
+    /// Returns [`Error::UnknownServer`] when the registry does not list it (a
+    /// 404, or no version), plus whatever the upstream returns.
     pub(super) async fn get(
         &self,
         store: &Store,
@@ -295,14 +298,14 @@ impl McpOfficialRegistry {
         qualified_name: &str,
     ) -> Result<RegistryServerDetail> {
         match self.get_listed(store, auth, qualified_name).await {
-            Err(error) => match curated_server(qualified_name) {
+            Err(error) => match CuratedCatalog::for_settings(auth).get(qualified_name) {
                 Some(curated) => {
                     tracing::debug!(
                         qualified_name,
                         code = error.wire_name(),
                         "official detail answered from the curated entry"
                     );
-                    Ok(curated.to_detail())
+                    Ok(entry_detail(curated))
                 }
                 None => Err(error),
             },
@@ -331,9 +334,19 @@ impl McpOfficialRegistry {
             base_url(auth),
             encode_path_segment(qualified_name)
         );
-        let body = self
+        // The registry answers 404 for a name it does not list. That is the
+        // same answer as an empty versions document, not an upstream failure.
+        let body = match self
             .send(self.request(auth, &url), &url, RegistryOperation::Detail)
-            .await?;
+            .await
+        {
+            Err(Error::Http { status: 404, .. }) => {
+                return Err(Error::UnknownServer {
+                    server: qualified_name.to_string(),
+                });
+            }
+            sent => sent?,
+        };
 
         let document: Value = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("official versions response: {error}")))?;
@@ -433,7 +446,9 @@ impl McpOfficialRegistry {
             .request(auth, &url)
             .query(&[("limit", limit.to_string())])
             .query(&[("version", "latest")]);
-        if !query.is_empty() {
+        // The registry refuses a search shorter than its minimum with a 422,
+        // so a query that short is served as the unfiltered page instead.
+        if query.trim().chars().count() >= MIN_SEARCH_CHARS {
             request = request.query(&[("search", query)]);
         }
         if let Some(cursor) = cursor {
@@ -493,14 +508,22 @@ fn served(
 /// own cursor, so a row pushed off page one would never appear on any page,
 /// and page one may run longer by the curated servers it adds. Only a page
 /// with nothing after it (the local fallback) is cut back to `cap`.
-fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, cap: Option<usize>) {
+///
+/// Only promoted entries lead (see [`CuratedCatalog::is_promoted`]); a runtime
+/// entry is not moved to the top.
+fn lead_with_curated(
+    servers: &mut Vec<RegistryServerSummary>,
+    catalog: &CuratedCatalog,
+    query: &str,
+    cap: Option<usize>,
+) {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     if terms.is_empty() {
         return;
     }
 
-    let mut leading: Vec<RegistryServerSummary> = CURATED_SERVERS
-        .iter()
+    let mut leading: Vec<RegistryServerSummary> = catalog
+        .promoted()
         .filter(|curated| {
             let text = format!(
                 "{} {} {}",
@@ -513,7 +536,7 @@ fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, cap:
             servers
                 .iter()
                 .position(|row| row.qualified_name == curated.qualified_name)
-                .map_or_else(|| curated.to_summary(), |at| servers.remove(at))
+                .map_or_else(|| entry_summary(curated), |at| servers.remove(at))
         })
         .collect();
     leading.append(servers);
@@ -527,6 +550,11 @@ fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, cap:
 fn list_url(auth: &McpRegistryAuthConfig) -> String {
     format!("{}/v0/servers", base_url(auth))
 }
+
+/// The shortest `search` the official registry accepts, counted after
+/// trimming. A shorter one is answered `422 search must contain at least 3
+/// characters after trimming`.
+const MIN_SEARCH_CHARS: usize = 3;
 
 /// The cache key for one page of one search.
 fn search_cache_key(query: &str, page: u32, page_size: u32) -> String {

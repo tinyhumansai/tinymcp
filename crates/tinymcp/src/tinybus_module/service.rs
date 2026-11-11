@@ -221,6 +221,15 @@ impl McpService {
         }
     }
 
+    /// The same service over `registry`, for tests that stand in for an
+    /// upstream catalog behind the bus members.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_dynamic_registry(mut self, registry: McpRegistry) -> Self {
+        self.dynamic = Arc::new(registry);
+        self
+    }
+
     /// The dynamic registry, for a host using this crate directly.
     #[must_use]
     pub fn dynamic(&self) -> &McpRegistry {

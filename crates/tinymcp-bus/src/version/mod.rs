@@ -44,9 +44,13 @@
 /// `StdioSandboxConfig::enforcement` (`StdioSandboxEnforcement`), letting the
 /// host choose `Declared` for a backend with partial enforcement; the default
 /// stays `Enforced`. 1.28 adds the optional `annotations` on `McpRemoteTool`.
+/// 1.29 adds the optional `token_endpoint_auth_methods_supported` on
+/// `AuthorizationServerMetadata`.
 /// 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
 /// endpoint guard on by default: endpoints a server advertises must be `https`
 /// and public unless the operator declared that server local.
+/// 1.31 adds `McpRegistryAuthConfig::curated_servers` (`CuratedServerEntry`):
+/// host-supplied curated servers, never badged official.
 /// 1.32 adds the `LaunchFailed` error name: a stdio server whose process could
 /// not be started, previously reported as `MalformedResponse`.
 pub const CONTRACT_VERSION: (u32, u32) = (1, 32);
