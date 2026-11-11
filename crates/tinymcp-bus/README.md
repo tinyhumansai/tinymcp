@@ -95,6 +95,14 @@ Contract 1.29 adds the optional `token_endpoint_auth_methods_supported` on
 (`none`) with an authorization server that accepts nothing else. The field is
 omitted when absent.
 
+Contract 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
+endpoint guard on by default. The authorization, registration and token
+endpoints a server advertises are requested from the host, so they must now be
+`https` and resolve to public addresses, refusing loopback, private, link-local
+and metadata addresses. The exception is a server whose URL has an origin the
+operator listed in `local_oauth_origins`, such as a loopback development server;
+each exemption is logged. Token refreshes on connect go through the same guard.
+
 Library consumers bring implementation extension traits into scope for moved
 DTO methods. Contract-only hosts call the compiled module. See
 [the relocation specification](../../docs/specs/pure-vocabulary.md) for public

@@ -46,7 +46,10 @@
 /// stays `Enforced`. 1.28 adds the optional `annotations` on `McpRemoteTool`.
 /// 1.29 adds the optional `token_endpoint_auth_methods_supported` on
 /// `AuthorizationServerMetadata`.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 29);
+/// 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
+/// endpoint guard on by default: endpoints a server advertises must be `https`
+/// and public unless the operator declared that server local.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 30);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.
