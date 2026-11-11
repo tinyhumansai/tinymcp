@@ -90,6 +90,11 @@ so a host can tell a tool that only reads from one that changes something
 before it calls it. The field is optional and omitted when absent, and
 `StaticScrubTools` scrubs it like the rest of a tool's metadata.
 
+Contract 1.29 adds the optional `token_endpoint_auth_methods_supported` on
+`AuthorizationServerMetadata`, so a client can register as a public client
+(`none`) with an authorization server that accepts nothing else. The field is
+omitted when absent.
+
 Contract 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
 endpoint guard on by default. The authorization, registration and token
 endpoints a server advertises are requested from the host, so they must now be

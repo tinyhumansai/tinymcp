@@ -44,6 +44,8 @@
 /// `StdioSandboxConfig::enforcement` (`StdioSandboxEnforcement`), letting the
 /// host choose `Declared` for a backend with partial enforcement; the default
 /// stays `Enforced`. 1.28 adds the optional `annotations` on `McpRemoteTool`.
+/// 1.29 adds the optional `token_endpoint_auth_methods_supported` on
+/// `AuthorizationServerMetadata`.
 /// 1.30 adds `McpClientConfig::local_oauth_origins` and turns the OAuth
 /// endpoint guard on by default: endpoints a server advertises must be `https`
 /// and public unless the operator declared that server local.

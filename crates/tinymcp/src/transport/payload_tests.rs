@@ -432,6 +432,7 @@ fn an_authorization_context_round_trips_with_several_servers() {
                 response_types_supported: vec!["code".into()],
                 grant_types_supported: vec!["authorization_code".into()],
                 code_challenge_methods_supported: vec!["S256".into()],
+                token_endpoint_auth_methods_supported: None,
             },
             AuthorizationServerMetadata {
                 issuer: "https://b.test".into(),
@@ -441,6 +442,7 @@ fn an_authorization_context_round_trips_with_several_servers() {
                 response_types_supported: Vec::new(),
                 grant_types_supported: Vec::new(),
                 code_challenge_methods_supported: Vec::new(),
+                token_endpoint_auth_methods_supported: None,
             },
         ],
     };
